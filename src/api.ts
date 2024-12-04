@@ -555,6 +555,8 @@ export interface EvaluationPlan {
 
   cost: number
   evaluate(context: EvaluationContext): Task<Bindings[], EvaluationError>
+
+  toJSON(): {}
 }
 
 export type Plan = Unplannable | EvaluationPlan

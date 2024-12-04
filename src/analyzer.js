@@ -38,7 +38,6 @@ export function analyze(clause) {
 /**
  * @param {(API.Clause & {plan?:undefined})|Branch} clause
  * @param {Partial<Context>} context
- * @returns {API.Plan}
  */
 export function plan(
   clause,
@@ -60,7 +59,6 @@ export function plan(
 class Case {
   /**
    * @param {Context} context
-   * @returns {API.Plan}
    */
   plan(context) {
     const [entity, attribute, value] = this.pattern
@@ -159,7 +157,7 @@ class Or {
     const analysis = [top]
     const input = new Set(top.input)
     const output = new Set(top.output)
-    const local = new Set()
+    const extension = new Set()
 
     // First collect all variables
     for (const disjunct of rest) {
@@ -175,7 +173,7 @@ class Or {
       for (const id of output) {
         if (!current.output.has(id)) {
           output.delete(id)
-          local.add(id)
+          extension.add(id)
         }
       }
 
@@ -183,32 +181,32 @@ class Or {
       // add it to the local set.
       for (const id of current.output) {
         if (!output.has(id)) {
-          local.add(id)
+          extension.add(id)
         }
       }
     }
 
-    return new this(analysis, input, output, local)
+    return new this(analysis, input, output, extension)
   }
 
   /**
    * @param {Branch[]} branches
    * @param {Set<API.VariableID>} input
    * @param {Set<API.VariableID>} output
-   * @param {Set<API.VariableID>} local
+   * @param {Set<API.VariableID>} extension
    */
-  constructor(branches, input, output, local) {
+  constructor(branches, input, output, extension) {
     this.branches = branches
     this.input = input
     this.output = output
-    this.local = local
+    this.extension = extension
   }
 
   /**
    * @param {API.VariableID} id
    */
   has(id) {
-    return this.input.has(id) || this.output.has(id) || this.local.has(id)
+    return this.input.has(id) || this.output.has(id) || this.extension.has(id)
   }
 
   get Or() {
@@ -217,37 +215,15 @@ class Or {
 
   /**
    * @param {Context} context
-   * @returns {API.Plan}
-   */
-  _plan(context) {
-    const plans = []
-    let cost = 0
-    for (const branch of this.branches) {
-      const plan = branch.plan(context)
-      if (plan.error) {
-        return plan
-      } else {
-        // Cost is the highest cost of all branches as we need to execute all
-        // of them (potentially concurrently)
-        cost = Math.max(cost, plan.cost)
-        plans.push(plan)
-      }
-    }
-
-    return new OrPlan(cost, plans)
-  }
-
-  /**
-   * @param {Context} context
-   * @returns {API.Plan}
+   * @returns {OrPlan|Unplannable}
    */
   plan(context) {
-    // Check that none of our local variables are in outer scope
-    for (const id of this.local) {
-      if (context.scope.has(id)) {
+    // Extensions must be bound if they appear in outer scope
+    for (const id of this.extension) {
+      if (context.scope.has(id) && !context.bindings.has(id)) {
         return new Unplannable(
           new Set([id]),
-          `Non local variable ${id} is bound in some Or branches and not the others`
+          `Variable ${id} must be bound or used consistently across all Or branches`
         )
       }
     }
@@ -356,7 +332,7 @@ class And {
 
   /**
    * @param {Context} context
-   * @returns {API.Plan}
+   * @returns {AndPlan|Unplannable}
    */
   plan(context) {
     const bindings = new Set(context.bindings)
@@ -542,7 +518,7 @@ class Not {
 
   /**
    * @param {Context} context
-   * @returns {API.Plan}
+   * @returns {NotPlan|Unplannable}
    */
   plan(context) {
     const plan = this.step.plan(context)
@@ -594,7 +570,7 @@ class Is {
 
   /**
    * @param {Context} context
-   * @returns {API.Plan}
+   * @returns {IsPlan|Unplannable}
    */
   plan(context) {
     const missingInputs = [...this.output].filter(
@@ -656,7 +632,7 @@ class Match {
 
   /**
    * @param {Context} context
-   * @returns {API.Plan}
+   * @returns {MatchPlan|Unplannable}
    */
   plan(context) {
     const missingInputs = [...this.input].filter(
@@ -694,30 +670,6 @@ class Match {
 const equalSets = (expected, actual) =>
   actual.size === expected.size && [...expected].every(($) => actual.has($))
 
-/**
- * Error thrown when Or branches have mismatched variable bindings
- */
-class OrBindingMismatchError extends Error {
-  /**
-   * @param {Branch} expected
-   * @param {Branch} actual
-   */
-  constructor(expected, actual) {
-    const missing = [...actual.output].filter((x) => !expected.output.has(x))
-    const extra = [...expected.output].filter((x) => !actual.output.has(x))
-
-    super(
-      `All branches of Or clause must bind same set of variables. ` +
-        `Branch ${JSON.stringify(actual)} does not bind: ${missing.join(
-          ', '
-        )}, ` +
-        `while branch ${JSON.stringify(expected)} does not bind [${extra.join(
-          ', '
-        )}]`
-    )
-  }
-}
-
 class Unplannable extends Error {
   /**
    *
@@ -735,12 +687,24 @@ class Unplannable extends Error {
   get error() {
     return this
   }
+
+  toJSON() {
+    return {
+      error: {
+        name: this.name,
+        message: this.message,
+        stack: this.stack,
+      },
+    }
+  }
 }
 
 /**
  * @implements {API.EvaluationPlan}
  */
 class AndPlan {
+  /** @type {undefined} */
+  error
   /**
    * @param {number} cost
    * @param {API.EvaluationPlan[]} bindings
@@ -780,6 +744,8 @@ class AndPlan {
 }
 
 class CasePlan {
+  /** @type {undefined} */
+  error
   /**
    * @param {number} cost
    * @param {API.Pattern} pattern
@@ -805,6 +771,8 @@ class CasePlan {
 }
 
 class NotPlan {
+  /** @type {undefined} */
+  error
   /**
    * @param {number} cost
    * @param {API.EvaluationPlan} plan
@@ -841,6 +809,8 @@ class NotPlan {
 }
 
 class OrPlan {
+  /** @type {undefined} */
+  error
   /**
    * @param {number} cost
    * @param {API.EvaluationPlan[]} disjuncts
@@ -874,6 +844,8 @@ class OrPlan {
 }
 
 class MatchPlan {
+  /** @type {undefined} */
+  error
   /**
    * @param {number} cost
    * @param {API.Formula} formula
@@ -899,6 +871,8 @@ class MatchPlan {
 }
 
 class IsPlan {
+  /** @type {undefined} */
+  error
   /**
    * @param {number} cost
    * @param {API.Is} relation

@@ -87,7 +87,7 @@ export const testAnalyzer = {
     })
   },
 
-  'require branch consistency for non-locals': async (assert) => {
+  'variables get bound before used in some disjuncts': async (assert) => {
     const branch = Analyzer.analyze({
       And: [
         { Case: [$.x, 'type', 'doc'] },
@@ -110,7 +110,26 @@ export const testAnalyzer = {
     assert.deepEqual(branch.output, new Set([Var.id($.x), Var.id($.user)]))
 
     const plan = Analyzer.plan(branch)
-    assert.match(plan.error, /Non local variable/)
+    assert.deepEqual(plan.toJSON(), {
+      cost: 128,
+      And: [
+        { Case: [$.x, 'type', 'doc'], cost: 60 },
+        { Case: [$.user, 'dept', 'eng'], cost: 60 },
+        {
+          cost: 8,
+          Or: [
+            { Case: [$.x, 'status', 'draft'], cost: 6 },
+            {
+              cost: 8,
+              And: [
+                { Case: [$.x, 'owner', $.user], cost: 2 },
+                { Case: [$.user, 'role', 'admin'], cost: 6 },
+              ],
+            },
+          ],
+        },
+      ],
+    })
   },
 
   'plans execution by cost': async (assert) => {
@@ -262,7 +281,7 @@ export const testAnalyzer = {
       ],
     })
   },
-  'nested Or requires consistency with parent scope': async (assert) => {
+  'nested Or requires extension variables to be bound': async (assert) => {
     const branch = Analyzer.analyze({
       And: [
         { Case: [$.x, 'type', 'doc'] },
@@ -271,18 +290,32 @@ export const testAnalyzer = {
             { Case: [$.x, 'status', 'draft'] },
             {
               Or: [
-                { Case: [$.x, 'review', $.review] },
-                { Case: [$.x, 'owner', $.user] }, // Inconsistent with sibling Or
+                { Case: [$.x, 'review', $.review] }, // $.review local can be unbound
+                { Case: [$.x, 'owner', $.user] }, // $.user must be bound prior
               ],
             },
           ],
         },
-        { Case: [$.user, 'role', 'admin'] }, // Makes $.user non-local
+        { Case: [$.user, 'role', 'admin'] }, // Makes $.user extension variable
       ],
     })
 
     const plan = Analyzer.plan(branch)
-    assert.match(plan.error, /Non local variable/)
+    assert.deepEqual(plan.toJSON(), {
+      cost: 140,
+      And: [
+        { cost: 60, Case: [$.x, 'type', 'doc'] },
+        { cost: 60, Case: [$.user, 'role', 'admin'] },
+        {
+          cost: 20,
+          Or: [
+            { cost: 6, Case: [$.x, 'status', 'draft'] },
+            { cost: 20, Case: [$.x, 'review', $.review] },
+            { cost: 2, Case: [$.x, 'owner', $.user] },
+          ],
+        },
+      ],
+    })
   },
 
   'handles multiple negations across scopes': async (assert) => {
@@ -474,7 +507,7 @@ export const testAnalyzer = {
     })
   },
 
-  'skip handles Mix of Match and Is with Or': async (assert) => {
+  'handles Mix of Match and Is with Or': async (assert) => {
     const branch = Analyzer.analyze({
       And: [
         { Case: [$.doc, 'size', $.size] },
@@ -496,18 +529,19 @@ export const testAnalyzer = {
     const plan = Analyzer.plan(branch)
 
     assert.deepEqual(plan.toJSON(), {
+      cost: 240,
       And: [
-        { Case: [$.doc, 'size', $.size], cost: 60 },
-        { Match: [$.size, 'text/length', $.length], cost: 0 },
+        { Case: [$.doc, 'size', $.size], cost: 200 },
+        { Match: [$.size, 'text/length', $.length], cost: 20 },
         {
-          cost: 0,
+          cost: 20,
           Or: [
             { Is: [$.length, 0], cost: 0 },
             {
-              cost: 0,
+              cost: 20,
               And: [
-                { Match: [$.length, '==', 100], cost: 0 },
                 { Is: [$.size, $.length], cost: 0 },
+                { Match: [$.length, '==', 100], cost: 20 },
               ],
             },
           ],
