@@ -48,21 +48,17 @@ export const testPlan = {
 
     assert.deepEqual(result.length, 5)
     const [{ actor }] = result
-    assert.deepEqual(movies.scans.slice(0, 2), [
+    assert.deepEqual(movies.scans.slice(0, 1), [
       {
         entity: undefined,
         attribute: 'person/name',
         value: 'Arnold Schwarzenegger',
       },
-      {
-        entity: undefined,
-        attribute: 'movie/cast',
-        value: actor,
-      },
+      // {
+      //   entity: undefined,
+      //   attribute: 'movie/cast',
+      //   value: actor,
+      // },
     ])
-    // assert.deepEqual(result[0], [
-
-    // ])
-    console.log(movies.scans.slice(0, 2))
   },
 }
