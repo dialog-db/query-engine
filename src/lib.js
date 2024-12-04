@@ -11,6 +11,7 @@ import * as Task from './task.js'
 import * as Formula from './formula.js'
 import * as Clause from './clause.js'
 import * as Constant from './constant.js'
+import $ from './scope.js'
 
 export * as Var from './variable.js'
 export * from './api.js'
@@ -25,7 +26,7 @@ const ENTITY = 0
 const ATTRIBUTE = 1
 const VALUE = 2
 
-export { Constraint }
+export { Constraint, $ }
 export const { select } = Constraint
 
 /**
@@ -359,7 +360,7 @@ export const evaluateIs = function* (_, [expect, actual], frames) {
  * @param {Iterable<API.Bindings>} frames
  */
 
-const evaluateCase = function* (db, pattern, [...frames]) {
+export const evaluateCase = function* (db, pattern, [...frames]) {
   const matches = []
   for (const bindings of frames) {
     const resolved = Bindings.resolve(bindings, pattern)

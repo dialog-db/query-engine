@@ -2,11 +2,12 @@ import * as API from './api.js'
 import { Link } from './constant.js'
 import * as Term from './term.js'
 import * as Bindings from './bindings.js'
-import { Var } from './lib.js'
+import * as Variable from './variable.js'
 import * as Data from './formula/data.js'
 import * as Text from './formula/text.js'
 import * as Math from './formula/math.js'
 import * as UTF8 from './formula/utf8.js'
+import * as Terms from './terms.js'
 
 /**
  * @param {API.Querier} db
@@ -108,17 +109,38 @@ export const operators = {
  * @returns {Iterable<API.Variable>}
  */
 export const variables = function* ([from, _relation, to]) {
-  if (Var.is(from)) {
-    yield from
-  } else if (Array.isArray(from)) {
-    for (const term of from) {
-      if (Var.is(term)) {
-        yield term
-      }
-    }
+  yield* Terms.variables(from)
+  yield* Terms.variables(to)
+}
+
+/**
+ * Estimates cost and analyzes variables for Match clauses based on the correct Formula structure
+ *
+ * @param {API.Formula} formula
+ */
+export const analyze = (formula) => {
+  /** @type {Set<API.VariableID>} */
+  const dependencies = new Set()
+  /** @type {Set<API.VariableID>} */
+  const binds = new Set()
+
+  const [from, _relation, to] = formula
+
+  // Collect variables from input terms as dependencies
+
+  for (const variable of Terms.variables(from)) {
+    dependencies.add(variable['?'].id)
   }
 
-  if (Var.is(to)) {
-    yield to
+  // Collect variables from output terms as binds
+  for (const variable of Terms.variables(to)) {
+    binds.add(variable['?'].id)
+  }
+
+  // Match clauses are relatively cheap if dependencies are met
+  return {
+    dependencies,
+    binds,
+    cost: 10,
   }
 }

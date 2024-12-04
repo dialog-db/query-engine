@@ -539,3 +539,35 @@ export type InferBindings<Selection extends Selector> = {
 }
 
 export type InferTerm<T extends Term> = T extends Term<infer U> ? U : never
+
+export interface Analysis {
+  dependencies: Set<VariableID>
+  binds: Set<VariableID>
+  cost: number
+}
+
+export interface Unplannable extends Error {
+  error: this
+}
+
+export interface EvaluationPlan {
+  error?: undefined
+
+  cost: number
+  evaluate(context: EvaluationContext): Task<Bindings[], EvaluationError>
+}
+
+export type Plan = Unplannable | EvaluationPlan
+
+export interface EvaluationContext {
+  selection: Bindings[]
+
+  source: Querier
+}
+
+export interface EvaluationError extends Error {}
+
+export interface Scope extends Record<PropertyKey, Variable<any>> {
+  new (): Scope
+  (): Scope
+}

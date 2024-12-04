@@ -166,3 +166,10 @@ export const conclusion = (rule) => rule.select
  * @param {API.Rule} rule
  */
 export const body = (rule) => rule.where
+
+/**
+ * @param {API.MatchRule} rule
+ */
+export const analyze = (rule) => {
+  throw new Error('Not implemented')
+}

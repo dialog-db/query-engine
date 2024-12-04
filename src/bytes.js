@@ -1,6 +1,12 @@
 import { base64 } from 'multiformats/bases/base64'
 
 /**
+ * @param {unknown} bytes
+ * @returns {bytes is Uint8Array}
+ */
+export const is = (bytes) => bytes instanceof Uint8Array
+
+/**
  * @param {Uint8Array} self
  * @param {Uint8Array} other
  * @returns {boolean}
