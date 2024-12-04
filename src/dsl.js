@@ -2,17 +2,7 @@ import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Type from './type.js'
 import { entries } from './object.js'
-import * as Constraint from './constraint.js'
 import { and, match } from './clause.js'
-
-export {
-  like,
-  glob,
-  greater,
-  less,
-  greaterOrEqual,
-  lessOrEqual,
-} from './constraint.js'
 
 /**
  * @typedef {Record<string, API.Type>} Schema
@@ -207,15 +197,7 @@ class Attribute {
    * @param {API.Term} value
    */
   not(value) {
-    return this.and(Constraint.is.not(this, value))
-  }
-
-  /**
-   *
-   * @param {(value: T) => boolean} predicate
-   */
-  confirm(predicate) {
-    return this.model.value.confirm(predicate)
+    return this.and({ Not: { Is: [this, value] } })
   }
 }
 
@@ -228,21 +210,27 @@ class Text extends Attribute {
    * @returns {API.Clause}
    */
   startsWith(prefix) {
-    return this.and(Constraint.startsWith(this, prefix))
+    return this.and({
+      Match: [{ text: this, pattern: `${prefix}*` }, 'text/like'],
+    })
   }
   /**
    * @param {API.Term<string>} suffix
    * @returns {API.Clause}
    */
   endsWith(suffix) {
-    return this.and(Constraint.endsWith(this, suffix))
+    return this.and({
+      Match: [{ text: this, pattern: `*${suffix}` }, 'text/like'],
+    })
   }
 
   /**
    * @param {API.Term<string>} chunk
    */
   contains(chunk) {
-    return this.and(Constraint.contains(this, chunk))
+    return this.and({
+      Match: [{ text: this, slice: chunk }, 'text/includes'],
+    })
   }
 }
 
@@ -255,25 +243,33 @@ class Numeric extends Attribute {
    * @param {API.Term<T>} operand
    */
   greater(operand) {
-    return this.and(Constraint.greater(this, operand))
+    return this.and({
+      Match: [[this, operand], '>'],
+    })
   }
   /**
    * @param {API.Term<T>} operand
    */
   greaterOrEqual(operand) {
-    return this.and(Constraint.greater(this, operand))
+    return this.and({
+      Match: [[this, operand], '>='],
+    })
   }
   /**
    * @param {API.Term<T>} operand
    */
   less(operand) {
-    return this.and(Constraint.less(this, operand))
+    return this.and({
+      Match: [[this, operand], '<'],
+    })
   }
   /**
    * @param {API.Term<T>} operand
    */
   lessOrEqual(operand) {
-    return this.and(Constraint.lessOrEqual(this, operand))
+    return this.and({
+      Match: [[this, operand], '<='],
+    })
   }
 }
 
@@ -290,29 +286,53 @@ export const dependencies = function* (term) {
   }
 }
 
-const {
-  variable,
-  confirm,
-  link,
-  bytes,
-  string,
-  integer,
-  float,
-  boolean,
-  _,
-  toKey,
-} = Variable
-export {
-  variable,
-  confirm,
-  link,
-  bytes,
-  string,
-  integer,
-  float,
-  boolean,
-  _,
-  toKey,
-}
+const { variable, link, bytes, string, integer, float, boolean, _, toKey } =
+  Variable
+export { variable, link, bytes, string, integer, float, boolean, _, toKey }
 
 export { String, Int32 as Integer, Float32 as Float, Boolean } from './type.js'
+
+/**
+ * @param {API.Term<string>} text
+ * @param {API.Term<string>} pattern
+ * @returns {API.Clause}
+ */
+export const like = (text, pattern) => ({
+  Match: [{ text, pattern }, 'text/like'],
+})
+
+/**
+ * @param {API.Term<number>} left
+ * @param {API.Term<number>} right
+ * @returns {API.Clause}
+ */
+export const greater = (left, right) => ({
+  Match: [[left, right], '>'],
+})
+
+/**
+ * @param {API.Term<number>} left
+ * @param {API.Term<number>} right
+ * @returns {API.Clause}
+ */
+export const less = (left, right) => ({
+  Match: [[left, right], '<'],
+})
+
+/**
+ * @param {API.Term<number>} left
+ * @param {API.Term<number>} right
+ * @returns {API.Clause}
+ */
+export const greaterOrEqual = (left, right) => ({
+  Match: [[left, right], '>='],
+})
+
+/**
+ * @param {API.Term<number>} left
+ * @param {API.Term<number>} right
+ * @returns {API.Clause}
+ */
+export const lessOrEqual = (left, right) => ({
+  Match: [[left, right], '<='],
+})

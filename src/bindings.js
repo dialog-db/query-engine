@@ -1,6 +1,5 @@
 import * as API from './api.js'
 import * as Variable from './variable.js'
-import * as Constant from './constant.js'
 import * as Term from './term.js'
 import { equal } from './constant.js'
 
@@ -30,18 +29,17 @@ export const set = (bindings, key, value) => ({ ...bindings, [key]: value })
 export const get = (bindings, term) => {
   // If term is a variable we attempt to resolve the value bound to it.
   // If the variable is unbound we return a range error.
-  if (Variable.is(term)) {
-    const key = Variable.toKey(term)
+  let current = term
+  while (Variable.is(current)) {
+    const key = Variable.toKey(current)
     if (key in bindings) {
-      return /** @type {T|undefined} */ (bindings[key])
+      current = /** @type {API.Term<T>} */ (bindings[key])
     } else {
       return undefined
     }
   }
   // If the term is a constant we simply return the term
-  else {
-    return term
-  }
+  return /** @type {T|undefined} */ (current)
 
   // PomoDB also seems to handle CID and aggregator terms differently. As far
   // as I can understand it simply uses separate key space in the map for them.

@@ -5,7 +5,6 @@ import * as Bindings from './bindings.js'
 import { equal, Link } from './constant.js'
 import * as Term from './term.js'
 import { dependencies } from './dsl.js'
-import * as Constraint from './constraint.js'
 import * as Selector from './selector.js'
 import * as Task from './task.js'
 import * as Formula from './formula.js'
@@ -26,8 +25,7 @@ const ENTITY = 0
 const ATTRIBUTE = 1
 const VALUE = 2
 
-export { Constraint, $ }
-export const { select } = Constraint
+export { $ }
 
 /**
  * @template {API.Selector} Select
@@ -215,8 +213,6 @@ const rank = (clause) => {
     return 12
   } else if (clause.Match) {
     return 13
-  } else if (clause.Form) {
-    return 14
   } else if (clause.Not) {
     return 15
   } else if (clause.Rule) {
@@ -240,8 +236,6 @@ export const evaluate = function* (db, query, frames = [{}]) {
     return yield* evaluateAnd(db, query.And, frames)
   } else if (query.Not) {
     return yield* evaluateNot(db, query.Not, frames)
-  } else if (query.Form) {
-    return yield* evaluateForm(db, query.Form, frames)
   } else if (query.Rule) {
     return yield* evaluateRule(db, query.Rule, frames)
   } else if (query.Is) {
@@ -282,28 +276,6 @@ export const evaluateNot = function* (db, operand, frames) {
   for (const frame of frames) {
     if (isEmpty(yield* evaluate(db, operand, [frame]))) {
       matches.push(frame)
-    }
-  }
-  return matches
-}
-
-/**
- * This is a filter similar to `evaluateNot`, each frame is is used to
- * materialize an input for the predicate function. If predicate returns an
- * error frame is filtered out otherwise it is passed through.
- *
- * TODO: Currently unbound (frame) variables would get filtered out, however
- * we should instead throw an exception as query is invalid.
- *
- * @param {API.Querier} db
- * @param {API.MatchForm} form
- * @param {Iterable<API.Bindings>} frames
- */
-export const evaluateForm = function* (db, form, frames) {
-  const matches = []
-  for (const bindings of frames) {
-    if (form.confirm(form.selector, bindings).ok) {
-      matches.push(bindings)
     }
   }
   return matches

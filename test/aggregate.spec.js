@@ -33,7 +33,7 @@ export const testAggregate = {
         Follower.match({ follower: profile, follows: id }),
         // @ts-expect-error - we do not yet have aggregators
         same.match({ operand: c, modifier: count.of(profile) }),
-        c.confirm((c) => c > 3),
+        c.match({ '>': 3 }),
       ],
     })
   },

@@ -54,7 +54,7 @@ export const testConstraints = {
         where: [
           DB.match([DB._, 'word', words]),
           DB.match([words, DB._, word]),
-          DB.like(word, 'Piz_a'),
+          DB.like(word, 'piz?a'),
         ],
       }),
       [{ word: 'pizza' }]
@@ -73,7 +73,7 @@ export const testConstraints = {
         where: [
           DB.match([DB._, 'word', words]),
           DB.match([words, DB._, word]),
-          DB.glob(word, 'piz%'),
+          DB.like(word, 'piz%'),
         ],
       }),
       [],
@@ -88,7 +88,7 @@ export const testConstraints = {
         where: [
           DB.match([DB._, 'word', words]),
           DB.match([words, DB._, word]),
-          DB.glob(word, 'piz*'),
+          DB.like(word, 'piz*'),
         ],
       }),
       [{ word: 'pizza' }],
@@ -103,7 +103,7 @@ export const testConstraints = {
         where: [
           DB.match([DB._, 'word', words]),
           DB.match([words, DB._, word]),
-          DB.glob(word, 'Piz*'),
+          DB.like(word, 'Piz*'),
         ],
       }),
       [],
@@ -118,7 +118,7 @@ export const testConstraints = {
         where: [
           DB.match([DB._, 'word', words]),
           DB.match([words, DB._, word]),
-          DB.like(word, 'piz.*'),
+          DB.like(word, 'piz.\\*'),
         ],
       }),
       [],
@@ -133,7 +133,7 @@ export const testConstraints = {
         where: [
           DB.match([DB._, 'word', words]),
           DB.match([words, DB._, word]),
-          DB.glob(word, 'piz?a'),
+          DB.like(word, 'piz?a'),
         ],
       }),
       [{ word: 'pizza' }],
@@ -148,7 +148,7 @@ export const testConstraints = {
         where: [
           DB.match([DB._, 'word', words]),
           DB.match([words, DB._, word]),
-          DB.glob(word, 'store/*'),
+          DB.like(word, 'store/*'),
         ],
       }),
       [{ word: 'store/*' }, { word: 'store/add' }]
@@ -162,7 +162,7 @@ export const testConstraints = {
         where: [
           DB.match([DB._, 'word', words]),
           DB.match([words, DB._, word]),
-          DB.glob(word, '*'),
+          DB.like(word, '*'),
         ],
       }),
       [
@@ -182,7 +182,7 @@ export const testConstraints = {
         where: [
           DB.match([DB._, 'word', words]),
           DB.match([words, DB._, word]),
-          DB.glob('store/list', word),
+          DB.like('store/list', word),
         ],
       }),
       [{ word: 'store/*' }, { word: '*' }],
@@ -197,7 +197,7 @@ export const testConstraints = {
         where: [
           DB.match([DB._, 'word', words]),
           DB.match([words, DB._, word]),
-          DB.glob(word, '\\*'),
+          DB.like(word, '\\*'),
         ],
       }),
       [{ word: '*' }],

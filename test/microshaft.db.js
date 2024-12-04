@@ -26,7 +26,7 @@ export default Memory.create([
   [$(3), 'supervisor', $(0)],
 
   [$(4), 'name', 'Reasoner Louis'],
-  [$(4), 'address', 'Slumerville Pine Tree Road 80'],
+  [$(4), 'address', 'Slumerville, Pine Tree Road 80'],
   [$(4), 'job', 'Computer programmer trainee'],
   [$(4), 'salary', 30_000],
   [$(4), 'supervisor', $(1)],

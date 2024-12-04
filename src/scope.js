@@ -31,7 +31,7 @@ class Scope {
    * @param {Map<string|symbol, API.Variable<any>>} [vars]
    * @returns {API.Scope}
    */
-  static new(vars = new Map()) {
+  static new(vars = new Map([['_', new Variable(0, '_')]])) {
     const scope = /** @type {API.Scope} */ (
       new Proxy(
         /** @type {any} */ (Object.assign(function () {}, { vars })),

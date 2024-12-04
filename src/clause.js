@@ -16,8 +16,6 @@ export const toJSON = (clause) => {
     return { Or: clause.Or.map(toJSON) }
   } else if (clause.Not) {
     return { Not: toJSON(clause.Not) }
-  } else if (clause.Form) {
-    return { Form: {} }
   } else if (clause.Rule) {
     return {
       Rule: {
@@ -74,7 +72,6 @@ export const variables = function* (query) {
     }
   } else if (query.Not) {
     yield* variables(query.Not)
-  } else if (query.Form) {
   } else if (query.Rule) {
     for (const binding of Object.values(query.Rule.input)) {
       if (Variable.is(binding)) {

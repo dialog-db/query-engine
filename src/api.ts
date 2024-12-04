@@ -1,4 +1,4 @@
-import { ByteView, Link as IPLDLink } from 'multiformats'
+import { ByteView } from 'multiformats'
 import { Task } from './task.js'
 
 export type { ByteView, Task }
@@ -241,8 +241,6 @@ export type Clause = Variant<{
   // pattern match a fact
   Case: Pattern
 
-  // match aggregated bindings
-  Form: MatchForm
   // rule application
   Rule: MatchRule
   // assign bindings
@@ -254,12 +252,6 @@ export type Clause = Variant<{
 export type Terms = Record<string, Term> | [Term, ...Term[]] | Term
 
 export type Numeric = Int32 | Int64 | Float32
-
-// export type Perform<T extends any> = readonly [
-//   operator: T['Operator'],
-//   input: T['Input'],
-//   output: T['Output'],
-// ]
 
 /**
  * Describes operand of the operator.
@@ -337,6 +329,10 @@ import * as MathOperators from './formula/math.js'
 
 export type Formula =
   | InferFormula<'==', typeof DataOperators.is>
+  | InferFormula<'>', typeof DataOperators.greater>
+  | InferFormula<'>=', typeof DataOperators.greaterOrEqual>
+  | InferFormula<'<', typeof DataOperators.less>
+  | InferFormula<'<=', typeof DataOperators.lessOrEqual>
   | InferFormula<'data/type', typeof DataOperators.type>
   | InferFormula<'data/refer', typeof DataOperators.refer>
   | InferFormula<'text/like', typeof TextOperators.like>
@@ -493,12 +489,6 @@ export type Confirmation = Variant<{
   ok: Unit
   error: Error
 }>
-
-export interface MatchForm<Variables extends Selector = Selector> {
-  selector: Variables
-
-  confirm(selector: Selector, bindings: Bindings): Confirmation
-}
 
 /**
  * Aggregate is a stateful operation that can be used to compute results of the

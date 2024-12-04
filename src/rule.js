@@ -1,6 +1,7 @@
 import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Constant from './constant.js'
+import * as Bytes from './bytes.js'
 
 /**
  * @template {API.Variables} Match
@@ -91,7 +92,37 @@ const renameSelectorVariables = (selector, table) =>
   )
 
 /**
- *
+ * @template {API.Terms|API.Term[]} Terms
+ * @param {Terms} source
+ * @param {Record<string, API.Variable>} table
+ * @returns {Terms}
+ */
+const rename = (source, table) => {
+  if (Variable.is(source)) {
+    return renameVariable(source, table)
+  } else if (Constant.is(source)) {
+    return source
+  } else if (Array.isArray(source)) {
+    return /** @type {Terms} */ (source.map(($) => rename($, table)))
+  } else if (source && typeof source === 'object') {
+    return /** @type {Terms} */ (
+      Object.fromEntries(
+        Object.entries(source).map(([key, member]) => [
+          key,
+          Variable.is(member)
+            ? renameVariable(member, table)
+            : Constant.is(member)
+              ? member
+              : rename(member, table),
+        ])
+      )
+    )
+  } else {
+    throw new TypeError(`Unexpected input type ${source}`)
+  }
+}
+
+/**
  * @param {API.Clause} clause
  * @param {Record<string, API.Variable>} table
  * @param {API.Rule} rule
@@ -104,13 +135,6 @@ export const renameClauseVariables = (clause, table, rule) => {
     return { Or: clause.Or.map(($) => renameClauseVariables($, table, rule)) }
   } else if (clause.Not) {
     return { Not: renameClauseVariables(clause.Not, table, rule) }
-  } else if (clause.Form) {
-    return {
-      Form: {
-        selector: renameSelectorVariables(clause.Form.selector, table),
-        confirm: clause.Form.confirm,
-      },
-    }
   } else if (clause.Case) {
     const [entity, attribute, value] = clause.Case
     return {
@@ -128,13 +152,21 @@ export const renameClauseVariables = (clause, table, rule) => {
         rule: clause.Rule.rule ?? rule,
       },
     }
+  } else if (clause.Match) {
+    const [from, relation, to] = clause.Match
+    return /**  @type {API.Clause} */ ({
+      Match:
+        to === undefined
+          ? [rename(from, table), relation]
+          : [rename(from, table), relation, rename(to, table)],
+    })
   } else {
-    return clause
+    throw new Error(`Unknown clause: ${clause}`)
   }
 }
 
 /**
- * @template {API.Term} T
+ * @template T
  * @param {T} term
  * @param {Record<string, API.Variable>} table
  * @returns {T}

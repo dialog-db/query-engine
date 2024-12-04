@@ -44,3 +44,89 @@ export const type =
  * @param {T} data
  */
 export const refer = (data) => [Link.of(data)]
+
+const SUCCESS = [{}]
+
+/**
+ * @param {API.Constant[]} operands
+ * @returns {{}[]}
+ */
+export const greater = (operands) => {
+  if (Array.isArray(operands) && operands.length > 0) {
+    const [first, ...rest] = /** @type {(API.Constant & {})[]} */ (operands)
+    let last = first
+    for (const operand of rest) {
+      if (last > operand) {
+        last = operand
+      } else {
+        return []
+      }
+    }
+    return SUCCESS
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {API.Constant[]} operands
+ * @returns {{}[]}
+ */
+export const less = (operands) => {
+  if (Array.isArray(operands) && operands.length > 0) {
+    const [first, ...rest] = /** @type {(API.Constant & {})[]} */ (operands)
+    let last = first
+    for (const operand of rest) {
+      if (last < operand) {
+        last = operand
+      } else {
+        return []
+      }
+    }
+    return SUCCESS
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {API.Constant[]} operands
+ * @returns {{}[]}
+ */
+export const greaterOrEqual = (operands) => {
+  if (Array.isArray(operands) && operands.length > 0) {
+    const [first, ...rest] = /** @type {(API.Constant & {})[]} */ (operands)
+    let last = first
+    for (const operand of rest) {
+      if (last >= operand) {
+        last = operand
+      } else {
+        return []
+      }
+    }
+    return SUCCESS
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {API.Constant[]} operands
+ * @returns {{}[]}
+ */
+export const lessOrEqual = (operands) => {
+  if (Array.isArray(operands) && operands.length > 0) {
+    const [first, ...rest] = /** @type {(API.Constant & {})[]} */ (operands)
+    let last = first
+    for (const operand of rest) {
+      if (last <= operand) {
+        last = operand
+      } else {
+        return []
+      }
+    }
+    return SUCCESS
+  } else {
+    return []
+  }
+}

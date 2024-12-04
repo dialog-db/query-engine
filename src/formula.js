@@ -77,6 +77,10 @@ export const reference = (value) => [Link.of(value)]
 
 export const operators = {
   '==': Data.is,
+  '>': Data.greater,
+  '<': Data.less,
+  '>=': Data.greaterOrEqual,
+  '<=': Data.lessOrEqual,
   'data/type': Data.type,
   'data/refer': Data.refer,
   'text/like': Text.like,

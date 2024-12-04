@@ -105,60 +105,43 @@ class Variable {
   toJSON() {
     return toJSON(this)
   }
-
   /**
-   * @param {(value: T) => boolean} predicate
+   * @param {{
+   *   '=='?: API.Term
+   *   '>'?: API.Term
+   *   '>='?: API.Term
+   *   '<'?: API.Term
+   *   '<='?: API.Term
+   * }} operand
    * @returns {API.Clause}
    */
-  confirm(predicate) {
-    return new Constraint({ variable: this, predicate })
-  }
-}
-
-/**
- * @template {API.Constant} T
- * @param {API.Variable<T>} variable
- * @param {(value:T) => boolean} predicate
- * @returns {API.Clause}
- */
-export const confirm = (variable, predicate) =>
-  new Constraint({ variable, predicate })
-
-/**
- * @template {API.Constant} T
- */
-class Constraint {
-  /**
-   * @param {object} model
-   * @param {API.Variable<T>} model.variable
-   * @param {(value: T) => boolean} model.predicate
-   */
-  constructor(model) {
-    this.model = model
-    this.confirm = this.confirm.bind(this)
-  }
-  get Form() {
-    return this
-  }
-  get selector() {
-    return { variable: this.model.variable }
-  }
-  /**
-   * @param {{variable: API.Variable<T>}} selector
-   * @param {API.Bindings} bindings
-   * @returns {API.Result<API.Unit, Error>}
-   */
-  confirm(selector, bindings) {
-    const value = Bindings.get(bindings, selector.variable)
-    if (value == null) {
-      return { error: new RangeError(`Unbound variable`) }
+  match({
+    '==': equal,
+    '>': greater,
+    '>=': greaterOrEqual,
+    '<': less,
+    '<=': lessOrEqual,
+  }) {
+    /** @type {API.Clause[]} */
+    const where = []
+    if (equal) {
+      where.push({ Is: [this, equal] })
     }
 
-    if (this.model.predicate(value)) {
-      return { ok: Type.Unit }
-    } else {
-      return { error: new Error(`Skip`) }
+    if (greater) {
+      where.push({ Match: [[this, greater], '>'] })
     }
+    if (less) {
+      where.push({ Match: [[this, less], '<'] })
+    }
+    if (greaterOrEqual) {
+      where.push({ Match: [[this, greaterOrEqual], '>='] })
+    }
+    if (lessOrEqual) {
+      where.push({ Match: [[this, lessOrEqual], '<='] })
+    }
+
+    return { And: where }
   }
 }
 

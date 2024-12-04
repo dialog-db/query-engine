@@ -243,7 +243,7 @@ export const testDB = {
       },
       where: [
         DB.match([employee.id, 'salary', employee.salary]),
-        DB.Constraint.greater(employee.salary, 30_000),
+        DB.greater(employee.salary, 30_000),
         DB.match([employee.id, 'name', employee.name]),
       ],
     })
@@ -266,8 +266,8 @@ export const testDB = {
       },
       where: [
         DB.match([employee.id, 'salary', employee.salary]),
-        employee.salary.confirm((salary) => salary > 30_000),
-        employee.salary.confirm((salary) => salary < 100_000),
+        employee.salary.match({ '>': 30_000 }),
+        employee.salary.match({ '<': 100_000 }),
         DB.match([employee.id, 'name', employee.name]),
       ],
     })

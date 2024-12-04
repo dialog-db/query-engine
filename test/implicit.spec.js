@@ -29,7 +29,7 @@ export const testImplicit = {
         DB.match([capability, 'can', can]),
         DB.not(DB.match([ucan, 'expiration', DB._])).or(
           DB.match([ucan, 'expiration', expiration]).and(
-            expiration.confirm(($) => $ > time)
+            DB.greaterOrEqual(expiration, time)
           )
         ),
       ],

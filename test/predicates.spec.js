@@ -1,6 +1,5 @@
 import * as DB from 'datalogia'
 import testDB from './microshaft.db.js'
-import { startsWith } from '../src/constraint.js'
 
 /**
  * @type {import('entail').Suite}
@@ -31,8 +30,9 @@ export const testMore = {
           job: employee.job,
         },
         where: [
-          startsWith(employee.job, 'Computer'),
-          // employee.job.startsWith('Computer'),
+          {
+            Match: [{ text: employee.job, pattern: 'Computer*' }, 'text/like'],
+          },
         ],
       }),
       [
@@ -132,9 +132,7 @@ export const testMore = {
         name: employee.name,
         address: employee.address,
       },
-      where: [
-        employee.address.confirm((address) => address.includes('Campridge')),
-      ],
+      where: [employee.address.contains('Campridge')],
     }
 
     assert.deepEqual(await DB.query(testDB, whoLivesInCambridge), [

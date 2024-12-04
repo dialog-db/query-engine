@@ -1,6 +1,7 @@
 import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Constant from './constant.js'
+import * as Bindings from './bindings.js'
 
 /**
  * @param {unknown} term
@@ -78,6 +79,6 @@ export const matchVariable = (variable, value, bindings) => {
     return match(bindings[key], value, bindings)
   } else {
     const result = Variable.check(variable, value)
-    return result.error ? result : { ok: { ...bindings, [key]: value } }
+    return result.error ? result : Bindings.unify(variable, value, bindings)
   }
 }

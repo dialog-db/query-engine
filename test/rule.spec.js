@@ -1,5 +1,6 @@
 import * as DB from 'datalogia'
 import db from './microshaft.db.js'
+import { $ } from 'datalogia'
 import { rule } from '../src/rule.js'
 
 /**
@@ -39,12 +40,14 @@ export const testRules = {
       id: DB.link(),
       name: DB.string(),
       address: DB.string(),
+      city: DB.string(),
     }
 
     const coworker = {
       id: DB.link(),
       name: DB.string(),
       address: DB.string(),
+      city: DB.string(),
     }
 
     const operand = DB.link()
@@ -59,17 +62,16 @@ export const testRules = {
       select: {
         employee: employee.id,
         coworker: coworker.id,
+        city: employee.city,
       },
       where: [
         DB.match([employee.id, 'address', employee.address]),
         DB.match([coworker.id, 'address', coworker.address]),
-        DB.select({
-          employee: employee.address,
-          coworker: coworker.address,
-        }).where(
-          ({ employee, coworker }) =>
-            employee.split(' ')[0] === coworker.split(' ')[0]
-        ),
+        { Match: [employee.address, 'text/words', employee.city] },
+        { Match: [[employee.city, '*'], 'text/concat', $.pattern] },
+        {
+          Match: [{ text: coworker.address, pattern: $.pattern }, 'text/like'],
+        },
         DB.not(same.match({ operand: employee.id, modifier: coworker.id })),
       ],
     })
@@ -80,22 +82,27 @@ export const testRules = {
         coworker: coworker.name,
       },
       where: [
+        DB.match([employee.id, 'name', employee.name]),
+        DB.match([coworker.id, 'name', coworker.name]),
         livesNear.match({
           employee: employee.id,
           coworker: coworker.id,
+          city: $.city,
         }),
-        DB.match([employee.id, 'name', employee.name]),
-        DB.match([coworker.id, 'name', coworker.name]),
       ],
     })
 
     assert.deepEqual(
       [...matches],
       [
+        { employee: 'Bitdiddle Ben', coworker: 'Reasoner Louis' },
         { employee: 'Bitdiddle Ben', coworker: 'Aull DeWitt' },
         { employee: 'Hacker Alyssa P', coworker: 'Fect Cy D' },
         { employee: 'Fect Cy D', coworker: 'Hacker Alyssa P' },
+        { employee: 'Reasoner Louis', coworker: 'Bitdiddle Ben' },
+        { employee: 'Reasoner Louis', coworker: 'Aull DeWitt' },
         { employee: 'Aull DeWitt', coworker: 'Bitdiddle Ben' },
+        { employee: 'Aull DeWitt', coworker: 'Reasoner Louis' },
       ]
     )
   },
