@@ -147,19 +147,31 @@ class Case {
   }
 }
 
+/**
+ * Analyzes Or clause branches to identify:
+ * - inputs: variables required by any branch
+ * - outputs: variables bound by all branches
+ * - extensions: variables bound by some but not all branches
+ *
+ * Extensions require special handling - if they appear in outer scope
+ * they must be bound before Or executes. This ensures consistent variable
+ * bindings regardless of which branch executes.
+ */
 class Or {
   /**
    * @param {API.Clause[]} branches
    */
   static analyze(branches) {
+    // Flatten nested Or clauses to remove redundancy
     const [first, ...rest] = disjuncts(branches)
+    // Start with first branch outputs as candidates for consistent outputs
     const top = analyze(first)
     const analysis = [top]
     const input = new Set(top.input)
     const output = new Set(top.output)
     const extension = new Set()
 
-    // First collect all variables
+    // Process remaining branches
     for (const disjunct of rest) {
       const current = analyze(disjunct)
       analysis.push(current)
@@ -168,17 +180,15 @@ class Or {
         input.add(id)
       }
 
-      // If any of the variables in output are not in the current output
-      // consider those locals.
+      // If an "output" isn't produced by this branch, it becomes an extension
       for (const id of output) {
         if (!current.output.has(id)) {
-          output.delete(id)
           extension.add(id)
+          output.delete(id)
         }
       }
 
-      // If any of the current outputs is not already in the output set
-      // add it to the local set.
+      // New outputs in this branch are extensions
       for (const id of current.output) {
         if (!output.has(id)) {
           extension.add(id)
@@ -214,6 +224,10 @@ class Or {
   }
 
   /**
+   * Plans Or clause execution ensuring proper handling of extensions.
+   * Extensions that appear in outer scope must be bound before execution
+   * to maintain consistent variable bindings across branches.
+   *
    * @param {Context} context
    * @returns {OrPlan|Unplannable}
    */

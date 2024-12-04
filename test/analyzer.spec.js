@@ -1,5 +1,5 @@
 import * as Analyzer from '../src/analyzer.js'
-import { Task, Link, $, Var } from 'datalogia'
+import { Task, Link, $, Var, API } from 'datalogia'
 
 /**
  * @type {import('entail').Suite}
@@ -409,7 +409,10 @@ export const testAnalyzer = {
 
     // Verify no nested Ands in the plan
     const planJson = plan.toJSON()
+
+    // @ts-expect-error
     assert.ok(!planJson.And.some((step) => step.And))
+    // @ts-expect-error
     assert.equal(planJson.And.length, 4)
   },
 
@@ -435,7 +438,9 @@ export const testAnalyzer = {
     const planJson = plan.toJSON()
 
     // Should be flattened into a single Or with 4 cases
+    // @ts-expect-error - could have diff shape
     assert.ok(!planJson.Or.some((step) => step.Or))
+    // @ts-expect-error - could have diff shape
     assert.equal(planJson.Or.length, 4)
   },
 
@@ -458,8 +463,11 @@ export const testAnalyzer = {
     const planJson = plan.toJSON()
 
     // // Verify execution order respects dependencies
+    // @ts-expect-error - could have diff shape
     assert.equal(planJson.And[0].Case[1], 'word-count')
+    // @ts-expect-error - could have diff shape
     assert.deepEqual(planJson.And[1].Match[0], $.count)
+    // @ts-expect-error - could have diff shape
     assert.deepEqual(planJson.And[2].Match[0], $.size)
   },
 
@@ -567,5 +575,127 @@ export const testAnalyzer = {
         { Is: [$.x, $.y], cost: 0 },
       ],
     })
+  },
+
+  'handles extensions that are truly local': async (assert) => {
+    const branch = Analyzer.analyze({
+      Or: [
+        { Case: [$.doc, 'status', 'draft'] },
+        {
+          And: [
+            { Case: [$.doc, 'reviewer', $.user] }, // $.user is extension
+            { Case: [$.user, 'role', 'admin'] }, // only used in this branch
+          ],
+        },
+      ],
+    })
+
+    assert.deepEqual(branch.output, new Set([Var.id($.doc)]))
+    const plan = Analyzer.plan(branch)
+    assert.ok(!plan.error, 'Should plan successfully when extension is local')
+  },
+
+  'requires bound extensions when used in outer scope': async (assert) => {
+    const branch = Analyzer.analyze({
+      And: [
+        { Case: [$.user, 'role', 'admin'] }, // binds $.user first
+        {
+          Or: [
+            { Case: [$.doc, 'status', 'draft'] },
+            { Case: [$.doc, 'reviewer', $.user] }, // $.user is extension
+          ],
+        },
+      ],
+    })
+
+    const plan = Analyzer.plan(branch)
+    assert.deepEqual(plan.toJSON(), {
+      cost: 120,
+      And: [
+        { Case: [$.user, 'role', 'admin'], cost: 60 },
+        {
+          cost: 60,
+          Or: [
+            { Case: [$.doc, 'status', 'draft'], cost: 60 },
+            { Case: [$.doc, 'reviewer', $.user], cost: 20 },
+          ],
+        },
+      ],
+    })
+  },
+
+  'fails if extension used in outer scope is not bound': async (assert) => {
+    const branch = Analyzer.analyze({
+      And: [
+        {
+          Or: [
+            { Case: [$.doc, 'status', 'draft'] },
+            { Case: [$.doc, 'reviewer', $.user] }, // $.user is extension
+          ],
+        },
+        { Match: [$.user, '==', 'admin'] }, // uses $.user but not bound
+      ],
+    })
+
+    const plan = Analyzer.plan(branch)
+    assert.ok(
+      plan.error,
+      'Should fail when extension used in outer scope is not bound'
+    )
+  },
+
+  'handles multiple extensions with mixed binding': async (assert) => {
+    const branch = Analyzer.analyze({
+      And: [
+        { Case: [$.user, 'role', 'admin'] }, // binds $.user
+        {
+          Or: [
+            {
+              And: [
+                { Case: [$.doc, 'author', $.user] }, // $.user is bound
+                { Case: [$.doc, 'draft', $.version] }, // $.version is local extension
+              ],
+            },
+            { Case: [$.doc, 'reviewer', $.user] }, // $.user is bound
+          ],
+        },
+      ],
+    })
+
+    const plan = Analyzer.plan(branch)
+    assert.ok(
+      !plan.error,
+      'Should plan successfully with mixed extension binding'
+    )
+  },
+
+  'fails to plan Is when neither variable can be bound': async (assert) => {
+    const branch = Analyzer.analyze({
+      Or: [
+        { Is: [$.x, $.y] }, // Neither variable can be bound
+        { Case: [$.z, 'type', 'doc'] }, // Binds unrelated variable
+      ],
+    })
+
+    const plan = Analyzer.plan(branch)
+    assert.ok(
+      plan.error,
+      'Should fail when Is clause has no way to get bound variables'
+    )
+  },
+
+  'fails to plan Match when inputs cannot be bound': async (assert) => {
+    const branch = Analyzer.analyze({
+      Or: [
+        { Match: [$.count, '==', 100] }, // $.count can't be bound in this branch
+        { Case: [$.doc, 'type', 'doc'] }, // Binds unrelated variable
+      ],
+    })
+
+    const plan = Analyzer.plan(branch)
+    assert.ok(
+      plan.error,
+      'Should fail when Match clause inputs cannot be bound'
+    )
   },
 }
