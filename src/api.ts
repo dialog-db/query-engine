@@ -435,12 +435,12 @@ export interface Querier {
 }
 
 export type Rule<Match extends Selector = Selector> = {
-  select: Match
-  where: Clause
+  match: Match
+  when: Clause
 }
 
 export interface MatchRule<Match extends Selector = Selector> {
-  input: Selector
+  match: Selector
   rule?: Rule<Match>
 }
 

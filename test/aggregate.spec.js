@@ -12,23 +12,23 @@ export const testAggregate = {
 
     const operand = DB.link()
     const same = rule({
-      select: {
+      match: {
         operand,
         modifier: operand,
       },
     })
 
     const Follower = rule({
-      select: { follower: follower, follows: follows },
-      where: [{ Case: [follower, 'follows', follows] }],
+      match: { follower: follower, follows: follows },
+      when: [{ Case: [follower, 'follows', follows] }],
     })
 
     const id = DB.link()
     const profile = DB.link()
     const c = DB.integer()
     const popularProfile = rule({
-      select: { id },
-      where: [
+      match: { id },
+      when: [
         DB.match([id, 'profile', DB._]),
         Follower.match({ follower: profile, follows: id }),
         // @ts-expect-error - we do not yet have aggregators

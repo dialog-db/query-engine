@@ -10,20 +10,20 @@ import * as Bytes from './bytes.js'
  * @returns {API.Clause}
  */
 export const match = (input, rule) => ({
-  Rule: { input, rule },
+  Rule: { match: input, rule },
 })
 
 /**
  * @template {API.Variables} Match
  *
  * @param {object} source
- * @param {Match} source.select
- * @param {API.Clause[]} [source.where]
+ * @param {Match} source.match
+ * @param {API.Clause[]} [source.when]
  */
-export const rule = ({ select, where = [] }) =>
+export const rule = ({ match, when = [] }) =>
   new Rule({
-    select,
-    where: { And: where },
+    match: match,
+    when: { And: when },
   })
 
 /**
@@ -32,28 +32,21 @@ export const rule = ({ select, where = [] }) =>
 export class Rule {
   /**
    * @param {object} source
-   * @param {Match} source.select
-   * @param {API.Clause} source.where
+   * @param {Match} source.match
+   * @param {API.Clause} source.when
    */
   constructor(source) {
     this.source = source
   }
 
-  get select() {
-    return this.source.select
-  }
-  get where() {
-    return this.source.where
-  }
-
   /**
    *
-   * @param {{[K in keyof Match]: Match[K] extends API.Variable<infer T> ? API.Term<T> : Match[K]}} input
+   * @param {{[K in keyof Match]: Match[K] extends API.Variable<infer T> ? API.Term<T> : Match[K]}} match
    * @returns {API.Clause}
    */
-  match(input) {
+  match(match) {
     return {
-      Rule: { input, rule: this.source },
+      Rule: { match, rule: this.source },
     }
   }
 }
@@ -61,17 +54,12 @@ export class Rule {
 /**
  * @param {API.Rule} rule
  */
-export const setup = (rule) => renameVariablesIn(rule, {})
-
-/**
- *
- * @param {API.Rule} rule
- * @param {Record<string, API.Variable>} table
- */
-const renameVariablesIn = (rule, table = {}) => {
-  const match = renameSelectorVariables(rule.select, table)
-  const where = renameClauseVariables(rule.where, table, rule)
-  return { match, where }
+export const setup = (rule) => {
+  /** @type {Record<string, API.Variable>} */
+  const table = {}
+  const match = renameSelectorVariables(rule.match, table)
+  const when = renameClauseVariables(rule.when, table, rule)
+  return { match, when }
 }
 
 /**
@@ -147,7 +135,7 @@ export const renameClauseVariables = (clause, table, rule) => {
   } else if (clause.Rule) {
     return {
       Rule: {
-        input: renameSelectorVariables(clause.Rule.input, table),
+        match: renameSelectorVariables(clause.Rule.match, table),
         // If rule is omitted it is a recursive rule
         rule: clause.Rule.rule ?? rule,
       },
@@ -187,21 +175,4 @@ const renameVariable = (variable, table) => {
     table[id] = Variable.variable(type)
   }
   return /** @type {T} */ (table[id])
-}
-
-/**
- * @param {API.Rule} rule
- */
-export const conclusion = (rule) => rule.select
-
-/**
- * @param {API.Rule} rule
- */
-export const body = (rule) => rule.where
-
-/**
- * @param {API.MatchRule} rule
- */
-export const analyze = (rule) => {
-  throw new Error('Not implemented')
 }

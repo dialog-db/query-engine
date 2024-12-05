@@ -12,8 +12,8 @@ export const testRules = {
     const manager = DB.link()
     const employee = DB.link()
     const wheel = rule({
-      select: { person },
-      where: [
+      match: { person },
+      when: [
         { Case: [manager, 'supervisor', person] },
         { Case: [employee, 'supervisor', manager] },
       ],
@@ -52,19 +52,19 @@ export const testRules = {
 
     const operand = DB.link()
     const same = rule({
-      select: {
+      match: {
         operand,
         modifier: operand,
       },
     })
 
     const livesNear = rule({
-      select: {
+      match: {
         employee: employee.id,
         coworker: coworker.id,
         city: employee.city,
       },
-      where: [
+      when: [
         DB.match([employee.id, 'address', employee.address]),
         DB.match([coworker.id, 'address', coworker.address]),
         { Match: [employee.address, 'text/words', employee.city] },

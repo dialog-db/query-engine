@@ -22,8 +22,8 @@ export const testRecursion = {
     const item = DB.link()
     const head = DB.link()
     const child = DB.rule({
-      select: { list, item },
-      where: [
+      match: { list, item },
+      when: [
         DB.or(
           // head of the list is the item
           DB.match([list, 'list/next', item]),

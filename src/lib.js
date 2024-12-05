@@ -416,12 +416,12 @@ const matchPattern = (pattern, [entity, attribute, value], bindings) => {
 const matchRule = function* (db, rule, bindings) {
   const matches = []
   if (rule.rule) {
-    const { match, where } = Rule.setup(rule.rule)
+    const { match, when } = Rule.setup(rule.rule)
 
     // Unify passed rule bindings with the rule match pattern.
-    const result = unifyRule(rule.input, match, bindings)
+    const result = unifyRule(rule.match, match, bindings)
     if (!result.error) {
-      const bindings = yield* evaluate(db, where, [result.ok])
+      const bindings = yield* evaluate(db, when, [result.ok])
       matches.push(...bindings)
     }
   } else {

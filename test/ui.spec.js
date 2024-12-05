@@ -16,8 +16,8 @@ const db = DB.Memory.create([
 export const testBasic = {
   'test view': async (assert) => {
     const assign = DB.rule({
-      select: { the: DB.link(), is: DB.link() },
-      where: [],
+      match: { the: DB.link(), is: DB.link() },
+      when: [],
     })
 
     const db = DB.Memory.create([

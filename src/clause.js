@@ -19,10 +19,10 @@ export const toJSON = (clause) => {
   } else if (clause.Rule) {
     return {
       Rule: {
-        input: Selector.toJSON(clause.Rule.input),
+        input: Selector.toJSON(clause.Rule.match),
         rule: clause.Rule.rule && {
-          match: Selector.toJSON(clause.Rule.rule?.select ?? {}),
-          where: toJSON(clause.Rule.rule.where),
+          match: Selector.toJSON(clause.Rule.rule?.match ?? {}),
+          when: toJSON(clause.Rule.rule.when),
         },
       },
     }
@@ -73,7 +73,7 @@ export const variables = function* (query) {
   } else if (query.Not) {
     yield* variables(query.Not)
   } else if (query.Rule) {
-    for (const binding of Object.values(query.Rule.input)) {
+    for (const binding of Object.values(query.Rule.match)) {
       if (Variable.is(binding)) {
         yield binding
       }
