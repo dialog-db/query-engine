@@ -29,7 +29,7 @@ class Variable {
 class Scope {
   /**
    * @param {Map<string|symbol, API.Variable<any>>} [vars]
-   * @returns {API.Scope}
+   * @returns {API.Scope & API.Variable}
    */
   static new(vars = new Map([['_', new Variable(0, '_')]])) {
     const scope = /** @type {API.Scope} */ (
@@ -39,7 +39,7 @@ class Scope {
       )
     )
 
-    return scope
+    return /** @type {API.Scope & API.Variable} */ (scope)
   }
 
   /**
