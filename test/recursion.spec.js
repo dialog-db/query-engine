@@ -1,16 +1,16 @@
 import * as DB from 'datalogia'
-import { rule, Rule } from '../src/rule.js'
+import { $ } from 'datalogia'
 
-const $ = DB.Memory.entity
+const id = DB.Memory.entity
 
 const db = DB.Memory.create([
-  [$(1), 'name', 'a'],
-  [$(2), 'name', 'b'],
-  [$(3), 'name', 'c'],
-  [$(0), 'data/type', 'list'],
-  [$(0), 'list/next', $(1)],
-  [$(1), 'list/next', $(2)],
-  [$(2), 'list/next', $(3)],
+  [id(1), 'name', 'a'],
+  [id(2), 'name', 'b'],
+  [id(3), 'name', 'c'],
+  [id(0), 'data/type', 'list'],
+  [id(0), 'list/next', id(1)],
+  [id(1), 'list/next', id(2)],
+  [id(2), 'list/next', id(3)],
 ])
 
 /**
@@ -21,8 +21,8 @@ export const testRecursion = {
     const list = DB.link()
     const item = DB.link()
     const head = DB.link()
-    const child = DB.rule({
-      match: { list, item },
+    const Child = DB.rule({
+      case: { let: item, of: list },
       when: [
         DB.or(
           // head of the list is the item
@@ -30,7 +30,7 @@ export const testRecursion = {
           // or item is a child of the head
           DB.and(
             DB.match([list, 'list/next', head]),
-            DB.Rule.match({ list: head, item })
+            DB.recur({ let: item, of: head })
           )
         ),
       ],
@@ -50,7 +50,7 @@ export const testRecursion = {
       },
       where: [
         DB.match([root, 'data/type', 'list']),
-        child.match({ list: root, item: each }),
+        Child.match({ let: each, of: root }),
         DB.match([each, 'name', name]),
         DB.or(
           DB.match([each, 'list/next', next]),
@@ -62,10 +62,61 @@ export const testRecursion = {
     assert.deepEqual(
       [...matches],
       [
-        { id: $(1), name: 'a', next: $(2) },
-        { id: $(2), name: 'b', next: $(3) },
+        { id: id(1), name: 'a', next: id(2) },
+        { id: id(2), name: 'b', next: id(3) },
         // @ts-ignore
-        { id: $(3), name: 'c', next: undefined },
+        { id: id(3), name: 'c', next: undefined },
+      ]
+    )
+  },
+  'using builder syntax': async (assert) => {
+    const Child = DB.rule({
+      case: { of: $.list },
+      when() {
+        return [
+          DB.or(
+            // head of the list is the item
+            DB.match([$.list, 'list/next', $]),
+            // or item is a child of the head
+            DB.and(
+              DB.match([$.list, 'list/next', $.head]),
+              this.match({ this: $, of: $.head })
+            )
+          ),
+        ]
+      },
+    })
+
+    const root = DB.link()
+    const each = DB.link()
+    const next = DB.variable()
+
+    const name = DB.string()
+
+    const matches = await DB.query(db, {
+      select: {
+        id: each,
+        name,
+        next,
+      },
+      where: [
+        DB.match([root, 'data/type', 'list']),
+        Child.match({ this: each, of: root }),
+        DB.match([each, 'name', name]),
+        DB.or(
+          DB.match([each, 'list/next', next]),
+          DB.not(DB.match([each, 'list/next', next]))
+        ),
+      ],
+    })
+
+    assert.deepEqual(
+      [...matches],
+      [
+        { id: id(1), name: 'a', next: id(2) },
+        { id: id(2), name: 'b', next: id(3) },
+        // @ts-ignore
+        { id: id(3), name: 'c', next: undefined },
       ]
     )
   },

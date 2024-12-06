@@ -2,13 +2,12 @@ import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Rule from './rule.js'
 import * as Bindings from './bindings.js'
-import { equal, Link } from './constant.js'
+import { Link } from './constant.js'
 import * as Term from './term.js'
 import { dependencies } from './dsl.js'
 import * as Selector from './selector.js'
 import * as Task from './task.js'
 import * as Formula from './formula.js'
-import * as Clause from './clause.js'
 import * as Constant from './constant.js'
 import $ from './scope.js'
 
@@ -18,7 +17,7 @@ export * as Memory from './memory.js'
 export * from './dsl.js'
 export * as Constant from './constant.js'
 export { and, or, match, not } from './clause.js'
-export { rule } from './rule.js'
+export { rule, match as recur } from './rule.js'
 export { Rule, Task, API, Link }
 
 const ENTITY = 0
@@ -258,8 +257,8 @@ export const evaluate = function* (db, query, frames = [{}]) {
  * @param {Iterable<API.Bindings>} frames
  */
 export const evaluateAnd = function* (db, conjuncts, frames) {
-  for (const query of conjuncts) {
-    frames = yield* evaluate(db, query, frames)
+  for (const conjunct of conjuncts) {
+    frames = yield* evaluate(db, conjunct, frames)
   }
 
   return frames
@@ -318,7 +317,7 @@ export const evaluateOr = function* (db, disjuncts, frames) {
 export const evaluateIs = function* (_, [expect, actual], frames) {
   const matches = []
   for (const bindings of frames) {
-    const result = Bindings.unify(expect, actual, bindings)
+    const result = Term.unify(expect, actual, bindings)
     if (!result.error) {
       matches.push(result.ok)
     }
@@ -398,9 +397,8 @@ const matchFact = function* (fact, pattern, bindings) {
  */
 const matchPattern = (pattern, [entity, attribute, value], bindings) => {
   let result = Term.match(pattern[ENTITY], entity, bindings)
-  result = result.error
-    ? result
-    : Term.match(pattern[ATTRIBUTE], attribute, result.ok)
+  result =
+    result.error ? result : Term.match(pattern[ATTRIBUTE], attribute, result.ok)
 
   result = result.error ? result : Term.match(pattern[VALUE], value, result.ok)
 
@@ -410,43 +408,50 @@ const matchPattern = (pattern, [entity, attribute, value], bindings) => {
 /**
  *
  * @param {API.Querier} db
- * @param {API.MatchRule} rule
+ * @param {API.RuleApplication} application
  * @param {API.Bindings} bindings
  */
-const matchRule = function* (db, rule, bindings) {
+const matchRule = function* (db, application, bindings) {
   const matches = []
-  if (rule.rule) {
-    const { match, when } = Rule.setup(rule.rule)
+  const rule = Rule.from(application.rule)
 
-    // Unify passed rule bindings with the rule match pattern.
-    const result = unifyRule(rule.match, match, bindings)
-    if (!result.error) {
-      const bindings = yield* evaluate(db, when, [result.ok])
-      matches.push(...bindings)
+  // Create isolated bindings for rule execution
+  /** @type {API.Bindings} */
+  let input = {}
+
+  // Copy any bound values from outer scope into rule scope
+  // based on the mapping defined in application.match
+  const { match } = application
+  for (const [at, target] of Object.entries(rule.case)) {
+    const source = match[at]
+    const value = Bindings.get(bindings, source)
+    if (value !== undefined) {
+      const result = Term.unify(target, value, input)
+      if (result.error) {
+        return []
+      } else {
+        input = result.ok
+      }
     }
-  } else {
-    matches.push(bindings)
   }
+
+  // Execute rule with isolated bindings
+  const results = yield* evaluate(db, rule.when, [input])
+
+  // For each result, create new outer bindings with mapped values
+  for (const result of results) {
+    const output = { ...bindings }
+    for (const [key, source] of Object.entries(rule.case)) {
+      const target = match[key]
+      const value = Bindings.get(result, source)
+      if (Variable.is(target) && value !== undefined) {
+        output[Variable.toKey(target)] = value
+      }
+    }
+    matches.push(output)
+  }
+
   return matches
-}
-
-/**
- *
- * @param {API.Selector} input
- * @param {API.Selector} selector
- * @param {API.Bindings} bindings
- * @returns {API.Result<API.Bindings, Error>}
- */
-const unifyRule = (input, selector, bindings) => {
-  for (const [path, variable] of Selector.entries(selector)) {
-    const result = Bindings.unify(Selector.at(input, path), variable, bindings)
-    if (result.error) {
-      return result
-    }
-    bindings = result.ok
-  }
-
-  return { ok: bindings }
 }
 
 /**

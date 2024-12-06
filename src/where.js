@@ -100,7 +100,7 @@ const analyzeNot = (clause) => {
 
 /**
  * Analyzes Rule clauses
- * @param {API.MatchRule} rule
+ * @param {API.RuleApplication} rule
  */
 const analyzeRule = (rule) => {
   // Rules are complex - need careful analysis

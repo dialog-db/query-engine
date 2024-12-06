@@ -1,8 +1,8 @@
 import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Bindings from './bindings.js'
-import * as Selector from './selector.js'
 import * as Relation from './formula.js'
+import * as Row from './row.js'
 import * as Term from './term.js'
 
 /**
@@ -19,9 +19,9 @@ export const toJSON = (clause) => {
   } else if (clause.Rule) {
     return {
       Rule: {
-        input: Selector.toJSON(clause.Rule.match),
+        match: Row.toJSON(clause.Rule.match),
         rule: clause.Rule.rule && {
-          match: Selector.toJSON(clause.Rule.rule?.match ?? {}),
+          case: Row.toJSON(clause.Rule.rule?.case ?? {}),
           when: toJSON(clause.Rule.rule.when),
         },
       },
@@ -37,17 +37,22 @@ export const toJSON = (clause) => {
 }
 
 /**
- * @param {API.Clause[]} clauses
+ * @template {API.Clause[]} T
+ * @param {T} clauses
+ * @returns {Or<T>}
  */
 export const or = (...clauses) => new Or(clauses)
 
 /**
- * @param {API.Clause[]} clauses
+ * @template {API.Clause[]} T
+ * @param {T} clauses
+ * @returns {And<T>}
  */
 export const and = (...clauses) => new And(clauses)
 
 /**
- * @param {API.Clause} clause
+ * @template {API.Clause} T
+ * @param {T} clause
  */
 export const not = (clause) => new Not(clause)
 
@@ -125,58 +130,79 @@ export const isDependent = (clause, variable, frame) => {
 }
 
 /**
+ * @template {API.Clause} T
  * @abstract
  */
 class Clause {
   /**
-   * @param {API.Clause} clause
+   * @template {T} U
+   * @param {U} clause
+   * @return {And<[...T[], U]>}
    */
   and(clause) {
     return and(/** @type {any} */ (this), clause)
   }
   /**
-   * @param {API.Clause} clause
+   * @template {API.Clause} U
+   * @param {U} clause
+   * @returns {Or<[...T[], U]>}
    */
   or(clause) {
     return or(/** @type {any} */ (this), clause)
   }
 }
 
+/**
+ * @template {API.Clause[]} T
+ * @extends {Clause<T[number]>}
+ */
 class And extends Clause {
   /**
-   * @param {API.Clause[]} clauses
+   * @param {T} clauses
    */
   constructor(clauses) {
     super()
     this.And = clauses
   }
   /**
-   * @param {API.Clause} clause
+   * @template {T[number]} U
+   * @param {U} clause
+   * @returns {And<[...T, U]>}
    */
   and(clause) {
-    return and(...this.And, clause)
+    return new And([...this.And, clause])
   }
 }
 
+/**
+ * @template {API.Clause[]} T
+ * @extends {Clause<T[number]>}
+ */
 class Or extends Clause {
   /**
-   * @param {API.Clause[]} clauses
+   * @param {T} clauses
    */
   constructor(clauses) {
     super()
     this.Or = clauses
   }
   /**
-   * @param {API.Clause} clause
+   * @template {T[number]} U
+   * @param {U} clause
+   * @returns {Or<[...T, U]>}
    */
   or(clause) {
-    return or(...this.Or, clause)
+    return new Or([...this.Or, clause])
   }
 }
 
+/**
+ * @template {API.Clause} T
+ * @extends {Clause<T>}
+ */
 class Not extends Clause {
   /**
-   * @param {API.Clause} clause
+   * @param {T} clause
    */
   constructor(clause) {
     super()
@@ -184,6 +210,9 @@ class Not extends Clause {
   }
 }
 
+/**
+ * @extends {Clause<API.Clause>}
+ */
 class Case extends Clause {
   /**
    * @param {API.Pattern} pattern

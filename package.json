@@ -58,6 +58,7 @@
   },
   "prettier": {
     "trailingComma": "es5",
+    "experimentalTernaries": true,
     "tabWidth": 2,
     "semi": false,
     "singleQuote": true

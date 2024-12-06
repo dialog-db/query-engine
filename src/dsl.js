@@ -104,7 +104,7 @@ class Entity {
    * @returns {API.Clause}
    */
   match(pattern = {}) {
-    const clauses = []
+    const clauses = /** @type {[...API.Clause[]]} */ ([])
     const schema = this.model.schema
     // We create fields for all attributes in the schema but that is impossible
     // to capture in static types.

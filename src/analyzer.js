@@ -1,6 +1,7 @@
 import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Terms from './terms.js'
+import * as Term from './term.js'
 import * as Entity from './entity.js'
 import { evaluateCase } from './lib.js'
 import { isEmpty } from './iterable.js'
@@ -29,6 +30,7 @@ export function analyze(clause) {
   } else if (clause.Match) {
     return Match.analyze(clause.Match)
   } else if (clause.Rule) {
+    // @ts-expect-error
     return Rule.analyze(clause.Rule)
   } else {
     throw new Error(`Unsupported clause kind ${Object.keys(clause)[0]}`)
@@ -903,7 +905,7 @@ class IsPlan {
     const [expect, actual] = this.relation
     const matches = []
     for (const bindings of selection) {
-      const result = Bindings.unify(expect, actual, bindings)
+      const result = Term.unify(expect, actual, bindings)
       if (!result.error) {
         matches.push(result.ok)
       }

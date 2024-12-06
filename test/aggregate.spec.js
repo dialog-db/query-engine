@@ -1,5 +1,5 @@
 import * as DB from 'datalogia'
-import { Task, Link } from 'datalogia'
+import { Task, Link, $ } from 'datalogia'
 import { rule } from '../src/rule.js'
 
 /**
@@ -11,15 +11,12 @@ export const testAggregate = {
     const follows = DB.link()
 
     const operand = DB.link()
-    const same = rule({
-      match: {
-        operand,
-        modifier: operand,
-      },
+    const Same = rule({
+      case: { as: $ },
     })
 
     const Follower = rule({
-      match: { follower: follower, follows: follows },
+      case: { follower: follower, follows: follows },
       when: [{ Case: [follower, 'follows', follows] }],
     })
 
@@ -27,12 +24,12 @@ export const testAggregate = {
     const profile = DB.link()
     const c = DB.integer()
     const popularProfile = rule({
-      match: { id },
+      case: { id },
       when: [
         DB.match([id, 'profile', DB._]),
         Follower.match({ follower: profile, follows: id }),
         // @ts-expect-error - we do not yet have aggregators
-        same.match({ operand: c, modifier: count.of(profile) }),
+        Same.match({ this: c, as: count.of(profile) }),
         c.match({ '>': 3 }),
       ],
     })

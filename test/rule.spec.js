@@ -11,8 +11,8 @@ export const testRules = {
     const person = DB.link()
     const manager = DB.link()
     const employee = DB.link()
-    const wheel = rule({
-      match: { person },
+    const Wheel = rule({
+      case: { the: person },
       when: [
         { Case: [manager, 'supervisor', person] },
         { Case: [employee, 'supervisor', manager] },
@@ -26,7 +26,7 @@ export const testRules = {
       select: {
         name: name,
       },
-      where: [wheel.match({ person: who }), DB.match([who, 'name', name])],
+      where: [Wheel.match({ the: who }), DB.match([who, 'name', name])],
     })
 
     assert.deepEqual(
@@ -50,18 +50,14 @@ export const testRules = {
       city: DB.string(),
     }
 
-    const operand = DB.link()
-    const same = rule({
-      match: {
-        operand,
-        modifier: operand,
-      },
+    const Same = rule({
+      case: { as: $ },
     })
 
-    const livesNear = rule({
-      match: {
-        employee: employee.id,
-        coworker: coworker.id,
+    const LivesNear = rule({
+      case: {
+        the: employee.id,
+        by: coworker.id,
         city: employee.city,
       },
       when: [
@@ -72,7 +68,7 @@ export const testRules = {
         {
           Match: [{ text: coworker.address, pattern: $.pattern }, 'text/like'],
         },
-        DB.not(same.match({ operand: employee.id, modifier: coworker.id })),
+        DB.not(Same.match({ this: employee.id, as: coworker.id })),
       ],
     })
 
@@ -84,10 +80,10 @@ export const testRules = {
       where: [
         DB.match([employee.id, 'name', employee.name]),
         DB.match([coworker.id, 'name', coworker.name]),
-        livesNear.match({
-          employee: employee.id,
-          coworker: coworker.id,
-          city: $.city,
+        LivesNear.match({
+          the: employee.id,
+          by: coworker.id,
+          city: employee.city,
         }),
       ],
     })
@@ -105,5 +101,37 @@ export const testRules = {
         { employee: 'Aull DeWitt', coworker: 'Reasoner Louis' },
       ]
     )
+  },
+
+  'test rules do not share a scope': async (assert) => {
+    const Supervisor = rule({
+      case: { this: $.this, name: $.name },
+      when: [
+        { Case: [$.this, 'supervisor', $.supervisor] },
+        { Case: [$.supervisor, 'name', $.name] },
+      ],
+    })
+
+    const match = await DB.query(db, {
+      select: {
+        employee: $.name,
+        supervisor: $.supervisor,
+      },
+      where: [
+        { Case: [$.employee, 'name', $.name] },
+        Supervisor.match({ this: $.employee, name: $.supervisor }),
+      ],
+    })
+
+    assert.deepEqual(match, [
+      { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
+      { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
+      { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
+      { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
+      { employee: 'Reasoner Louis', supervisor: 'Hacker Alyssa P' },
+      { employee: 'Scrooge Eben', supervisor: 'Warbucks Oliver' },
+      { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
+      { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
+    ])
   },
 }

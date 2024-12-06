@@ -2,7 +2,6 @@ import * as API from './api.js'
 import { Link } from './constant.js'
 import * as Term from './term.js'
 import * as Bindings from './bindings.js'
-import * as Variable from './variable.js'
 import * as Data from './formula/data.js'
 import * as Text from './formula/text.js'
 import * as Math from './formula/math.js'
@@ -26,7 +25,7 @@ export const evaluate = function* (db, [from, relation, to], frames) {
       if (to == null) {
         matches.push(frame)
       } else if (Term.is(to)) {
-        const match = Bindings.unify(/** @type {API.Term} */ (out), to, frame)
+        const match = Term.unify(/** @type {API.Term} */ (out), to, frame)
         if (!match.error) {
           matches.push(match.ok)
         }
@@ -34,7 +33,7 @@ export const evaluate = function* (db, [from, relation, to], frames) {
         const extension = /** @type {Record<string, API.Constant>} */ (out)
         let bindings = frame
         for (const [key, term] of Object.entries(to)) {
-          const match = Bindings.unify(extension[key], term, frame)
+          const match = Term.unify(extension[key], term, frame)
           if (match.ok) {
             bindings = match.ok
           } else {

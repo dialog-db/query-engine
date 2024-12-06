@@ -1,7 +1,8 @@
 import * as DB from 'datalogia'
-import { rule, Rule } from '../src/rule.js'
+import { $ } from 'datalogia'
+import { rule } from '../src/rule.js'
 
-const $ = DB.Memory.entity
+const id = DB.Memory.entity
 
 const db = DB.Memory.create([
   {
@@ -15,17 +16,17 @@ const db = DB.Memory.create([
  */
 export const testBasic = {
   'test view': async (assert) => {
-    const assign = DB.rule({
-      match: { the: DB.link(), is: DB.link() },
+    const Same = DB.rule({
+      case: { as: $ },
       when: [],
     })
 
     const db = DB.Memory.create([
-      [$(0), 'todo/draft', ''],
-      [$(1), 'title', 'Hello, World!'],
+      [id(0), 'todo/draft', ''],
+      [id(1), 'title', 'Hello, World!'],
       // [$(1), 'todo/list', $(0)],
 
-      [$(2), 'title', 'Bye, World!'],
+      [id(2), 'title', 'Bye, World!'],
       // [$(2), 'todo/list', $(0)],
     ])
 

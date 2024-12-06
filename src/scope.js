@@ -1,6 +1,7 @@
 import * as API from './api.js'
 
-class Variable {
+export class Variable {
+  static id = 0
   #name
   /**
    * @param {number} id
@@ -26,12 +27,20 @@ class Variable {
   }
 }
 
+export const _ = new Variable(0, '_')
+const $ = new Variable(1, '$')
+
 class Scope {
   /**
    * @param {Map<string|symbol, API.Variable<any>>} [vars]
-   * @returns {API.Scope & API.Variable}
+   * @returns {API.Scope}
    */
-  static new(vars = new Map([['_', new Variable(0, '_')]])) {
+  static new(
+    vars = new Map([
+      ['_', _],
+      ['?', $],
+    ])
+  ) {
     const scope = /** @type {API.Scope} */ (
       new Proxy(
         /** @type {any} */ (Object.assign(function () {}, { vars })),
@@ -39,7 +48,7 @@ class Scope {
       )
     )
 
-    return /** @type {API.Scope & API.Variable} */ (scope)
+    return /** @type {API.Scope} */ (scope)
   }
 
   /**
@@ -51,7 +60,7 @@ class Scope {
     if (variable) {
       return variable
     } else {
-      const variable = new Variable(vars.size + 1, key)
+      const variable = new Variable(++Variable.id, key)
       vars.set(key, variable)
       return variable
     }

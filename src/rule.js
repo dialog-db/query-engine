@@ -1,63 +1,150 @@
 import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Constant from './constant.js'
-import * as Bytes from './bytes.js'
+import $ from './scope.js'
 
 /**
- * @template {API.Variables} Match
- * @param {{[K in keyof Match]: Match[K] extends API.Variable<infer T> ? API.Term<T> : Match[K]}} input
- * @param {API.Rule<Match>} [rule]
+ *
+ * @param {API.Rule} source
+ */
+export const from = (source) =>
+  source instanceof Rule ? source : (
+    new Rule({ case: source.case, when: source.when.And ?? [source.when] })
+  )
+
+/**
+ * @template {API.Row} Match
+ * @param {Match} match
  * @returns {API.Clause}
  */
-export const match = (input, rule) => ({
-  Rule: { match: input, rule },
+export const match = (match) => ({
+  Rule: {
+    match,
+    rule: new Recursion(),
+  },
 })
 
 /**
- * @template {API.Variables} Match
+ * @template {API.RuleRow} [Match=API.RuleRow]
+ * @typedef {(this: Rule<Match>, context: {rule: Rule<Match>}) => Iterable<API.Clause>} WhenBuilder
+ */
+
+/**
+ * @template {API.RuleRow} [Match=API.RuleRow]
  *
  * @param {object} source
- * @param {Match} source.match
- * @param {API.Clause[]} [source.when]
+ * @param {Match} source.case
+ * @param {API.Clause[] | WhenBuilder<Match>} [source.when]
+ * @returns {Rule<Match>}
  */
-export const rule = ({ match, when = [] }) =>
+export const rule = ({ case: match, when = [] }) =>
   new Rule({
-    match: match,
-    when: { And: when },
+    case: { this: $, ...match },
+    when,
   })
 
 /**
- * @template {API.Variables} Match
+ * @template {API.RuleRow} Match
  */
-export class Rule {
+class Rule {
+  #when
   /**
    * @param {object} source
-   * @param {Match} source.match
-   * @param {API.Clause} source.when
+   * @param {Match} source.case
+   * @param {API.Clause[] | WhenBuilder<Match>} source.when
    */
-  constructor(source) {
-    this.source = source
+  constructor({ case: match, when }) {
+    this.case = match
+
+    this.#when = {
+      And:
+        typeof when === 'function' ?
+          [...when.call(this, { rule: this })]
+        : when.map(this.toClause, this),
+    }
+  }
+  /**
+   * @param {API.Clause} clause
+   * @returns {API.Clause}
+   */
+  toClause(clause) {
+    if (clause.Rule) {
+      const { match, rule } = clause.Rule
+      return {
+        Rule: {
+          match,
+          rule:
+            rule instanceof Recursion ? this
+            : rule instanceof Rule ? rule
+            : rule === undefined ? this
+            : from(rule),
+        },
+      }
+    } else if (clause.And) {
+      return {
+        And: clause.And.map(this.toClause, this),
+      }
+    } else if (clause.Or) {
+      return {
+        Or: clause.Or.map(this.toClause, this),
+      }
+    } else if (clause.Not) {
+      return {
+        Not: this.toClause(clause.Not),
+      }
+    } else {
+      return clause
+    }
+  }
+  /** @type {API.Clause} */
+  get when() {
+    return this.#when
   }
 
   /**
-   *
-   * @param {{[K in keyof Match]: Match[K] extends API.Variable<infer T> ? API.Term<T> : Match[K]}} match
-   * @returns {API.Clause}
+   * @param {API.InferRuleMatch<Match> & { this?: API.Term }} terms
+   * @returns {{ Rule: API.RuleApplication<Match> }}
    */
-  match(match) {
+  match(terms) {
     return {
-      Rule: { match, rule: this.source },
+      Rule: { match: /** @type {Match} */ (terms), rule: this },
     }
   }
 }
 
 /**
+ * @implements {API.Rule}
+ */
+class Recursion {
+  get case() {
+    return this.throw()
+  }
+  get when() {
+    return this.throw()
+  }
+
+  /**
+   * @returns {never}
+   */
+  throw() {
+    throw new TypeError(`Recursion should have been resolved`)
+  }
+}
+/**
+ * Setup substitutes all the variables in the rule with a unique ones. The
+ * reason for this is to prevent the variables for different rule
+ * applications from becoming confused with each other. For instance, if two
+ * rules both use a variable `$.x`, then each one may add a binding for
+ * `$.x` to the frame when it is applied. These two `$.x`'s have nothing to
+ * do with each other, and should not be unified under assumption that two
+ * must be consistent.
+ *
  * @param {API.Rule} rule
  */
 export const setup = (rule) => {
   /** @type {Record<string, API.Variable>} */
   const table = {}
-  const match = renameSelectorVariables(rule.match, table)
+  const match = rename(rule.case, table)
   const when = renameClauseVariables(rule.when, table, rule)
   return { match, when }
 }
@@ -71,11 +158,9 @@ const renameSelectorVariables = (selector, table) =>
   Object.fromEntries(
     Object.entries(selector).map(([key, member]) => [
       key,
-      Variable.is(member)
-        ? renameVariable(member, table)
-        : Constant.is(member)
-          ? member
-          : renameSelectorVariables(member, table),
+      Variable.is(member) ? renameVariable(member, table)
+      : Constant.is(member) ? member
+      : renameSelectorVariables(member, table),
     ])
   )
 
@@ -97,11 +182,9 @@ const rename = (source, table) => {
       Object.fromEntries(
         Object.entries(source).map(([key, member]) => [
           key,
-          Variable.is(member)
-            ? renameVariable(member, table)
-            : Constant.is(member)
-              ? member
-              : rename(member, table),
+          Variable.is(member) ? renameVariable(member, table)
+          : Constant.is(member) ? member
+          : rename(member, table),
         ])
       )
     )
@@ -135,7 +218,7 @@ export const renameClauseVariables = (clause, table, rule) => {
   } else if (clause.Rule) {
     return {
       Rule: {
-        match: renameSelectorVariables(clause.Rule.match, table),
+        match: rename(clause.Rule.match, table),
         // If rule is omitted it is a recursive rule
         rule: clause.Rule.rule ?? rule,
       },
@@ -144,10 +227,18 @@ export const renameClauseVariables = (clause, table, rule) => {
     const [from, relation, to] = clause.Match
     return /**  @type {API.Clause} */ ({
       Match:
-        to === undefined
-          ? [rename(from, table), relation]
-          : [rename(from, table), relation, rename(to, table)],
+        to === undefined ?
+          [rename(from, table), relation]
+        : [rename(from, table), relation, rename(to, table)],
     })
+  } else if (clause.Is) {
+    const [actual, expect] = clause.Is
+    return {
+      Is: [
+        renameTermVariable(actual, table),
+        renameTermVariable(expect, table),
+      ],
+    }
   } else {
     throw new Error(`Unknown clause: ${clause}`)
   }

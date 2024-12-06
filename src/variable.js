@@ -1,6 +1,31 @@
 import * as API from './api.js'
 import * as Type from './type.js'
-import * as Bindings from './bindings.js'
+import { Variable, _ } from './scope.js'
+import * as Constant from './constant.js'
+
+/**
+ * @param {unknown} source
+ * @returns {Iterable<API.Variable>}
+ */
+export function* iterate(source) {
+  if (is(source)) {
+    yield source
+  } else if (!Constant.is(source)) {
+    for (const term of Object.values(source ?? {})) {
+      if (is(term)) {
+        yield term
+      } else if (!Constant.is(term)) {
+        yield* iterate(term)
+      }
+    }
+  }
+}
+
+/**
+ * @param {API.Variable} actual
+ * @param {API.Variable} expected
+ */
+export const equal = (actual, expected) => id(actual) === id(expected)
 
 /**
  * Predicate function that checks if given `term` is a {@link API.Variable}.
@@ -72,9 +97,9 @@ export const toString = (variable) => JSON.stringify(toJSON(variable))
 /**
  * @template {API.Constant} T
  * @param {API.Type<T>} [type]
- * @returns {Variable<T>}
+ * @returns {TypedVariable<T>}
  */
-export const variable = (type) => new Variable(type)
+export const variable = (type) => new TypedVariable(type)
 export const boolean = Object.assign(() => variable(Type.Boolean), Type.Boolean)
 export const int32 = Object.assign(() => variable(Type.Int32), Type.Int32)
 export const int64 = () => Object.assign(variable(Type.Int64), Type.Int64)
@@ -89,18 +114,16 @@ export { int32 as integer, float32 as float }
 
 /**
  * @template {API.Constant} T
+ * @extends {Variable}
  * @implements {API.Variable<T>}
  */
-class Variable {
-  static id = 0
-
+class TypedVariable extends Variable {
   /**
    * @param {API.Type<T>} [type]
    */
-  constructor(type, id = ++Variable.id) {
+  constructor(type) {
+    super(++Variable.id)
     this.type = type
-    this.id = id
-    this['?'] = this
   }
   toJSON() {
     return toJSON(this)
@@ -145,11 +168,7 @@ class Variable {
   }
 }
 
-/**
- * @type {Variable<any>}
- */
-export const _ = new Variable(undefined, 0)
-
+export { _ }
 /**
  * @param {API.Variable} variable
  * @returns {boolean}

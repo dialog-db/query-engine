@@ -73,3 +73,13 @@ export const toString = (self) => {
  */
 export const compare = (self, other) =>
   toString(self).localeCompare(toString(other))
+
+/**
+ * @param {API.Constant} actual
+ * @param {API.Constant} expected
+ * @param {API.Bindings} scope
+ */
+export const unify = (actual, expected, scope) =>
+  actual === expected || equal(actual, expected)
+    ? { ok: scope }
+    : { error: new RangeError(`Expected ${expected} got ${actual}`) }

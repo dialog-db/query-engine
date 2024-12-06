@@ -72,9 +72,8 @@ export type Variant<U extends Record<string, unknown>> = {
 }[keyof U]
 
 export type Tagged<T> = {
-  [Case in keyof T]: Exclude<keyof T, Case> extends never
-    ? T
-    : InferenceError<'It may only contain one key'>
+  [Case in keyof T]: Exclude<keyof T, Case> extends never ? T
+  : InferenceError<'It may only contain one key'>
 }[keyof T]
 
 /**
@@ -242,7 +241,7 @@ export type Clause = Variant<{
   Case: Pattern
 
   // rule application
-  Rule: MatchRule
+  Rule: RuleApplication
   // assign bindings
   Is: Is
 
@@ -250,6 +249,15 @@ export type Clause = Variant<{
 }>
 
 export type Terms = Record<string, Term> | [Term, ...Term[]] | Term
+
+/**
+ * Row is a named set of values which by default are {@link Term}s. It is meant
+ * to represent a non-nested tuple with named members as opposed to indexed
+ * members.
+ */
+export interface Row<T = Term> {
+  [Key: string]: T
+}
 
 export type Numeric = Int32 | Int64 | Float32
 
@@ -266,16 +274,16 @@ type EphemeralEntity =
   | Record<string, Term>
   | [Term<Entity>, ...Term<Entity>[]]
 
-export type InferOperand<T extends Operand, K = T> = K extends Constant
-  ? Term<T & Constant>
-  : K extends Array<infer U extends Constant>
-    ? Term<U>[]
-    : {
-        [Key in keyof K]: T[Key & keyof T] & K[Key] extends infer U extends
-          Constant
-          ? Term<U>
-          : never
-      }
+export type InferOperand<T extends Operand, K = T> = K extends Constant ?
+  Term<T & Constant>
+: K extends Array<infer U extends Constant> ? Term<U>[]
+: {
+    [Key in keyof K]: T[Key & keyof T] & K[Key] extends (
+      infer U extends Constant
+    ) ?
+      Term<U>
+    : never
+  }
 
 export interface Operator<
   Input extends Operand,
@@ -357,8 +365,8 @@ export type Formula =
   | InferFormula<'**', typeof MathOperators.power>
   | InferFormula<'math/absolute', typeof MathOperators.absolute>
 
-export type InferTerms<T extends Terms> = T extends Term<infer U>
-  ? U
+export type InferTerms<T extends Terms> =
+  T extends Term<infer U> ? U
   : { [Key in keyof T]: T[Key] extends Term<infer U> ? U : never }
 
 export type Frame = Record<PropertyKey, Term>
@@ -434,18 +442,53 @@ export interface Querier {
   scan(selector?: FactsSelector): Task<Datum[], Error>
 }
 
-export type Rule<Match extends Selector = Selector> = {
-  match: Match
+export type RuleRow = Row<Term> & {
+  this?: Term
+}
+
+export type Rule<Match extends RuleRow = RuleRow> = {
+  case: Match
   when: Clause
 }
 
-export interface MatchRule<Match extends Selector = Selector> {
-  match: Selector
-  rule?: Rule<Match>
+export interface RuleApplication<Match extends RuleRow = RuleRow> {
+  match: Match
+  rule: Rule<Match>
 }
 
+export interface RuleRecursion<Match extends RuleRow = RuleRow> {
+  match: Match
+}
+
+export type InferRuleMatch<Case extends RuleRow> = {
+  [Key in keyof Case]: Case[Key] extends Term<infer U> ?
+    U extends any ?
+      Term<Constant>
+    : Term<U>
+  : never
+}
+
+export type RuleClause = Variant<{
+  // and clause
+  And: RuleClause[]
+  // or clause
+  Or: RuleClause[]
+  // negation
+  Not: RuleClause
+  // pattern match a fact
+  Case: Pattern
+
+  // rule application
+  Rule: RuleApplication
+  Recur: RuleRecursion
+  // assign bindings
+  Is: Is
+
+  Match: Formula
+}>
+
 export interface Variables extends Record<PropertyKey, Variable> {}
-export interface Bindings extends Record<PropertyKey, Constant> {}
+export interface Bindings extends Record<PropertyKey, Term> {}
 
 /**
  * Selection describes set of (named) variables that query engine will attempt
@@ -517,15 +560,11 @@ export interface Aggregate<
 }
 
 export type InferBindings<Selection extends Selector> = {
-  [Key in keyof Selection]: Selection[Key] extends Term<infer T>
-    ? T
-    : Selection[Key] extends Term<infer T>[]
-      ? T[]
-      : Selection[Key] extends Selector[]
-        ? InferBindings<Selection[Key][0]>[]
-        : Selection[Key] extends Selector
-          ? InferBindings<Selection[Key]>
-          : never
+  [Key in keyof Selection]: Selection[Key] extends Term<infer T> ? T
+  : Selection[Key] extends Term<infer T>[] ? T[]
+  : Selection[Key] extends Selector[] ? InferBindings<Selection[Key][0]>[]
+  : Selection[Key] extends Selector ? InferBindings<Selection[Key]>
+  : never
 }
 
 export type InferTerm<T extends Term> = T extends Term<infer U> ? U : never
@@ -559,7 +598,12 @@ export interface EvaluationContext {
 
 export interface EvaluationError extends Error {}
 
-export interface Scope extends Record<PropertyKey, Variable<any>> {
-  new (): Scope
-  (): Scope
-}
+export type Scope = Variable<any> &
+  Record<PropertyKey, Variable<any>> & {
+    new (): Scope
+    (): Scope
+
+    name: Variable<string>
+    length: Variable<number>
+    prototype: Variable
+  }
