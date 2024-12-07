@@ -698,4 +698,111 @@ export const testAnalyzer = {
       'Should fail when Match clause inputs cannot be bound'
     )
   },
+
+  'analyzes rule inputs and outputs correctly': async (assert) => {
+    const rule = Analyzer.analyze({
+      Rule: {
+        match: { x: $.output, y: $.input },
+        rule: {
+          case: { x: $.x, y: $.y },
+          when: {
+            And: [
+              { Case: [$.y, 'type', 'person'] }, // Uses $.y as input
+              { Case: [$.y, 'name', $.x] }, // Binds $.x as output
+            ],
+          },
+        },
+      },
+    })
+
+    assert.deepEqual([...rule.input], [])
+    assert.deepEqual(rule.output, new Set([Var.id($.input), Var.id($.output)]))
+  },
+  'prefers efficient execution path based on bindings': async (assert) => {
+    const rule = Analyzer.analyze({
+      Rule: {
+        match: { x: $.output, y: $.input },
+        rule: {
+          case: { x: $.x, y: $.y },
+          when: {
+            And: [
+              { Case: [$.y, 'type', 'person'] },
+              { Case: [$.y, 'name', $.x] },
+            ],
+          },
+        },
+      },
+    })
+
+    // With $.input bound
+    const boundPlan = Analyzer.plan(rule, {
+      bindings: new Set([Var.id($.input)]),
+    })
+
+    // Without bindings
+    const unboundPlan = Analyzer.plan(rule, {
+      bindings: new Set(),
+    })
+
+    if (boundPlan.error) {
+      return assert.fail(boundPlan.error)
+    }
+
+    if (unboundPlan.error) {
+      return assert.fail(unboundPlan.error)
+    }
+
+    assert.ok(
+      boundPlan.cost < unboundPlan.cost,
+      'Plan with bound input should have lower cost'
+    )
+  },
+
+  'estimates costs across complex rule paths': async (assert) => {
+    const rule = Analyzer.analyze({
+      Rule: {
+        match: { employee: $.who },
+        rule: {
+          case: { employee: $.person },
+          when: {
+            And: [
+              {
+                Or: [
+                  // Direct path if we know the person
+                  { Case: [$.person, 'role', 'manager'] },
+                  // More expensive path requiring multiple lookups
+                  {
+                    And: [
+                      { Case: [$.person, 'role', 'employee'] },
+                      { Case: [$.person, 'level', 'senior'] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    })
+
+    const boundPlan = Analyzer.plan(rule, {
+      bindings: new Set([Var.id($.who)]),
+    })
+    const unboundPlan = Analyzer.plan(rule, {
+      bindings: new Set(),
+    })
+
+    if (boundPlan.error) {
+      return assert.fail(boundPlan.error)
+    }
+
+    if (unboundPlan.error) {
+      return assert.fail(unboundPlan.error)
+    }
+
+    assert.ok(
+      boundPlan.cost < unboundPlan.cost,
+      'Plan with bound employee should be cheaper'
+    )
+  },
 }

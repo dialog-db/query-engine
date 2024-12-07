@@ -352,7 +352,7 @@ export const evaluateCase = function* (db, pattern, [...frames]) {
  * @param {API.Clause['Rule'] & {}} rule
  * @param {Iterable<API.Bindings>} frames
  */
-const evaluateRule = function* (db, rule, frames) {
+export const evaluateRule = function* (db, rule, frames) {
   const matches = []
   for (const frame of frames) {
     const bindings = yield* matchRule(db, rule, frame)
@@ -406,7 +406,6 @@ const matchPattern = (pattern, [entity, attribute, value], bindings) => {
 }
 
 /**
- *
  * @param {API.Querier} db
  * @param {API.RuleApplication} application
  * @param {API.Bindings} bindings

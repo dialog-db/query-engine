@@ -3,14 +3,14 @@ import * as Variable from './variable.js'
 import * as Terms from './terms.js'
 import * as Term from './term.js'
 import * as Entity from './entity.js'
-import { evaluateCase } from './lib.js'
+import { evaluateCase, evaluateRule } from './lib.js'
 import { isEmpty } from './iterable.js'
 import * as Formula from './formula.js'
 import * as Bindings from './bindings.js'
-import * as Rule from './rule.js'
+import { from as toRule } from './rule.js'
 
 /**
- * @typedef {Case|Or|And|Not|Is|Match} Branch
+ * @typedef {Case|Or|And|Not|Is|Match|Rule} Branch
  */
 /**
  * @param {API.Clause} clause
@@ -30,7 +30,6 @@ export function analyze(clause) {
   } else if (clause.Match) {
     return Match.analyze(clause.Match)
   } else if (clause.Rule) {
-    // @ts-expect-error
     return Rule.analyze(clause.Rule)
   } else {
     throw new Error(`Unsupported clause kind ${Object.keys(clause)[0]}`)
@@ -963,5 +962,125 @@ class Scope {
   reset(members = this.members) {
     this.members = members
     this.except = null
+  }
+}
+
+class Rule {
+  /**
+   * @param {API.RuleApplication} application
+   */
+  static analyze(application) {
+    const rule = toRule(application.rule)
+    const analysis = analyze(rule.when)
+
+    const input = new Set()
+    const output = new Set()
+    const mapping = new Map()
+
+    // Map between rule's internal variables and match mapping
+    for (const [at, term] of Object.entries(application.match)) {
+      if (Variable.is(term)) {
+        const variable = rule.case[at]
+        if (Variable.is(variable)) {
+          mapping.set(Variable.id(term), Variable.id(variable))
+
+          // If this variable is an input in the when clause
+          if (analysis.input.has(Variable.id(variable))) {
+            input.add(Variable.id(term))
+          }
+          // If this variable gets bound in the when clause
+          if (analysis.output.has(Variable.id(variable))) {
+            output.add(Variable.id(term))
+          }
+        }
+      }
+    }
+
+    return new this(application, input, output, mapping, analysis)
+  }
+  /**
+   *
+   * @param {API.RuleApplication} application
+   * @param {Set<number>} input
+   * @param {Set<number>} output
+   * @param {Map<number, number>} mapping
+   * @param {Branch} analysis
+   */
+  constructor(application, input, output, mapping, analysis) {
+    this.application = application
+    this.input = input
+    this.output = output
+    this.mapping = mapping
+    this.analysis = analysis
+  }
+
+  /**
+   * @param {API.VariableID} id
+   */
+  has(id) {
+    return this.input.has(id) || this.output.has(id)
+  }
+
+  /**
+   * @param {Context} context
+   * @returns {RulePlan|Unplannable}
+   */
+  plan(context) {
+    // Bindings inside the rule
+    const bindings = new Set()
+
+    // Map outer bindings to internal rule bindings
+    for (const [from, to] of this.mapping) {
+      if (context.bindings.has(from)) {
+        bindings.add(to)
+      }
+    }
+
+    // Ensure all required inputs are bound
+    for (const id of this.input) {
+      if (!bindings.has(id)) {
+        return new Unplannable(new Set([id]), 'Required rule input not bound')
+      }
+    }
+
+    // Plan like an And clause using the when analysis
+    const plan = this.analysis.plan({ bindings, scope: context.scope })
+    if (plan instanceof Unplannable) {
+      return plan
+    }
+
+    return new RulePlan(
+      plan.cost,
+      this.application,
+      /** @type {AndPlan} */ (plan)
+    )
+  }
+}
+
+class RulePlan {
+  /** @type {undefined} */
+  error
+  /**
+   * @param {number} cost
+   * @param {API.RuleApplication} application
+   * @param {AndPlan} plan
+   */
+  constructor(cost, application, plan) {
+    this.cost = cost
+    this.application = application
+    this.plan = plan
+  }
+  toJSON() {
+    return {
+      cost: this.cost,
+      Rule: this.application,
+    }
+  }
+
+  /**
+   * @param {API.EvaluationContext} context
+   */
+  evaluate({ source, selection }) {
+    return evaluateRule(source, this.application, selection)
   }
 }
