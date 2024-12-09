@@ -9,7 +9,7 @@ import $ from './scope.js'
  */
 export const from = (source) =>
   source instanceof Rule ? source : (
-    new Rule({ case: source.case, when: source.when.And ?? [source.when] })
+    new Rule({ case: source.case, when: source.when })
   )
 
 /**
@@ -25,17 +25,17 @@ export const match = (match) => ({
 })
 
 /**
- * @template {API.RuleRow} [Match=API.RuleRow]
- * @typedef {(this: Rule<Match>, context: {rule: Rule<Match>}) => Iterable<API.Clause>} WhenBuilder
+ * @template {API.Conclusion} [Case=API.Conclusion]
+ * @typedef {(this: Rule<Case>, context: {rule: Rule<Case>}) => Iterable<API.Clause>} WhenBuilder
  */
 
 /**
- * @template {API.RuleRow} [Match=API.RuleRow]
+ * @template {API.Conclusion} [Case=API.Conclusion]
  *
  * @param {object} source
- * @param {Match} source.case
- * @param {API.Clause[] | WhenBuilder<Match>} [source.when]
- * @returns {Rule<Match>}
+ * @param {Case} source.case
+ * @param {API.Clause[] | WhenBuilder<Case>} [source.when]
+ * @returns {Rule<Case>}
  */
 export const rule = ({ case: match, when = [] }) =>
   new Rule({
@@ -44,24 +44,22 @@ export const rule = ({ case: match, when = [] }) =>
   })
 
 /**
- * @template {API.RuleRow} Match
+ * @template {API.Conclusion} [Case=API.Conclusion]
  */
 class Rule {
   #when
   /**
    * @param {object} source
-   * @param {Match} source.case
-   * @param {API.Clause[] | WhenBuilder<Match>} source.when
+   * @param {Case} source.case
+   * @param {API.Clause[] | WhenBuilder<Case>} source.when
    */
   constructor({ case: match, when }) {
     this.case = match
 
-    this.#when = {
-      And:
-        typeof when === 'function' ?
-          [...when.call(this, { rule: this })]
-        : when.map(this.toClause, this),
-    }
+    this.#when =
+      typeof when === 'function' ?
+        [...when.call(this, { rule: this })]
+      : when.map(this.toClause, this)
   }
   /**
    * @param {API.Clause} clause
@@ -96,18 +94,21 @@ class Rule {
       return clause
     }
   }
-  /** @type {API.Clause} */
+  /** @type {API.Clause[]} */
   get when() {
     return this.#when
   }
 
   /**
-   * @param {API.InferRuleMatch<Match> & { this?: API.Term }} terms
-   * @returns {{ Rule: API.RuleApplication<Match> }}
+   * @param {API.InferRuleMatch<Case> & { this?: API.Term }} terms
+   * @returns {{ Rule: API.RuleApplication<Case> }}
    */
   match(terms) {
     return {
-      Rule: { match: /** @type {Match} */ (terms), rule: this },
+      Rule: {
+        match: /** @type {API.RuleBindings<Case>} */ (terms),
+        rule: this,
+      },
     }
   }
 }
@@ -145,7 +146,9 @@ export const setup = (rule) => {
   /** @type {Record<string, API.Variable>} */
   const table = {}
   const match = rename(rule.case, table)
-  const when = renameClauseVariables(rule.when, table, rule)
+  const when = rule.when.map((clause) =>
+    renameClauseVariables(clause, table, rule)
+  )
   return { match, when }
 }
 

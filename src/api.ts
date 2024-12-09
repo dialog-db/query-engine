@@ -442,26 +442,36 @@ export interface Querier {
   scan(selector?: FactsSelector): Task<Datum[], Error>
 }
 
-export type RuleRow = Row<Term> & {
-  this?: Term
+export type Conclusion = Row<Variable> & {
+  this?: Variable
 }
 
-export type Rule<Match extends RuleRow = RuleRow> = {
-  case: Match
-  when: Clause
+export interface Rule<Case extends Conclusion = Conclusion> {
+  /**
+   * Conclusion of the rule when all conjuncts are satisfied.
+   */
+  case: Case
+  /**
+   * Conjuncts making up the rule body.
+   */
+  when: Clause[]
 }
 
-export interface RuleApplication<Match extends RuleRow = RuleRow> {
-  match: Match
-  rule: Rule<Match>
+export type RuleBindings<Case extends Conclusion = Conclusion> = {
+  [Key in keyof Case]: Term<Constant>
 }
 
-export interface RuleRecursion<Match extends RuleRow = RuleRow> {
-  match: Match
+export interface RuleApplication<Case extends Conclusion = Conclusion> {
+  match: RuleBindings<Case>
+  rule: Rule<Case>
 }
 
-export type InferRuleMatch<Case extends RuleRow> = {
-  [Key in keyof Case]: Case[Key] extends Term<infer U> ?
+export interface RuleRecursion<Case extends Conclusion = Conclusion> {
+  match: RuleBindings<Case>
+}
+
+export type InferRuleMatch<Case extends Conclusion> = {
+  [Key in keyof Case]: Case[Key] extends Variable<infer U> ?
     U extends any ?
       Term<Constant>
     : Term<U>
