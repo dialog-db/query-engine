@@ -435,7 +435,7 @@ const matchRule = function* (db, application, bindings) {
   }
 
   // Execute rule with isolated bindings
-  const results = yield* evaluate(db, rule.when, [input])
+  const results = yield* evaluateAnd(db, rule.when, [input])
 
   // For each result, create new outer bindings with mapped values
   for (const result of results) {

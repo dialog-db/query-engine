@@ -3,7 +3,7 @@ import * as Variable from './variable.js'
 import * as Terms from './terms.js'
 import * as Term from './term.js'
 import * as Entity from './entity.js'
-import { evaluateCase, evaluateRule } from './lib.js'
+import { evaluateCase, evaluateRule, Var } from './lib.js'
 import { isEmpty } from './iterable.js'
 import * as Formula from './formula.js'
 import * as Bindings from './bindings.js'
@@ -42,7 +42,7 @@ export function analyze(clause) {
  */
 export function plan(
   clause,
-  { bindings = new Set(), scope = new Scope(new Set()) } = {}
+  { bindings = new Set(), scope = new Scope() } = {}
 ) {
   if (clause.plan) {
     return clause.plan({ bindings, scope })
@@ -925,12 +925,12 @@ class IsPlan {
  * @property {(id: API.VariableID) => boolean} has
  */
 
-class Scope {
+export class Scope {
   /**
    * @param {Set<ScopeMember>} members
    * @param {unknown} except
    */
-  constructor(members, except = null) {
+  constructor(members = new Set(), except = null) {
     this.members = members
     this.except = except
   }
@@ -970,33 +970,60 @@ class Rule {
    * @param {API.RuleApplication} application
    */
   static analyze(application) {
+    // This builds a rule and makes sure that recursion in rule premise gets
+    // substituted with a rule application.
     const rule = toRule(application.rule)
-    const analysis = analyze(rule.when)
+    // Next we analyze rule premise in order to infer which variables are purely
+    // inputs that must be provided and which are bidirectional meaning can be
+    // both input and output.
+    const premise = And.analyze(rule.when)
 
     const input = new Set()
     const output = new Set()
     const mapping = new Map()
 
-    // Map between rule's internal variables and match mapping
-    for (const [at, term] of Object.entries(application.match)) {
-      if (Variable.is(term)) {
-        const variable = rule.case[at]
-        if (Variable.is(variable)) {
-          mapping.set(Variable.id(term), Variable.id(variable))
+    // We iterate over all the bindings in the rules conclusion and build
+    // a mapping between variables in outer scope the scope insider rule's
+    // premise.
+    for (const [at, variable] of Object.entries(rule.case)) {
+      if (Variable.is(variable)) {
+        const to = Variable.id(variable)
+        const term = application.match[at]
+        // If binding is not provided during application, but it is an input
+        // inside a rule premise we raise an error as such rule can never be
+        // planned. TODO: We should change analyzer that analyze can return
+        // an error instead of throwing.
+        if (term === undefined && premise.input.has(to)) {
+          throw new TypeError(
+            `Rule application is missing required input "${at}" binding`
+          )
+        }
+        // If applied binding is a variable we create a mapping between
+        // inner and outer scope variables and capture it either as input
+        // or output depending on how it is used in the rule premise. Please
+        // note applied binding may be a constant in which case it is not
+        // captured as it has no output to propagate to the outer scope. Also
+        // note that we have handled case of omitted input binding above so we
+        // know that if omitted it is a binding who's output is not propagated.
+        if (Variable.is(term)) {
+          const from = Variable.id(term)
+          mapping.set(from, to)
 
-          // If this variable is an input in the when clause
-          if (analysis.input.has(Variable.id(variable))) {
-            input.add(Variable.id(term))
+          if (premise.input.has(to)) {
+            input.add(from)
+          } else if (premise.output.has(to)) {
+            output.add(from)
           }
-          // If this variable gets bound in the when clause
-          if (analysis.output.has(Variable.id(variable))) {
-            output.add(Variable.id(term))
+          // If variable is not referenced by the premise it MUST be treated
+          // as input.
+          else {
+            input.add(from)
           }
         }
       }
     }
 
-    return new this(application, input, output, mapping, analysis)
+    return new this(application, input, output, mapping, premise)
   }
   /**
    *
@@ -1004,14 +1031,14 @@ class Rule {
    * @param {Set<number>} input
    * @param {Set<number>} output
    * @param {Map<number, number>} mapping
-   * @param {Branch} analysis
+   * @param {And} premise
    */
-  constructor(application, input, output, mapping, analysis) {
+  constructor(application, input, output, mapping, premise) {
     this.application = application
     this.input = input
     this.output = output
     this.mapping = mapping
-    this.analysis = analysis
+    this.premise = premise
   }
 
   /**
@@ -1029,31 +1056,30 @@ class Rule {
     // Bindings inside the rule
     const bindings = new Set()
 
-    // Map outer bindings to internal rule bindings
+    // Map application bindings to corresponding rule bindings
     for (const [from, to] of this.mapping) {
+      // If binding is provided in the context we add corresponding binding for
+      // for the rule premise.
       if (context.bindings.has(from)) {
         bindings.add(to)
       }
-    }
-
-    // Ensure all required inputs are bound
-    for (const id of this.input) {
-      if (!bindings.has(id)) {
-        return new Unplannable(new Set([id]), 'Required rule input not bound')
+      // If binding is not provided we check if it is an input, if it is we
+      // can not plan the rule until input will be bound.
+      else if (this.input.has(to)) {
+        return new Unplannable(new Set([from]), 'Required rule input not bound')
       }
     }
 
-    // Plan like an And clause using the when analysis
-    const plan = this.analysis.plan({ bindings, scope: context.scope })
+    // Plan a premise with an empty scope as variables from the outside scope
+    // are not available inside the rule premise.
+    const plan = this.premise.plan({ bindings, scope: new Scope() })
+    // If premise can not be planned we propagate the error.
     if (plan instanceof Unplannable) {
       return plan
     }
 
-    return new RulePlan(
-      plan.cost,
-      this.application,
-      /** @type {AndPlan} */ (plan)
-    )
+    // Otherwise we inherit the cost of the premise plan.
+    return new RulePlan(plan.cost, this.application, plan)
   }
 }
 
