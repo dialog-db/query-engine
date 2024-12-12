@@ -1050,4 +1050,190 @@ export const testAnalyzer = {
 
     assert.deepEqual(rule.output, new Set([Var.id($.z)]))
   },
+  'errors if rule branch references undefined variable': async (assert) => {
+    assert.throws(
+      () =>
+        Analyzer.analyze({
+          Rule: {
+            match: { x: $.x, y: $.y },
+            rule: {
+              case: { x: $.x, y: $.y },
+              when: [
+                { Match: [[$.z, $.y], '+', $.x] }, // $.z not in case
+              ],
+            },
+          },
+        }),
+      /Unbound .* variable referenced/
+    )
+  },
+  'errors if deductive branch doesnt handle case variable': async (assert) => {
+    assert.throws(
+      () =>
+        Analyzer.analyze({
+          Rule: {
+            match: { x: $.x, y: $.y },
+            rule: {
+              case: { x: $.x, y: $.y },
+              when: [
+                { Case: [$.x, 'type', 'person'] }, // Doesn't handle $.y
+              ],
+            },
+          },
+        }),
+      /Deductive rule branch .* does not bind "y" relation/
+    )
+  },
+  'errors if recursive branch doesnt handle case variable': async (assert) => {
+    assert.throws(
+      () =>
+        Analyzer.analyze({
+          Rule: {
+            match: { x: $.x, y: $.y },
+            rule: {
+              case: { x: $.x, y: $.y },
+              when: {
+                recursive: {
+                  Recur: {
+                    match: { x: $.x }, // y missing
+                    where: [{ Case: [$.x, 'next', $.x] }],
+                  },
+                },
+              },
+            },
+          },
+        }),
+      /does not bind "y" relation/
+    )
+  },
+  'errors on unbound recursive application': async (assert) => {
+    assert.throws(
+      () =>
+        Analyzer.analyze({
+          Rule: {
+            match: { x: $.x, y: $.y },
+            rule: {
+              case: { x: $.x, y: $.y },
+              when: {
+                recursive: {
+                  Recur: {
+                    match: { x: $.z, y: $.y }, // $.z unbound
+                    where: [{ Match: [[$.x, $.z], '+', $.xz] }],
+                  },
+                },
+              },
+            },
+          },
+        }),
+      /recursively applies .* with an unbound/
+    )
+  },
+  'rule must may not have only inductive branches': (assert) => {
+    assert.throws(
+      () =>
+        Analyzer.analyze({
+          Rule: {
+            match: { x: $.myX },
+            rule: {
+              case: { x: $.x },
+              when: {
+                recursive: {
+                  Recur: {
+                    match: { x: $.inc },
+                    where: [{ Match: [[$.x, 1], '+', $.inc] }],
+                  },
+                },
+              },
+            },
+          },
+        }),
+      /Rule may not have just inductive branches/
+    )
+  },
+  'allows output variables to be omitted from match': async (assert) => {
+    const rule = Analyzer.analyze({
+      Rule: {
+        match: { x: $.input }, // y omitted
+        rule: {
+          case: { x: $.x, y: $.y },
+          when: [
+            { Match: [$.x, 'math/absolute', $.y] }, // $.y is output
+          ],
+        },
+      },
+    })
+
+    assert.deepEqual([...rule.input], [Var.id($.input)])
+    assert.deepEqual([...rule.output], [])
+  },
+  'detects unresolvable cycles between branches': async (assert) => {
+    assert.throws(() => {
+      const rule = Analyzer.analyze({
+        Rule: {
+          match: { x: $.x, y: $.y },
+          rule: {
+            case: { x: $.x, y: $.y },
+            when: [
+              {
+                And: [
+                  { Match: [$.y, 'math/absolute', $.x] },
+                  { Match: [[$.x, 1], '+', $.y] },
+                ],
+              },
+            ],
+          },
+        },
+      })
+
+      console.log(rule)
+    }, /circular dependency/)
+  },
+  'errors on cycles even with initial output': async (assert) => {
+    assert.throws(
+      () =>
+        Analyzer.analyze({
+          Rule: {
+            match: { x: $.x, y: $.y },
+            rule: {
+              case: { x: $.x, y: $.y },
+              when: [
+                {
+                  And: [
+                    { Case: [$.x, 'type', 'person'] }, // Outputs $.x
+                    { Match: [[$.x, 1], '+', $.y] }, // Uses $.x to produce $.y
+                    { Match: [[$.y, 1], '-', $.x] }, // Creates cycle by producing $.x again
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      /Unresolvable circular dependency/
+    )
+  },
+
+  'cycle in the match clause': async (assert) => {
+    assert.throws(() => {
+      Analyzer.analyze({
+        Match: [[$.x, 1], '+', $.x],
+      })
+    }, /Variable .* cannot appear in both input and output of Match clause/)
+  },
+
+  'cycles between disjunctive branches are fine': async (assert) => {
+    const rule = Analyzer.analyze({
+      Rule: {
+        match: { x: $.x, y: $.y },
+        rule: {
+          case: { x: $.x, y: $.y },
+          when: {
+            branch1: { Match: [[$.x, 1], '+', $.y] }, // One way to satisfy rule
+            branch2: { Match: [[$.y, 1], '-', $.x] }, // Alternative way
+          },
+        },
+      },
+    })
+
+    assert.ok(rule, 'Rule should analyze successfully')
+  },
 }

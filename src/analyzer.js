@@ -316,6 +316,7 @@ class And {
   static analyze(clauses) {
     const input = new Set()
     const output = new Set()
+    const dependencies = new Map()
 
     // Partition steps into binding and elimination
     const binding = []
@@ -337,10 +338,18 @@ class And {
 
       for (const id of step.output) {
         output.add(id)
+        depend(dependencies, [id], step.input)
         if (input.has(id)) {
           input.delete(id)
         }
       }
+    }
+
+    // Check for unresolvable cycles
+    for (const cycle of findUnresolvableCycle(dependencies)) {
+      throw new ReferenceError(
+        `Unresolvable circular dependency in And clause: ${cycle.join(' -> ')}`
+      )
     }
 
     return new this(binding, elimination, input, output)
@@ -626,7 +635,13 @@ class Match {
     }
 
     for (const variable of Terms.variables(to)) {
-      output.add(Variable.id(variable))
+      const id = Variable.id(variable)
+      if (input.has(id)) {
+        throw new ReferenceError(
+          `Variable ${variable} cannot appear in both input and output of Match clause`
+        )
+      }
+      output.add(id)
     }
 
     return new this(relation, input, output)
@@ -972,139 +987,6 @@ export class Scope {
 class RuleApplication {
   /**
    * @template {API.Conclusion} Case
-   * @param {API.RuleApplication<Case>} application
-   */
-  static _analyze({ match, rule }) {
-    const deductive = []
-    const inductive = []
-    const dependencies = new Map()
-    const outer = new Set()
-    const inner = new Set()
-    const mapping = new Map()
-
-    // Build mapping between rule's inner scope and outer application scope
-    for (const [at, variable] of Object.entries(rule.case)) {
-      const from = Variable.id(variable)
-      const term = match[at]
-
-      if (Variable.is(term)) {
-        const to = Variable.id(term)
-        mapping.set(from, to)
-      } else if (term !== undefined) {
-        mapping.set(from, null)
-      } else {
-        throw new ReferenceError(
-          `Rule binding for '${at}' is missing in the match`
-        )
-      }
-    }
-
-    for (const [key, premise] of Object.entries(rule.when ?? [])) {
-      if (isRecursiveApplication(premise)) {
-        const induction = Induction.build({ ...premise.Recur, rule })
-        inductive.push(induction)
-
-        for (const id of induction.input) {
-          if (mapping.has(id)) {
-            const outer = mapping.get(id)
-            if (outer) {
-              outer.add(outer)
-            }
-            depend(dependencies, induction.output, [id])
-          } else {
-            throw new ReferenceError(
-              `Variable ${id} is used as input but not declared in the rule`
-            )
-          }
-        }
-
-        // Only track outputs that are in rule scope
-        for (const id of induction.output) {
-          if (mapping.has(id)) {
-            const outer = mapping.get(id)
-            if (outer) {
-              inner.add(outer)
-            }
-          }
-        }
-      } else {
-        const deduction = analyze(premise)
-        deductive.push(deduction)
-
-        for (const id of mapping.keys()) {
-          if (!deduction.input.has(id) && !deduction.output.has(id)) {
-            throw new ReferenceError(
-              `Deductive branch ${key} does not handle the ${id} case variable`
-            )
-          }
-        }
-
-        // Check and collect input variables that are in scope
-        for (const id of deduction.input) {
-          if (mapping.has(id)) {
-            const out = mapping.get(id)
-            if (out) {
-              outer.add(out)
-            }
-          } else {
-            throw new ReferenceError(
-              `Variable ${id} is used as input but not declared in the rule`
-            )
-          }
-        }
-
-        for (const id of deduction.output) {
-          if (mapping.has(id)) {
-            const outer = mapping.get(id)
-            if (outer) {
-              depend(dependencies, [id], deduction.input)
-              if (deductive.length === 1) {
-                inner.add(outer)
-              }
-              // Keep only outputs common to all deductive branches
-              else if (!inner.has(outer)) {
-                inner.delete(outer)
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Remove all outputs from the input as they could be
-    // fed into the inputs
-    for (const id of inner) {
-      outer.delete(id)
-    }
-
-    // Check for cycles in the dependency graph
-    for (const cycle of findCycles(dependencies)) {
-      // A cycle is ok if at least one variable in it
-      // is produced as output by some branch
-      if (
-        !cycle.some((v) => {
-          const outer = mapping.get(v)
-          return outer && inner.has(outer)
-        })
-      ) {
-        throw new Error(
-          `Unresolvable circular dependency: ${cycle.join(' -> ')}`
-        )
-      }
-    }
-
-    return new this(
-      { match, rule },
-      outer,
-      inner,
-      mapping,
-      deductive,
-      inductive
-    )
-  }
-
-  /**
-   * @template {API.Conclusion} Case
    * @param {API.RuleApplication<Case>} source
    */
   static analyze(source) {
@@ -1114,7 +996,7 @@ class RuleApplication {
 
     // Build a rule from it's source which will validate all of the inductive
     // and deductive branches.
-    const rule = Rule.new(source.rule.case).with(source.rule.when ?? [])
+    const rule = Rule.build(source.rule)
 
     // Build mapping between rule and it's application scope.
     for (const [at, variable] of Object.entries(rule.relation)) {
@@ -1204,31 +1086,31 @@ class RuleApplication {
     }
 
     // Plan all deductive branches
-    /** @type {Record<string, API.Plan>} */
-    const deduce = {}
+    /** @type {Map<string, API.Plan>} */
+    const deduce = new Map()
     let cost = 0
-    for (const [name, deduction] of Object.entries(this.rule.deduce)) {
+    for (const [name, deduction] of this.rule.deduce) {
       const plan = deduction.plan({ bindings, scope })
 
       if (plan.error) {
         return plan
       }
 
-      deduce[name] = plan
+      deduce.set(name, plan)
       cost = Math.max(cost, plan.cost)
     }
 
-    /** @type {Record<string, InductionPlan>} */
-    const induce = {}
+    /** @type {Map<string, InductionPlan>} */
+    const induce = new Map()
     let exponent = 1
-    for (const [name, induction] of Object.entries(this.rule.induce)) {
+    for (const [name, induction] of this.rule.induce) {
       const plan = induction.plan({ bindings, scope })
 
       if (plan.error) {
         return plan
       }
 
-      induce[name] = plan
+      induce.set(name, plan)
       exponent += 1
       cost = Math.max(cost, plan.cost)
     }
@@ -1251,8 +1133,8 @@ class RuleApplicationPlan {
   /**
    * @param {number} cost
    * @param {RuleApplication<Case>} application
-   * @param {Record<string, API.Plan>} deduce
-   * @param {Record<string, InductionPlan>} induce
+   * @param {Map<string, API.Plan>} deduce
+   * @param {Map<string, InductionPlan>} induce
    */
   constructor(cost, application, deduce, induce) {
     this.cost = cost
@@ -1294,6 +1176,16 @@ class Rule {
   static new(relation) {
     return new this(relation)
   }
+
+  /**
+   * @template {API.Conclusion} Relation
+   * @param {API.Rule<Relation>} source
+   */
+  static build(source) {
+    return this.new(source.case)
+      .with(source.when ?? [])
+      .build()
+  }
   /**
    * @param {Relation} relation
    */
@@ -1305,14 +1197,13 @@ class Rule {
       this.bindings.add(Variable.id(variable))
     }
 
-    /** @type {Record<string, Induction>} */
-    this.induce = {}
-    /** @type {Record<string, Deduction>} */
-    this.deduce = {}
+    /** @type {Map<string, Induction>} */
+    this.induce = new Map()
+    /** @type {Map<string, Deduction>} */
+    this.deduce = new Map()
 
     this.input = new Set()
     this.output = new Set()
-    this.dependencies = new Map()
 
     this.when = [...Object.values(this.induce), ...Object.values(this.deduce)]
   }
@@ -1322,16 +1213,21 @@ class Rule {
    */
   with(extension) {
     for (const [name, source] of Object.entries(extension)) {
-      const { input, output } =
-        source.Recur ?
-          (this.induce[name] = Induction.build([name, source.Recur], this))
-        : (this.deduce[name] = Deduction.build([name, source], this))
+      let member
+      if (source.Recur) {
+        member = Induction.build([name, source.Recur], this)
+        this.induce.set(name, member)
+      } else {
+        member = Deduction.build([name, source], this)
+        this.deduce.set(name, member)
+      }
+
+      const { input, output } = member
 
       // Union of all inputs are considered an input of the rule
       for (const id of input) {
         this.input.add(id)
         this.output.delete(id)
-        depend(this.dependencies, output, [id])
       }
 
       // Intersection of all outputs that aren't input is considered an output
@@ -1341,6 +1237,14 @@ class Rule {
           this.output.add(id)
         }
       }
+    }
+
+    return this
+  }
+
+  build() {
+    if (this.deduce.size === 0 && this.induce.size > 0) {
+      throw new SyntaxError('Rule may not have just inductive branches')
     }
 
     return this
@@ -1562,12 +1466,6 @@ class InductionPlan {
 }
 
 /**
- * @param {API.Premise} premise
- * @returns {premise is { Recur: API.RuleRecursion }}
- */
-const isRecursiveApplication = (premise) => premise.Recur != null
-
-/**
  * @param {Map<API.VariableID, Set<API.VariableID>>} dependencies
  * @param {Iterable<API.VariableID>} from
  * @param {Iterable<API.VariableID>} to
@@ -1587,18 +1485,8 @@ const depend = (dependencies, from, to) => {
 }
 
 /**
- * @template T
- * @param {Set<T>} set
- * @param {Iterable<T>} members
- */
-const append = (set, members) => {
-  for (const member of members) {
-    set.add(member)
-  }
-}
-
-/**
  * Find cycles in the variable dependency graph using an iterative approach
+ *
  * @param {Map<API.VariableID, Set<API.VariableID>>} graph
  * @returns {Generator<API.VariableID[], void>}
  */
@@ -1669,11 +1557,40 @@ function* findCycles(graph) {
 }
 
 /**
- * @template T
- * @param {T[]} array
- * @param {T} element
+ * Finds unresolvable cycles in the dependency graph.
+ * A cycle is unresolvable if every variable in it depends on another variable in the cycle.
+ *
+ * @param {Map<API.VariableID, Set<API.VariableID>>} dependencies
+ * @returns {Iterable<API.VariableID[]>}
  */
-const push = (array, element) => {
-  array.push(element)
-  return element
+function* findUnresolvableCycle(dependencies) {
+  for (const cycle of findCycles(dependencies)) {
+    let hasIndependentVar = false
+
+    for (const id of cycle) {
+      const path = dependencies.get(id)
+      if (!path) {
+        hasIndependentVar = true
+        break
+      }
+
+      // Check if this variable depends on any cycle variable
+      let dependsOnCycle = false
+      for (const entry of path) {
+        if (cycle.includes(entry)) {
+          dependsOnCycle = true
+          break
+        }
+      }
+
+      if (!dependsOnCycle) {
+        hasIndependentVar = true
+        break
+      }
+    }
+
+    if (!hasIndependentVar) {
+      yield cycle
+    }
+  }
 }
