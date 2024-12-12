@@ -10,7 +10,8 @@ import * as Bindings from './bindings.js'
 import { from as toRule } from './rule.js'
 
 /**
- * @typedef {Case|Or|And|Not|Is|Match|Rule} Branch
+ * @typedef {Case|Or|And|Not|Is|Match|RuleApplication} Branch
+ * @typedef {Branch|Induction} RuleBranch
  */
 /**
  * @param {API.Clause} clause
@@ -30,7 +31,7 @@ export function analyze(clause) {
   } else if (clause.Match) {
     return Match.analyze(clause.Match)
   } else if (clause.Rule) {
-    return Rule.analyze(clause.Rule)
+    return RuleApplication.analyze(clause.Rule)
   } else {
     throw new Error(`Unsupported clause kind ${Object.keys(clause)[0]}`)
   }
@@ -965,80 +966,208 @@ export class Scope {
   }
 }
 
-class Rule {
+/**
+ * @template {API.Conclusion} [Case=API.Conclusion]
+ */
+class RuleApplication {
   /**
-   * @param {API.RuleApplication} application
+   * @template {API.Conclusion} Case
+   * @param {API.RuleApplication<Case>} application
    */
-  static analyze(application) {
-    // This builds a rule and makes sure that recursion in rule premise gets
-    // substituted with a rule application.
-    const rule = toRule(application.rule)
-    // Next we analyze rule premise in order to infer which variables are purely
-    // inputs that must be provided and which are bidirectional meaning can be
-    // both input and output.
-    const premise = And.analyze(rule.when)
-
-    const input = new Set()
-    const output = new Set()
+  static _analyze({ match, rule }) {
+    const deductive = []
+    const inductive = []
+    const dependencies = new Map()
+    const outer = new Set()
+    const inner = new Set()
     const mapping = new Map()
 
-    // We iterate over all the bindings in the rules conclusion and build
-    // a mapping between variables in outer scope the scope insider rule's
-    // premise.
+    // Build mapping between rule's inner scope and outer application scope
     for (const [at, variable] of Object.entries(rule.case)) {
-      if (Variable.is(variable)) {
-        const to = Variable.id(variable)
-        const term = application.match[at]
-        // If binding is not provided during application, but it is an input
-        // inside a rule premise we raise an error as such rule can never be
-        // planned. TODO: We should change analyzer that analyze can return
-        // an error instead of throwing.
-        if (term === undefined && premise.input.has(to)) {
-          throw new TypeError(
-            `Rule application is missing required input "${at}" binding`
-          )
-        }
-        // If applied binding is a variable we create a mapping between
-        // inner and outer scope variables and capture it either as input
-        // or output depending on how it is used in the rule premise. Please
-        // note applied binding may be a constant in which case it is not
-        // captured as it has no output to propagate to the outer scope. Also
-        // note that we have handled case of omitted input binding above so we
-        // know that if omitted it is a binding who's output is not propagated.
-        if (Variable.is(term)) {
-          const from = Variable.id(term)
-          mapping.set(from, to)
+      const from = Variable.id(variable)
+      const term = match[at]
 
-          if (premise.input.has(to)) {
-            input.add(from)
-          } else if (premise.output.has(to)) {
-            output.add(from)
+      if (Variable.is(term)) {
+        const to = Variable.id(term)
+        mapping.set(from, to)
+      } else if (term !== undefined) {
+        mapping.set(from, null)
+      } else {
+        throw new ReferenceError(
+          `Rule binding for '${at}' is missing in the match`
+        )
+      }
+    }
+
+    for (const [key, premise] of Object.entries(rule.when ?? [])) {
+      if (isRecursiveApplication(premise)) {
+        const induction = Induction.build({ ...premise.Recur, rule })
+        inductive.push(induction)
+
+        for (const id of induction.input) {
+          if (mapping.has(id)) {
+            const outer = mapping.get(id)
+            if (outer) {
+              outer.add(outer)
+            }
+            depend(dependencies, induction.output, [id])
+          } else {
+            throw new ReferenceError(
+              `Variable ${id} is used as input but not declared in the rule`
+            )
           }
-          // If variable is not referenced by the premise it MUST be treated
-          // as input.
-          else {
-            input.add(from)
+        }
+
+        // Only track outputs that are in rule scope
+        for (const id of induction.output) {
+          if (mapping.has(id)) {
+            const outer = mapping.get(id)
+            if (outer) {
+              inner.add(outer)
+            }
+          }
+        }
+      } else {
+        const deduction = analyze(premise)
+        deductive.push(deduction)
+
+        for (const id of mapping.keys()) {
+          if (!deduction.input.has(id) && !deduction.output.has(id)) {
+            throw new ReferenceError(
+              `Deductive branch ${key} does not handle the ${id} case variable`
+            )
+          }
+        }
+
+        // Check and collect input variables that are in scope
+        for (const id of deduction.input) {
+          if (mapping.has(id)) {
+            const out = mapping.get(id)
+            if (out) {
+              outer.add(out)
+            }
+          } else {
+            throw new ReferenceError(
+              `Variable ${id} is used as input but not declared in the rule`
+            )
+          }
+        }
+
+        for (const id of deduction.output) {
+          if (mapping.has(id)) {
+            const outer = mapping.get(id)
+            if (outer) {
+              depend(dependencies, [id], deduction.input)
+              if (deductive.length === 1) {
+                inner.add(outer)
+              }
+              // Keep only outputs common to all deductive branches
+              else if (!inner.has(outer)) {
+                inner.delete(outer)
+              }
+            }
           }
         }
       }
     }
 
-    return new this(application, input, output, mapping, premise)
+    // Remove all outputs from the input as they could be
+    // fed into the inputs
+    for (const id of inner) {
+      outer.delete(id)
+    }
+
+    // Check for cycles in the dependency graph
+    for (const cycle of findCycles(dependencies)) {
+      // A cycle is ok if at least one variable in it
+      // is produced as output by some branch
+      if (
+        !cycle.some((v) => {
+          const outer = mapping.get(v)
+          return outer && inner.has(outer)
+        })
+      ) {
+        throw new Error(
+          `Unresolvable circular dependency: ${cycle.join(' -> ')}`
+        )
+      }
+    }
+
+    return new this(
+      { match, rule },
+      outer,
+      inner,
+      mapping,
+      deductive,
+      inductive
+    )
+  }
+
+  /**
+   * @template {API.Conclusion} Case
+   * @param {API.RuleApplication<Case>} source
+   */
+  static analyze(source) {
+    const application = new Map()
+    const input = new Set()
+    const output = new Set()
+
+    // Build a rule from it's source which will validate all of the inductive
+    // and deductive branches.
+    const rule = Rule.new(source.rule.case).with(source.rule.when ?? [])
+
+    // Build mapping between rule and it's application scope.
+    for (const [at, variable] of Object.entries(rule.relation)) {
+      const inner = Variable.id(variable)
+      const term = source.match[at]
+      // If binding is not provided during application, but it is used as input
+      // inside a rule we raise a reference error because variable is not bound.
+      if (term === undefined && rule.input.has(inner)) {
+        throw new ReferenceError(
+          `Rule application omits input binding for "${at}" relation`
+        )
+      }
+
+      // If provided term in the application is a variable we create a mapping
+      // between inner and outer scope variables.
+      if (Variable.is(term)) {
+        const outer = Variable.id(term)
+        application.set(inner, outer)
+
+        // If variable is used as an input by the rule we capture corresponding
+        // variable in an outer scope as an input.
+        if (rule.input.has(inner)) {
+          input.add(outer)
+        }
+        // If variable is used as an output by the rule we capture corresponding
+        // variable in an outer scope as an output.
+        else if (rule.output.has(inner)) {
+          output.add(outer)
+        }
+        // If variable is not used neither as input nor as an output by the rule
+        // it implies that we rule may not have a body and it's variables are
+        // used for unification.
+        else {
+          input.add(outer)
+        }
+      }
+    }
+
+    return new this(rule, source.match, application, input, output)
   }
   /**
-   *
-   * @param {API.RuleApplication} application
+   * @param {Rule<Case>} rule
+   * @param {API.RuleBindings<Case>} match
+   * @param {Map<number, number>} application
    * @param {Set<number>} input
    * @param {Set<number>} output
-   * @param {Map<number, number>} mapping
-   * @param {And} premise
    */
-  constructor(application, input, output, mapping, premise) {
+  constructor(rule, match, application, input, output) {
+    this.rule = rule
+    this.match = match
     this.application = application
     this.input = input
     this.output = output
-    this.mapping = mapping
-    this.premise = premise
   }
 
   /**
@@ -1050,56 +1179,99 @@ class Rule {
 
   /**
    * @param {Context} context
-   * @returns {RulePlan|Unplannable}
+   * @returns {RuleApplicationPlan<Case>|Unplannable}
    */
   plan(context) {
-    // Bindings inside the rule
+    // Create new context for rule scope (empty as rule body doesn't share vars)
     const bindings = new Set()
+    const scope = new Scope()
 
     // Map application bindings to corresponding rule bindings
-    for (const [from, to] of this.mapping) {
+    for (const [inner, outer] of this.application) {
       // If binding is provided in the context we add corresponding binding for
       // for the rule premise.
-      if (context.bindings.has(from)) {
-        bindings.add(to)
+      if (outer != null && context.bindings.has(outer)) {
+        bindings.add(inner)
       }
       // If binding is not provided we check if it is an input, if it is we
       // can not plan the rule until input will be bound.
-      else if (this.input.has(to)) {
-        return new Unplannable(new Set([from]), 'Required rule input not bound')
+      else if (this.input.has(outer)) {
+        return new Unplannable(
+          new Set([outer]),
+          'Required rule binding not bound'
+        )
       }
     }
 
-    // Plan a premise with an empty scope as variables from the outside scope
-    // are not available inside the rule premise.
-    const plan = this.premise.plan({ bindings, scope: new Scope() })
-    // If premise can not be planned we propagate the error.
-    if (plan instanceof Unplannable) {
-      return plan
+    // Plan all deductive branches
+    /** @type {Record<string, API.Plan>} */
+    const deduce = {}
+    let cost = 0
+    for (const [name, deduction] of Object.entries(this.rule.deduce)) {
+      const plan = deduction.plan({ bindings, scope })
+
+      if (plan.error) {
+        return plan
+      }
+
+      deduce[name] = plan
+      cost = Math.max(cost, plan.cost)
     }
 
-    // Otherwise we inherit the cost of the premise plan.
-    return new RulePlan(plan.cost, this.application, plan)
+    /** @type {Record<string, InductionPlan>} */
+    const induce = {}
+    let exponent = 1
+    for (const [name, induction] of Object.entries(this.rule.induce)) {
+      const plan = induction.plan({ bindings, scope })
+
+      if (plan.error) {
+        return plan
+      }
+
+      induce[name] = plan
+      exponent += 1
+      cost = Math.max(cost, plan.cost)
+    }
+
+    // inflate cost by accounting for recursive complexity. We don't have
+    // a way to estimate recursion depth so instead we use number of inductive
+    // branches as an approximation.
+    cost = cost ** exponent
+
+    return new RuleApplicationPlan(cost, this, deduce, induce)
   }
 }
 
-class RulePlan {
+/**
+ * @template {API.Conclusion} Case
+ */
+class RuleApplicationPlan {
   /** @type {undefined} */
   error
   /**
    * @param {number} cost
-   * @param {API.RuleApplication} application
-   * @param {AndPlan} plan
+   * @param {RuleApplication<Case>} application
+   * @param {Record<string, API.Plan>} deduce
+   * @param {Record<string, InductionPlan>} induce
    */
-  constructor(cost, application, plan) {
+  constructor(cost, application, deduce, induce) {
     this.cost = cost
     this.application = application
-    this.plan = plan
+    this.deduce = deduce
+    this.induce = induce
+  }
+  get match() {
+    return this.application.match
   }
   toJSON() {
     return {
       cost: this.cost,
-      Rule: this.application,
+      Rule: {
+        match: this.application.match,
+        rule: this.application.rule,
+        deduce: this.deduce,
+        induce: this.induce,
+      },
     }
   }
 
@@ -1109,4 +1281,399 @@ class RulePlan {
   evaluate({ source, selection }) {
     return evaluateRule(source, this.application, selection)
   }
+}
+
+/**
+ * @template {API.Conclusion} Relation
+ */
+class Rule {
+  /**
+   * @template {API.Conclusion} Relation
+   * @param {Relation} relation
+   */
+  static new(relation) {
+    return new this(relation)
+  }
+  /**
+   * @param {Relation} relation
+   */
+  constructor(relation) {
+    this.relation = relation
+
+    this.bindings = new Set()
+    for (const variable of Object.values(relation)) {
+      this.bindings.add(Variable.id(variable))
+    }
+
+    /** @type {Record<string, Induction>} */
+    this.induce = {}
+    /** @type {Record<string, Deduction>} */
+    this.deduce = {}
+
+    this.input = new Set()
+    this.output = new Set()
+    this.dependencies = new Map()
+
+    this.when = [...Object.values(this.induce), ...Object.values(this.deduce)]
+  }
+
+  /**
+   * @param {API.When} extension
+   */
+  with(extension) {
+    for (const [name, source] of Object.entries(extension)) {
+      const { input, output } =
+        source.Recur ?
+          (this.induce[name] = Induction.build([name, source.Recur], this))
+        : (this.deduce[name] = Deduction.build([name, source], this))
+
+      // Union of all inputs are considered an input of the rule
+      for (const id of input) {
+        this.input.add(id)
+        this.output.delete(id)
+        depend(this.dependencies, output, [id])
+      }
+
+      // Intersection of all outputs that aren't input is considered an output
+      // of the rule
+      for (const id of output) {
+        if (!this.input.has(id)) {
+          this.output.add(id)
+        }
+      }
+    }
+
+    return this
+  }
+
+  get case() {
+    return this.relation
+  }
+}
+
+const RECURSION_COST = 0
+
+class Deduction {
+  /**
+   * @template {API.Conclusion} Case
+   * @param {[string|number, API.Clause]} source
+   * @param {Rule<Case>} rule
+   */
+  static build([name, source], rule) {
+    const premise = analyze(source)
+
+    // Verify that all the relations declared by the rule are bound by the
+    // deduction.
+    for (const [at, variable] of Object.entries(rule.relation)) {
+      const id = Variable.id(variable)
+      if (!premise.input.has(id) && !premise.output.has(id)) {
+        throw new ReferenceError(
+          `Deductive rule branch "${name}" does not bind "${at}" relation`
+        )
+      }
+    }
+
+    // Verify that deduction does not have an unbound input variables.
+    for (const id of premise.input) {
+      if (!rule.bindings.has(id)) {
+        throw new ReferenceError(
+          `Unbound ${id} variable referenced from deductive rule branch ${name}`
+        )
+      }
+    }
+
+    return new this(premise)
+  }
+  get input() {
+    return this.premise.input
+  }
+  get output() {
+    return this.premise.output
+  }
+  /**
+   * @param {Branch} premise
+   */
+  constructor(premise) {
+    this.premise = premise
+  }
+  /**
+   * @param {Context} context
+   */
+  plan(context) {
+    return this.premise.plan(context)
+  }
+}
+
+/**
+ * @template {API.Conclusion} [Case=API.Conclusion]
+ */
+class Induction {
+  /**
+   * @template {API.Conclusion} Case
+   * @param {[string|number, API.RuleRecursion<Case>]} source
+   * @param {Rule<Case>} rule
+   */
+  static build([name, { match, where }], rule) {
+    const premise = And.analyze(where)
+    const output = new Set()
+    const input = new Set()
+    const forwards = new Set()
+
+    // Verify that all the variable that are recursively applied are bound.
+    // Variable may be bound either by the rule's `case` or be local and bound
+    // by the rule's `where` clause.
+    for (const [at, term] of Object.entries(match)) {
+      if (Variable.is(term)) {
+        const id = Variable.id(term)
+        if (rule.bindings.has(id)) {
+          forwards.add(id)
+        }
+        // If variable is local it must be bound by the rule's where clause
+        // (contained by `premise.output`) or it must be bound by the rule
+        // (checked above). If neither is the case we are applying unbound
+        // variable which is not allowed.
+        else if (!premise.output.has(id)) {
+          throw new ReferenceError(
+            `Rule recursively applies ${at} relation with an unbound ${term} variable`
+          )
+        }
+      }
+    }
+
+    // Verify that all the relations declared by the rule are bound by the
+    // recursion. At the same time we populate input and output variable sets
+    for (const [at, variable] of Object.entries(rule.relation)) {
+      const id = Variable.id(variable)
+      // If variable is written by the `where` clause it must be considered an
+      // output produced by the recursion.
+      if (premise.output.has(id)) {
+        output.add(id)
+      }
+      // If variable is read by the `where` clause it must be considered as
+      // input of this recursion.
+      else if (premise.input.has(id)) {
+        input.add(id)
+      }
+      // If variable is neither written nor read, nor forwarded by the
+      // application it is considered unbound and that is an error.
+      else if (!forwards.has(id)) {
+        throw new ReferenceError(
+          `Inductive rule application "${name}" does not bind "${at}" relation`
+        )
+      }
+    }
+
+    // Verify that `where` clause has no unbound input variable. Since input
+    // contains subset of premise inputs it can only occur when premise has
+    // more inputs therefor we avoid iteration unless that is the case.
+    if (input.size < premise.input.size) {
+      for (const id of premise.input) {
+        if (!input.has(id)) {
+          throw new ReferenceError(
+            `Unbound ${id} variable referenced from recursive rule application`
+          )
+        }
+      }
+    }
+
+    // If we got this far we have a recursive application of the rule
+    // where all the variable are bound and accounted for.
+    return new this(match, premise, input, output, rule)
+  }
+
+  /**
+   *
+   * @param {API.RuleBindings<Case>} match
+   * @param {And} premise
+   * @param {Set<API.VariableID>} input
+   * @param {Set<API.VariableID>} output
+   * @param {Rule<Case>} rule
+   */
+  constructor(match, premise, input, output, rule) {
+    this.match = match
+    this.premise = premise
+    this.rule = rule
+    this.input = input
+    this.output = output
+  }
+
+  /**
+   * @param {Context} context
+   * @returns {InductionPlan<Case>|Unplannable}
+   */
+  plan(context) {
+    const missingInputs = [...this.input].filter(
+      (v) => !context.bindings.has(v)
+    )
+
+    if (missingInputs.length > 1) {
+      return new Unplannable(new Set(missingInputs))
+    }
+
+    const plan = this.premise.plan(context)
+
+    if (plan.error) {
+      return plan
+    } else {
+      return new InductionPlan(
+        plan.cost + RECURSION_COST,
+        this.match,
+        plan,
+        this
+      )
+    }
+  }
+}
+
+/**
+ * @template {API.Conclusion} [Case=API.Conclusion]
+ */
+class InductionPlan {
+  /** @type {undefined} */
+  error
+  /**
+   * @param {number} cost
+   * @param {API.RuleBindings} match
+   * @param {AndPlan} plan
+   * @param {Induction<Case>} application
+   */
+  constructor(cost, match, plan, application) {
+    this.cost = cost
+    this.match = match
+    this.plan = plan
+    this.application = application
+  }
+  /**
+   * @param {API.EvaluationContext} context
+   */
+  evaluate({ source, selection }) {
+    return evaluateRule(source, this.application, selection)
+  }
+
+  toJSON() {
+    return {
+      cost: this.cost,
+      Recur: {
+        match: this.match,
+        where: this.plan.toJSON().And,
+      },
+    }
+  }
+}
+
+/**
+ * @param {API.Premise} premise
+ * @returns {premise is { Recur: API.RuleRecursion }}
+ */
+const isRecursiveApplication = (premise) => premise.Recur != null
+
+/**
+ * @param {Map<API.VariableID, Set<API.VariableID>>} dependencies
+ * @param {Iterable<API.VariableID>} from
+ * @param {Iterable<API.VariableID>} to
+ */
+const depend = (dependencies, from, to) => {
+  for (const source of from) {
+    for (const target of to) {
+      const requirements = dependencies.get(source)
+      if (requirements) {
+        requirements.add(target)
+      } else {
+        const requirements = new Set([target])
+        dependencies.set(source, requirements)
+      }
+    }
+  }
+}
+
+/**
+ * @template T
+ * @param {Set<T>} set
+ * @param {Iterable<T>} members
+ */
+const append = (set, members) => {
+  for (const member of members) {
+    set.add(member)
+  }
+}
+
+/**
+ * Find cycles in the variable dependency graph using an iterative approach
+ * @param {Map<API.VariableID, Set<API.VariableID>>} graph
+ * @returns {Generator<API.VariableID[], void>}
+ */
+function* findCycles(graph) {
+  /** @type {Set<API.VariableID>} */
+  const visited = new Set()
+  /** @type {Set<API.VariableID>} */
+  const path = new Set()
+
+  /**
+   * @typedef {{
+   *   node: API.VariableID,
+   *   path: API.VariableID[],
+   *   requires: Iterator<API.VariableID>
+   * }} StackFrame
+   */
+
+  for (const start of graph.keys()) {
+    if (visited.has(start)) {
+      continue
+    }
+
+    /** @type {StackFrame[]} */
+    const stack = [
+      {
+        node: start,
+        path: [start],
+        requires: (graph.get(start) ?? new Set()).values(),
+      },
+    ]
+
+    path.add(start)
+
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]
+      const next = frame.requires.next()
+
+      if (next.done) {
+        path.delete(frame.node)
+        stack.pop()
+        continue
+      }
+
+      const dependency = next.value
+      if (path.has(dependency)) {
+        const cycleStart = frame.path.indexOf(dependency)
+        if (cycleStart !== -1) {
+          yield frame.path.slice(cycleStart)
+        }
+        continue
+      }
+
+      if (!visited.has(dependency)) {
+        path.add(dependency)
+        stack.push({
+          node: dependency,
+          path: [...frame.path, dependency],
+          requires: (graph.get(dependency) ?? new Set()).values(),
+        })
+      }
+    }
+
+    for (const node of path) {
+      visited.add(node)
+    }
+    path.clear()
+  }
+}
+
+/**
+ * @template T
+ * @param {T[]} array
+ * @param {T} element
+ */
+const push = (array, element) => {
+  array.push(element)
+  return element
 }

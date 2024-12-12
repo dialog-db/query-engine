@@ -706,8 +706,12 @@ export const testAnalyzer = {
         rule: {
           case: { x: $.x, y: $.y },
           when: [
-            { Case: [$.y, 'type', 'person'] }, // Uses $.y as input
-            { Case: [$.y, 'name', $.x] }, // Binds $.x as output
+            {
+              And: [
+                { Case: [$.y, 'type', 'person'] }, // Uses $.y as input
+                { Case: [$.y, 'name', $.x] }, // Binds $.x as output
+              ],
+            },
           ],
         },
       },
@@ -716,6 +720,50 @@ export const testAnalyzer = {
     assert.deepEqual([...rule.input], [])
     assert.deepEqual(rule.output, new Set([Var.id($.input), Var.id($.output)]))
   },
+  'throws if rule deductive branch does not handle case variable': async (
+    assert
+  ) => {
+    assert.throws(
+      () =>
+        Analyzer.analyze({
+          Rule: {
+            match: { x: $.output, y: $.input },
+            rule: {
+              case: { x: $.x, y: $.y },
+              when: {
+                base: { Case: [$.y, 'type', 'person'] },
+              },
+            },
+          },
+        }),
+      /Deductive rule branch "base" does not bind "x" relation/
+    )
+  },
+  'throws if rule inductive branch does not handle case variable': async (
+    assert
+  ) => {
+    assert.throws(
+      () =>
+        Analyzer.analyze({
+          Rule: {
+            match: { x: $.output, y: $.input },
+            rule: {
+              case: { x: $.x, y: $.y },
+              when: {
+                base: { Case: [$.x, 'link', $.y] },
+                induce: {
+                  Recur: {
+                    match: { x: $.x, y: $.z },
+                    where: [{ Case: [$.x, 'link', $.z] }],
+                  },
+                },
+              },
+            },
+          },
+        }),
+      /Inductive rule application "induce" does not bind "y" relation/
+    )
+  },
   'prefers efficient execution path based on bindings': async (assert) => {
     const rule = Analyzer.analyze({
       Rule: {
@@ -723,12 +771,19 @@ export const testAnalyzer = {
         rule: {
           case: { x: $.x, y: $.y },
           when: [
-            { Case: [$.y, 'type', 'person'] },
-            { Case: [$.y, 'name', $.x] },
+            {
+              And: [
+                { Case: [$.y, 'type', 'person'] },
+                { Case: [$.y, 'name', $.x] },
+              ],
+            },
           ],
         },
       },
     })
+
+    assert.equal(rule.input.size, 0)
+    assert.deepEqual(rule.output, new Set([Var.id($.input), Var.id($.output)]))
 
     // With $.input bound
     const boundPlan = Analyzer.plan(rule, {
@@ -761,23 +816,22 @@ export const testAnalyzer = {
         rule: {
           case: { employee: $.person },
           when: [
+            // Direct path if we know the person
+            { Case: [$.person, 'role', 'manager'] },
+            // More expensive path requiring multiple lookups
             {
-              Or: [
-                // Direct path if we know the person
-                { Case: [$.person, 'role', 'manager'] },
-                // More expensive path requiring multiple lookups
-                {
-                  And: [
-                    { Case: [$.person, 'role', 'employee'] },
-                    { Case: [$.person, 'level', 'senior'] },
-                  ],
-                },
+              And: [
+                { Case: [$.person, 'role', 'employee'] },
+                { Case: [$.person, 'level', 'senior'] },
               ],
             },
           ],
         },
       },
     })
+
+    assert.equal(rule.input.size, 0)
+    assert.deepEqual(rule.output, new Set([Var.id($.who)]))
 
     const boundPlan = Analyzer.plan(rule, {
       bindings: new Set([Var.id($.who)]),
@@ -802,19 +856,15 @@ export const testAnalyzer = {
   'ensures rule scope is independent from outer scope': async (assert) => {
     const rule = Analyzer.analyze({
       Rule: {
-        match: { result: $.output },
+        match: { result: $.q },
         rule: {
           case: { result: $.result },
           when: [
+            { Match: [$.result, 'data/type', 'reference'] },
             {
-              Or: [
-                { Case: [$.x, 'type', 'a'] },
-                {
-                  And: [
-                    { Case: [$.x, 'type', 'b'] },
-                    { Case: [$.x, 'value', $.result] },
-                  ],
-                },
+              And: [
+                { Case: [$.x, 'type', 'b'] },
+                { Case: [$.x, 'value', $.result] },
               ],
             },
           ],
@@ -822,15 +872,18 @@ export const testAnalyzer = {
       },
     })
 
-    assert.deepEqual(rule.input, new Set([Var.id($.output)]))
-    assert.deepEqual(rule.output, new Set())
+    assert.deepEqual(rule.input, new Set([Var.id($.q)]))
+    assert.deepEqual(rule.output, new Set([]))
 
-    // Plan with outer scope having $.x bound
+    // Plan with outer scope having $.result bound
     const plan = Analyzer.plan(rule, {
-      bindings: new Set([Var.id($.output)]),
+      bindings: new Set([Var.id($.q)]),
     })
 
     assert.ok(!plan.error, 'Should plan successfully with independent scope')
+
+    const unplannable = Analyzer.plan(rule)
+    assert.ok(unplannable.error, 'Should fail when match variable is not bound')
   },
 
   'handles rule variable mappings correctly': async (assert) => {
@@ -847,7 +900,7 @@ export const testAnalyzer = {
             },
           },
         }),
-      /missing required input/
+      /Rule application omits input binding for "y" relation/
     )
   },
 
@@ -859,7 +912,7 @@ export const testAnalyzer = {
         },
         rule: {
           case: { x: $.x, y: $.y },
-          when: [{ Match: [[$.x, 0], '>', $.y] }],
+          when: [{ Match: [[$.x, 1], '-', $.y] }],
         },
       },
     })
@@ -872,18 +925,18 @@ export const testAnalyzer = {
     const rule = Analyzer.analyze({
       Rule: {
         match: {
-          x: $.input,
-          y: $.output,
+          x: $.outX,
+          y: $.outY,
         },
         rule: {
           case: { x: $.x, y: $.y },
-          when: [{ Match: [[$.x, 0], '>', $.y] }],
+          when: [{ Match: [[$.x, 1], '-', $.y] }],
         },
       },
     })
 
-    assert.deepEqual(rule.input, new Set([Var.id($.input)]))
-    assert.deepEqual(rule.output, new Set([Var.id($.output)]))
+    assert.deepEqual(rule.input, new Set([Var.id($.outX)]))
+    assert.deepEqual(rule.output, new Set([Var.id($.outY)]))
   },
 
   'constants in rule input': async (assert) => {
@@ -891,17 +944,17 @@ export const testAnalyzer = {
       Rule: {
         match: {
           x: 5,
-          y: $.output,
+          y: $.outY,
         },
         rule: {
           case: { x: $.x, y: $.y },
-          when: [{ Match: [[$.x, 0], '>', $.y] }],
+          when: [{ Match: [[$.x, 2], '*', $.y] }],
         },
       },
     })
 
     assert.deepEqual(rule.input, new Set([]))
-    assert.deepEqual(rule.output, new Set([Var.id($.output)]))
+    assert.deepEqual(rule.output, new Set([Var.id($.outY)]))
   },
 
   'constants in rule output': async (assert) => {
@@ -970,12 +1023,31 @@ export const testAnalyzer = {
         },
         rule: {
           case: { a: $.a, b: $.a }, // Same variable $.a in both positions
-          when: [],
         },
       },
     })
 
     assert.deepEqual(rule.input, new Set([Var.id($.x), Var.id($.y)]))
     assert.deepEqual(rule.output, new Set([]))
+  },
+
+  'unification + input': async (assert) => {
+    const rule = Analyzer.analyze({
+      Rule: {
+        match: {
+          a: $.x,
+          b: $.y,
+          c: $.z,
+        },
+        rule: {
+          case: { a: $.a, b: $.a, c: $.c }, // Same variable $.a in both positions
+          when: [{ Match: [$.a, '==', $.c] }],
+        },
+      },
+    })
+
+    assert.deepEqual(rule.input, new Set([Var.id($.x), Var.id($.y)]))
+
+    assert.deepEqual(rule.output, new Set([Var.id($.z)]))
   },
 }
