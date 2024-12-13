@@ -248,6 +248,33 @@ export type Clause = Variant<{
   Match: Formula
 }>
 
+export type InferCase<
+  Methods extends Record<string, (input: any, context: any) => any> = {},
+> = {
+  [Case in keyof Methods]: {
+    Case: Case
+    Input: Parameters<Methods[Case]>[0]
+    Context: Parameters<Methods[Case]>[1]
+    Output: ReturnType<Methods[Case]>
+  }
+}
+
+export type DispatchCase<
+  Methods extends Record<string, (input: {}, context: {}) => {}> = {},
+> = {
+  <Case extends keyof Methods>(
+    input: InferCase<Methods>[Case]['Input'],
+    context: InferCase<Methods>[Case]['Context']
+  ): InferCase<Methods>[Case]['Output']
+}
+export type Dispatch<
+  Methods extends Record<string, (input: any, context: any) => any> = {},
+> = DispatchCase<Methods> & {
+  with<Extension extends Record<string, (input: any, context: any) => any>>(
+    extension: Extension
+  ): Dispatch<Methods & Extension>
+}
+
 export type Terms = Record<string, Term> | [Term, ...Term[]] | Term
 
 /**
@@ -446,15 +473,50 @@ export type Conclusion = Row<Variable> & {
   this?: Variable
 }
 
-export interface Rule<Case extends Conclusion = Conclusion> {
+export interface Rule<Match extends Conclusion = Conclusion> {
   /**
-   * Conclusion of the rule when all conjuncts are satisfied.
+   * Pattern to match against.
    */
-  case: Case
+  match: Match
+
   /**
-   * Conjuncts making up the rule body.
+   * Disjuncts making up the rule body.
    */
-  when: Clause[]
+  when?: When
+}
+
+export type When =
+  // Can be defined as a named set of disjunctions
+  | Record<string, Premise>
+  // Or as anonymous set of disjunctions
+  | Premise[]
+
+// Premise is an extension of the {@link Clause} with additional variant for
+// the recursive rule application.
+export type Premise = Variant<{
+  // and clause
+  And: Clause[]
+  // or clause
+  Or: Clause[]
+  // negation
+  Not: Clause
+  // pattern match a fact
+  Case: Pattern
+
+  // rule application
+  Rule: RuleApplication
+  // recursive application of the rule
+  Recur: RuleRecursion
+  // assign bindings
+  Is: Is
+
+  Match: Formula
+}>
+
+export interface RuleRecursion<Case extends Conclusion = Conclusion> {
+  match: RuleBindings<Case>
+  // Clause that defining condition for the recursion
+  where: Clause[]
 }
 
 export type RuleBindings<Case extends Conclusion = Conclusion> = {
@@ -466,10 +528,6 @@ export interface RuleApplication<Case extends Conclusion = Conclusion> {
   rule: Rule<Case>
 }
 
-export interface RuleRecursion<Case extends Conclusion = Conclusion> {
-  match: RuleBindings<Case>
-}
-
 export type InferRuleMatch<Case extends Conclusion> = {
   [Key in keyof Case]: Case[Key] extends Variable<infer U> ?
     U extends any ?
@@ -477,25 +535,6 @@ export type InferRuleMatch<Case extends Conclusion> = {
     : Term<U>
   : never
 }
-
-export type RuleClause = Variant<{
-  // and clause
-  And: RuleClause[]
-  // or clause
-  Or: RuleClause[]
-  // negation
-  Not: RuleClause
-  // pattern match a fact
-  Case: Pattern
-
-  // rule application
-  Rule: RuleApplication
-  Recur: RuleRecursion
-  // assign bindings
-  Is: Is
-
-  Match: Formula
-}>
 
 export interface Variables extends Record<PropertyKey, Variable> {}
 export interface Bindings extends Record<PropertyKey, Term> {}
@@ -606,6 +645,10 @@ export interface EvaluationContext {
   source: Querier
 }
 
+export interface Evaluator extends EvaluationContext {
+  evaluate(context: EvaluationContext): Task<Bindings[], EvaluationError>
+}
+
 export interface EvaluationError extends Error {}
 
 export type Scope = Variable<any> &
@@ -617,3 +660,28 @@ export type Scope = Variable<any> &
     length: Variable<number>
     prototype: Variable
   }
+
+/**
+ * Describes the effects that clause performs when evaluated.
+ */
+export interface Effects {
+  /**
+   * Query an underlying data source for facts.
+   */
+  readonly query: readonly QueryEffect[]
+  /**
+   * Evaluate underlying clause in a loop potentially many times.
+   */
+  readonly loop: readonly LoopEffect[]
+}
+
+/**
+ * Describes looping effect, meaning that that clause with this effect
+ * may be evaluated multiple times. In a future we may capture more details
+ * about the loop.
+ */
+export interface LoopEffect {}
+
+export interface QueryEffect {
+  select: Pattern
+}

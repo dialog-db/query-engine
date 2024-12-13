@@ -9,7 +9,7 @@ import $ from './scope.js'
  */
 export const from = (source) =>
   source instanceof Rule ? source : (
-    new Rule({ case: source.case, when: source.when })
+    new Rule({ case: source.match, when: source.when })
   )
 
 /**
@@ -106,7 +106,7 @@ class Rule {
   match(terms) {
     return {
       Rule: {
-        match: /** @type {API.RuleBindings<Case>} */ (terms),
+        match: /** @type {API.RuleBindings<Case>} */ ({ this: $, ...terms }),
         rule: this,
       },
     }
@@ -117,7 +117,7 @@ class Rule {
  * @implements {API.Rule}
  */
 class Recursion {
-  get case() {
+  get match() {
     return this.throw()
   }
   get when() {
@@ -145,7 +145,7 @@ class Recursion {
 export const setup = (rule) => {
   /** @type {Record<string, API.Variable>} */
   const table = {}
-  const match = rename(rule.case, table)
+  const match = rename(rule.match, table)
   const when = rule.when.map((clause) =>
     renameClauseVariables(clause, table, rule)
   )

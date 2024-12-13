@@ -21,7 +21,7 @@ export const toJSON = (clause) => {
       Rule: {
         match: Row.toJSON(clause.Rule.match),
         rule: clause.Rule.rule && {
-          case: Row.toJSON(clause.Rule.rule?.case ?? {}),
+          case: Row.toJSON(clause.Rule.rule?.match ?? {}),
           when: toJSON(clause.Rule.rule.when),
         },
       },

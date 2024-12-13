@@ -120,4 +120,57 @@ export const testRecursion = {
       ]
     )
   },
+
+  'test iteration': async (assert) => {
+    const Iterate = DB.rule({
+      case: { from: $.from, to: $.to },
+      when() {
+        return [
+          {
+            Or: [
+              {
+                And: [
+                  { Match: [[$.from, $.to], '<'] },
+                  { Match: [$.from, '==', $] },
+                ],
+              },
+              {
+                And: [
+                  { Match: [[$.from, $.to], '>'] },
+                  { Match: [$.from, '==', $] },
+                ],
+              },
+              {
+                And: [
+                  { Match: [[$.from, $.to], '<'] },
+                  { Match: [[$.from, 1], '+', $.next] },
+                  this.match({ from: $.next, to: $.to }),
+                ],
+              },
+              {
+                And: [
+                  { Match: [[$.from, $.to], '>'] },
+                  { Match: [[$.from, 1], '-', $.next] },
+                  this.match({ from: $.next, to: $.to }),
+                ],
+              },
+            ],
+          },
+        ]
+      },
+    })
+
+    const r1_5 = await DB.query(db, {
+      select: { n: $.value },
+      where: [Iterate.match({ this: $.value, from: 1, to: 5 })],
+    })
+
+    assert.deepEqual([...r1_5], [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }])
+
+    const r5_1 = await DB.query(db, {
+      select: { n: $.value },
+      where: [Iterate.match({ this: $.value, from: 5, to: 1 })],
+    })
+    assert.deepEqual([...r5_1], [{ n: 5 }, { n: 4 }, { n: 3 }, { n: 2 }])
+  },
 }

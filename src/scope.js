@@ -1,7 +1,7 @@
 import * as API from './api.js'
 
 export class Variable {
-  static id = 0
+  static id = 1
   #name
   /**
    * @param {number} id
@@ -15,8 +15,8 @@ export class Variable {
     return this['?'].id
   }
   toString() {
-    return typeof this.#name === 'symbol'
-      ? `?@${this.#name.description ?? this.id}`
+    return typeof this.#name === 'symbol' ?
+        `?@${this.#name.description ?? this.id}`
       : `?${this.#name.toString()}`
   }
   get [Symbol.toStringTag]() {

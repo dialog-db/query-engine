@@ -658,7 +658,7 @@ export const testAnalyzer = {
       Rule: {
         match: { x: $.output, y: $.input },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [
             {
               And: [
@@ -683,7 +683,7 @@ export const testAnalyzer = {
           Rule: {
             match: { x: $.output, y: $.input },
             rule: {
-              case: { x: $.x, y: $.y },
+              match: { x: $.x, y: $.y },
               when: {
                 base: { Case: [$.y, 'type', 'person'] },
               },
@@ -702,7 +702,7 @@ export const testAnalyzer = {
           Rule: {
             match: { x: $.output, y: $.input },
             rule: {
-              case: { x: $.x, y: $.y },
+              match: { x: $.x, y: $.y },
               when: {
                 base: { Case: [$.x, 'link', $.y] },
                 induce: {
@@ -723,7 +723,7 @@ export const testAnalyzer = {
       Rule: {
         match: { x: $.output, y: $.input },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [
             {
               And: [
@@ -768,7 +768,7 @@ export const testAnalyzer = {
       Rule: {
         match: { employee: $.who },
         rule: {
-          case: { employee: $.person },
+          match: { employee: $.person },
           when: [
             // Direct path if we know the person
             { Case: [$.person, 'role', 'manager'] },
@@ -812,7 +812,7 @@ export const testAnalyzer = {
       Rule: {
         match: { result: $.q },
         rule: {
-          case: { result: $.result },
+          match: { result: $.result },
           when: [
             { Match: [$.result, 'data/type', 'reference'] },
             {
@@ -849,7 +849,7 @@ export const testAnalyzer = {
               x: $.input,
             }, // Missing mapping for input variable
             rule: {
-              case: { x: $.x, y: $.y },
+              match: { x: $.x, y: $.y },
               when: [{ Match: [[$.x, $.y], '>'] }],
             },
           },
@@ -865,7 +865,7 @@ export const testAnalyzer = {
           x: $.input,
         },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [{ Match: [[$.x, 1], '-', $.y] }],
         },
       },
@@ -883,7 +883,7 @@ export const testAnalyzer = {
           y: $.outY,
         },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [{ Match: [[$.x, 1], '-', $.y] }],
         },
       },
@@ -901,7 +901,7 @@ export const testAnalyzer = {
           y: $.outY,
         },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [{ Match: [[$.x, 2], '*', $.y] }],
         },
       },
@@ -919,7 +919,7 @@ export const testAnalyzer = {
           y: 5,
         },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [{ Match: [[$.x, 0], '>', $.y] }],
         },
       },
@@ -937,7 +937,7 @@ export const testAnalyzer = {
           y: $.y,
         },
         rule: {
-          case: { x: $.a, y: $.b },
+          match: { x: $.a, y: $.b },
           when: [{ Match: [[$.a, $.b], 'text/concat', $.result] }],
         },
       },
@@ -951,7 +951,7 @@ export const testAnalyzer = {
       Rule: {
         match: { x: $.input, result: $.output },
         rule: {
-          case: { x: $.x, result: $.r },
+          match: { x: $.x, result: $.r },
           when: [
             {
               Or: [
@@ -976,7 +976,7 @@ export const testAnalyzer = {
           b: $.y,
         },
         rule: {
-          case: { a: $.a, b: $.a }, // Same variable $.a in both positions
+          match: { a: $.a, b: $.a }, // Same variable $.a in both positions
         },
       },
     })
@@ -994,7 +994,7 @@ export const testAnalyzer = {
           c: $.z,
         },
         rule: {
-          case: { a: $.a, b: $.a, c: $.c }, // Same variable $.a in both positions
+          match: { a: $.a, b: $.a, c: $.c }, // Same variable $.a in both positions
           when: [{ Match: [$.a, '==', $.c] }],
         },
       },
@@ -1011,7 +1011,7 @@ export const testAnalyzer = {
           Rule: {
             match: { x: $.x, y: $.y },
             rule: {
-              case: { x: $.x, y: $.y },
+              match: { x: $.x, y: $.y },
               when: [
                 { Match: [[$.z, $.y], '+', $.x] }, // $.z not in case
               ],
@@ -1028,7 +1028,7 @@ export const testAnalyzer = {
           Rule: {
             match: { x: $.x, y: $.y },
             rule: {
-              case: { x: $.x, y: $.y },
+              match: { x: $.x, y: $.y },
               when: [
                 { Case: [$.x, 'type', 'person'] }, // Doesn't handle $.y
               ],
@@ -1045,7 +1045,7 @@ export const testAnalyzer = {
           Rule: {
             match: { x: $.x, y: $.y },
             rule: {
-              case: { x: $.x, y: $.y },
+              match: { x: $.x, y: $.y },
               when: {
                 recursive: {
                   Recur: {
@@ -1067,7 +1067,7 @@ export const testAnalyzer = {
           Rule: {
             match: { x: $.x, y: $.y },
             rule: {
-              case: { x: $.x, y: $.y },
+              match: { x: $.x, y: $.y },
               when: {
                 recursive: {
                   Recur: {
@@ -1089,7 +1089,7 @@ export const testAnalyzer = {
           Rule: {
             match: { x: $.myX },
             rule: {
-              case: { x: $.x },
+              match: { x: $.x },
               when: {
                 recursive: {
                   Recur: {
@@ -1109,7 +1109,7 @@ export const testAnalyzer = {
       Rule: {
         match: { x: $.input }, // y omitted
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [
             { Match: [$.x, 'math/absolute', $.y] }, // $.y is output
           ],
@@ -1126,7 +1126,7 @@ export const testAnalyzer = {
         Rule: {
           match: { x: $.x, y: $.y },
           rule: {
-            case: { x: $.x, y: $.y },
+            match: { x: $.x, y: $.y },
             when: [
               {
                 And: [
@@ -1147,7 +1147,7 @@ export const testAnalyzer = {
           Rule: {
             match: { x: $.x, y: $.y },
             rule: {
-              case: { x: $.x, y: $.y },
+              match: { x: $.x, y: $.y },
               when: [
                 {
                   And: [
@@ -1177,7 +1177,7 @@ export const testAnalyzer = {
       Rule: {
         match: { x: $.x, y: $.y },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: {
             branch1: { Match: [[$.x, 1], '+', $.y] }, // One way to satisfy rule
             branch2: { Match: [[$.y, 1], '-', $.x] }, // Alternative way
@@ -1194,7 +1194,7 @@ export const testAnalyzer = {
       Rule: {
         match: { x: $.x, y: $.y },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [
             { Match: [[$.x, 1], '+', $.y] }, // Needs $.x to produce $.y
           ],
@@ -1213,7 +1213,7 @@ export const testAnalyzer = {
       Rule: {
         match: { x: $.x, y: $.y },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [
             { Match: [[$.x, 1], '+', $.y] }, // Needs $.x to produce $.y
           ],
@@ -1233,7 +1233,7 @@ export const testAnalyzer = {
       Rule: {
         match: { x: $.x, y: $.y },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [
             { Match: [[$.x, 1], '+', $.y] },
             {
@@ -1251,7 +1251,7 @@ export const testAnalyzer = {
       Rule: {
         match: { x: $.x, y: $.y },
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [{ Match: [[$.x, 1], '+', $.y] }],
         },
       },
@@ -1282,7 +1282,7 @@ export const testAnalyzer = {
       Rule: {
         match: { x: $.input, y: $.output }, // Different variable names in match
         rule: {
-          case: { x: $.x, y: $.y },
+          match: { x: $.x, y: $.y },
           when: [{ Match: [[$.x, 1], '+', $.y] }],
         },
       },
@@ -1300,7 +1300,7 @@ export const testAnalyzer = {
       Rule: {
         match: { as: $.x },
         rule: {
-          case: { this: $, as: $ }, // No when clause - just unifies variables
+          match: { this: $, as: $ }, // No when clause - just unifies variables
         },
       },
     })
@@ -1319,7 +1319,7 @@ export const testAnalyzer = {
       Rule: {
         match: { value: $.value, from: $.from, to: $.to },
         rule: {
-          case: { value: $.value, from: $.from, to: $.to },
+          match: { value: $.value, from: $.from, to: $.to },
           when: {
             deduce: {
               And: [

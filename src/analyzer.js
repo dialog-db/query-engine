@@ -2,8 +2,6 @@ import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Terms from './terms.js'
 import * as Term from './term.js'
-import * as Entity from './entity.js'
-import * as Bytes from './bytes.js'
 import { Constant, evaluateCase, evaluateRule, Var } from './lib.js'
 import { isEmpty } from './iterable.js'
 import * as Formula from './formula.js'
@@ -1119,7 +1117,6 @@ class RuleApplication {
     /** @type {Map<string, API.Plan>} */
     const deduce = new Map()
     let cost = 0
-    let queryCount = 0
 
     // Count total queries and loops across all branches
     const countQueries = this.rule.effects.query.length
@@ -1231,7 +1228,7 @@ class Rule {
    * @returns {Readonly<Rule<Relation> & { effects: API.Effects }>}
    */
   static build(source) {
-    return this.new(source.case)
+    return this.new(source.match)
       .with(source.when ?? [])
       .build()
   }
@@ -1304,7 +1301,7 @@ class Rule {
     return this
   }
 
-  get case() {
+  get match() {
     return this.relation
   }
 }
