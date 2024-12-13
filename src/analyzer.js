@@ -3,11 +3,10 @@ import * as Variable from './variable.js'
 import * as Terms from './terms.js'
 import * as Term from './term.js'
 import * as Entity from './entity.js'
-import { evaluateCase, evaluateRule, Var } from './lib.js'
+import * as Bytes from './bytes.js'
+import { Constant, evaluateCase, evaluateRule, Var } from './lib.js'
 import { isEmpty } from './iterable.js'
 import * as Formula from './formula.js'
-import * as Bindings from './bindings.js'
-import { from as toRule } from './rule.js'
 
 /**
  * @typedef {Case|Or|And|Not|Is|Match|RuleApplication} Branch
@@ -33,7 +32,7 @@ export function analyze(clause) {
   } else if (clause.Rule) {
     return RuleApplication.analyze(clause.Rule)
   } else {
-    throw new Error(`Unsupported clause kind ${Object.keys(clause)[0]}`)
+    throw new SyntaxError(`Unsupported clause kind ${Object.keys(clause)[0]}`)
   }
 }
 
@@ -52,6 +51,14 @@ export function plan(
   }
 }
 
+const ENTITY_SELECTIVITY = 50
+const ATTRIBUTE_SELECTIVITY = 70
+// Between known entity and attribute
+const SPECULATIVE_VALUE_SELECTIVITY = 60
+
+// Base cost of 1M for full scan
+const FULL_SCAN = 1_000_000
+
 /**
  * @typedef {Object} Context
  * @property {Set<API.VariableID>} bindings
@@ -64,22 +71,42 @@ class Case {
    */
   plan(context) {
     const [entity, attribute, value] = this.pattern
-    let cost = 1000
+    // Multipliers as percentages (out of 100)
+    const entityMultiplier =
+      !Variable.is(entity) ? ENTITY_SELECTIVITY
+      : context.bindings.has(Variable.id(entity)) ? ENTITY_SELECTIVITY
+      : 100
 
-    if (!Variable.is(entity) || context.bindings.has(Variable.id(entity))) {
-      cost *= 0.1
-    }
-    if (
-      !Variable.is(attribute) ||
-      context.bindings.has(Variable.id(attribute))
-    ) {
-      cost *= 0.2
-    }
-    if (!Variable.is(value)) {
-      cost *= Entity.is(value) ? 0.1 : 0.3
-    } else if (context.bindings.has(Variable.id(value))) {
-      cost *= 0.1
-    }
+    const attributeMultiplier =
+      !Variable.is(attribute) ? ATTRIBUTE_SELECTIVITY
+      : context.bindings.has(Variable.id(attribute)) ? ATTRIBUTE_SELECTIVITY
+      : 100
+
+    // Value selectivity returns integers 1-100
+    const valueMultiplier =
+      !Variable.is(value) ? estimateSelectivity(value)
+      : context.bindings.has(Variable.id(value)) ? SPECULATIVE_VALUE_SELECTIVITY
+      : 100
+
+    // Calculate index efficiency multiplier based on available patterns
+    // Index efficiency as percentage multiplier
+    const indexMultiplier =
+      entityMultiplier < 100 && attributeMultiplier < 100 ?
+        100 // EAV
+      : valueMultiplier < 100 && attributeMultiplier < 100 ?
+        100 // VAE
+      : attributeMultiplier < 100 ?
+        200 // AEV
+      : 400 // No index
+
+    // Normalize the multipliers (divide by 100 for each percentage multiplier)
+    const cost =
+      (FULL_SCAN *
+        entityMultiplier *
+        attributeMultiplier *
+        valueMultiplier *
+        indexMultiplier) /
+      1_000_000 // 100 * 100 * 100
 
     return new CasePlan(cost, this.pattern)
   }
@@ -109,6 +136,8 @@ class Case {
     this.pattern = pattern
     this.input = input
     this.output = output
+
+    this.effects = Effects.build({ query: [{ select: pattern }] })
   }
 
   /**
@@ -121,32 +150,18 @@ class Case {
   get Case() {
     return this.pattern
   }
+}
 
-  /**
-   * @param {Set<API.VariableID>} scope
-   * @returns {number}
-   */
-  prioritize(scope) {
-    const [entity, attribute, value] = this.pattern
-    let cost = 1000
-
-    // Reduce cost based on bound terms
-    if (!Variable.is(entity) || scope.has(Variable.id(entity))) {
-      cost *= 0.1
-    }
-    if (!Variable.is(attribute) || scope.has(Variable.id(attribute))) {
-      cost *= 0.2
-    }
-    if (!Variable.is(value)) {
-      cost *= Entity.is(value) ? 0.1 : 0.3
-    } else if (scope.has(Variable.id(value))) {
-      cost *= 0.1
-    }
-
-    const count = [...this.output].filter((v) => !scope.has(v)).length
-
-    return count > 0 ? cost / count : cost
-  }
+/**
+ * Returns integer 1-100 representing selectivity
+ * Lower = more selective = better
+ *
+ * @param {API.Constant} value
+ */
+const estimateSelectivity = (value) => {
+  const entropy = Constant.entropy(value)
+  // Convert entropy to percentage (1-100)
+  return Math.min(100, Math.max(1, Math.floor(1000 / (entropy + 10))))
 }
 
 /**
@@ -172,11 +187,13 @@ class Or {
     const input = new Set(top.input)
     const output = new Set(top.output)
     const extension = new Set()
+    const effects = Effects.new().merge(top.effects)
 
     // Process remaining branches
     for (const disjunct of rest) {
       const current = analyze(disjunct)
       analysis.push(current)
+      effects.merge(current.effects)
 
       for (const id of current.input) {
         input.add(id)
@@ -198,17 +215,19 @@ class Or {
       }
     }
 
-    return new this(analysis, input, output, extension)
+    return new this(analysis, effects, input, output, extension)
   }
 
   /**
    * @param {Branch[]} branches
+   * @param {API.Effects} effects
    * @param {Set<API.VariableID>} input
    * @param {Set<API.VariableID>} output
    * @param {Set<API.VariableID>} extension
    */
-  constructor(branches, input, output, extension) {
+  constructor(branches, effects, input, output, extension) {
     this.branches = branches
+    this.effects = effects
     this.input = input
     this.output = output
     this.extension = extension
@@ -265,10 +284,11 @@ class And {
   /**
    * @param {Branch[]} binding
    * @param {Branch[]} elimination
+   * @param {API.Effects} effects
    * @param {Set<API.VariableID>} input
    * @param {Set<API.VariableID>} output
    */
-  constructor(binding, elimination, input, output) {
+  constructor(binding, elimination, effects, input, output) {
     this.binding = binding
 
     /**
@@ -302,6 +322,8 @@ class And {
      */
     this.elimination = elimination
 
+    this.effects = effects
+
     this.input = input
     this.output = output
   }
@@ -317,6 +339,7 @@ class And {
     const input = new Set()
     const output = new Set()
     const dependencies = new Map()
+    const effects = Effects.new()
 
     // Partition steps into binding and elimination
     const binding = []
@@ -324,6 +347,8 @@ class And {
 
     for (const clause of conjuncts(clauses)) {
       const step = analyze(clause)
+      effects.merge(step.effects)
+
       if (step instanceof Not) {
         elimination.push(step)
       } else {
@@ -352,7 +377,7 @@ class And {
       )
     }
 
-    return new this(binding, elimination, input, output)
+    return new this(binding, elimination, effects, input, output)
   }
 
   /**
@@ -530,6 +555,11 @@ class Not {
     this.input = step.input
   }
 
+  /** @type {API.Effects} */
+  get effects() {
+    return this.step.effects
+  }
+
   /**
    * @param {API.Clause} clause
    */
@@ -591,6 +621,10 @@ class Is {
   }
   get Is() {
     return this.relation
+  }
+
+  get effects() {
+    return Effects.none
   }
 
   /**
@@ -657,6 +691,10 @@ class Match {
     this.output = output
   }
 
+  get effects() {
+    return Effects.none
+  }
+
   get Match() {
     return this.relation
   }
@@ -693,17 +731,11 @@ class Match {
   }
 }
 
-/**
- * @template T
- * @param {Set<T>} expected
- * @param {Set<T>} actual
- */
-const equalSets = (expected, actual) =>
-  actual.size === expected.size && [...expected].every(($) => actual.has($))
-
 class Unplannable extends Error {
+  /** @type {undefined} */
+  cost
+
   /**
-   *
    * @param {Set<API.VariableID>} missing
    */
   constructor(
@@ -749,7 +781,6 @@ class AndPlan {
 
   toJSON() {
     return {
-      cost: this.cost,
       And: [...this.bindings, ...this.eliminations].map((plan) =>
         plan.toJSON()
       ),
@@ -788,7 +819,6 @@ class CasePlan {
 
   toJSON() {
     return {
-      cost: this.cost,
       Case: this.pattern,
     }
   }
@@ -815,7 +845,6 @@ class NotPlan {
 
   toJSON() {
     return {
-      cost: this.cost,
       Not: this.plan.toJSON(),
     }
   }
@@ -868,7 +897,6 @@ class OrPlan {
 
   toJSON() {
     return {
-      cost: this.cost,
       Or: this.disjuncts.map((disjunct) => disjunct.toJSON()),
     }
   }
@@ -895,7 +923,6 @@ class MatchPlan {
 
   toJSON() {
     return {
-      cost: this.cost,
       Match: this.formula,
     }
   }
@@ -930,7 +957,6 @@ class IsPlan {
 
   toJSON() {
     return {
-      cost: this.cost,
       Is: this.relation,
     }
   }
@@ -1059,6 +1085,10 @@ class RuleApplication {
     return this.input.has(id) || this.output.has(id)
   }
 
+  get effects() {
+    return this.rule.effects
+  }
+
   /**
    * @param {Context} context
    * @returns {RuleApplicationPlan<Case>|Unplannable}
@@ -1089,6 +1119,13 @@ class RuleApplication {
     /** @type {Map<string, API.Plan>} */
     const deduce = new Map()
     let cost = 0
+    let queryCount = 0
+
+    // Count total queries and loops across all branches
+    const countQueries = this.rule.effects.query.length
+    const countLoops = this.rule.effects.loop.length
+
+    // Plan each deductive branch
     for (const [name, deduction] of this.rule.deduce) {
       const plan = deduction.plan({ bindings, scope })
 
@@ -1097,12 +1134,13 @@ class RuleApplication {
       }
 
       deduce.set(name, plan)
+
+      // Base cost from branch execution
       cost = Math.max(cost, plan.cost)
     }
 
     /** @type {Map<string, InductionPlan>} */
     const induce = new Map()
-    let exponent = 1
     for (const [name, induction] of this.rule.induce) {
       const plan = induction.plan({ bindings, scope })
 
@@ -1111,14 +1149,25 @@ class RuleApplication {
       }
 
       induce.set(name, plan)
-      exponent += 1
       cost = Math.max(cost, plan.cost)
     }
 
-    // inflate cost by accounting for recursive complexity. We don't have
-    // a way to estimate recursion depth so instead we use number of inductive
-    // branches as an approximation.
-    cost = cost ** exponent
+    // Adjust cost based on number of queries rule will perform
+    if (countQueries > 0) {
+      // More queries = higher cost
+      cost *= 1 + countQueries * 0.5
+    }
+
+    // Exponentially increase cost based on number of loops
+    // For example:
+    // - 1 loop:  cost ^ (1 + 0.2) = cost ^ 1.2
+    // - 2 loops: cost ^ (1 + 0.4) = cost ^ 1.4
+    // - 5 loops: cost ^ (1 + 1.0) = cost ^ 2.0
+    // This reflects that each loop potentially multiplies the work,
+    // but with diminishing impact to avoid over-penalizing
+    if (countLoops > 0) {
+      cost = cost ** (1 + countLoops * 0.2)
+    }
 
     return new RuleApplicationPlan(cost, this, deduce, induce)
   }
@@ -1147,7 +1196,6 @@ class RuleApplicationPlan {
   }
   toJSON() {
     return {
-      cost: this.cost,
       Rule: {
         match: this.application.match,
         rule: this.application.rule,
@@ -1180,6 +1228,7 @@ class Rule {
   /**
    * @template {API.Conclusion} Relation
    * @param {API.Rule<Relation>} source
+   * @returns {Readonly<Rule<Relation> & { effects: API.Effects }>}
    */
   static build(source) {
     return this.new(source.case)
@@ -1205,6 +1254,8 @@ class Rule {
     this.input = new Set()
     this.output = new Set()
 
+    this.effects = Effects.new()
+
     this.when = [...Object.values(this.induce), ...Object.values(this.deduce)]
   }
 
@@ -1222,7 +1273,10 @@ class Rule {
         this.deduce.set(name, member)
       }
 
-      const { input, output } = member
+      const { input, output, effects } = member
+
+      // Incorporate effects
+      this.effects.merge(effects)
 
       // Union of all inputs are considered an input of the rule
       for (const id of input) {
@@ -1299,6 +1353,9 @@ class Deduction {
    */
   constructor(premise) {
     this.premise = premise
+  }
+  get effects() {
+    return this.premise.effects
   }
   /**
    * @param {Context} context
@@ -1382,19 +1439,28 @@ class Induction {
 
     // If we got this far we have a recursive application of the rule
     // where all the variable are bound and accounted for.
-    return new this(match, premise, input, output, rule)
+    return new this(
+      match,
+      Effects.new({ loop: [{}] }).merge(premise.effects),
+      premise,
+      input,
+      output,
+      rule
+    )
   }
 
   /**
    *
    * @param {API.RuleBindings<Case>} match
+   * @param {API.Effects} effects
    * @param {And} premise
    * @param {Set<API.VariableID>} input
    * @param {Set<API.VariableID>} output
    * @param {Rule<Case>} rule
    */
-  constructor(match, premise, input, output, rule) {
+  constructor(match, effects, premise, input, output, rule) {
     this.match = match
+    this.effects = effects
     this.premise = premise
     this.rule = rule
     this.input = input
@@ -1456,7 +1522,6 @@ class InductionPlan {
 
   toJSON() {
     return {
-      cost: this.cost,
       Recur: {
         match: this.match,
         where: this.plan.toJSON().And,
@@ -1592,5 +1657,57 @@ function* findUnresolvableCycle(dependencies) {
     if (!hasIndependentVar) {
       yield cycle
     }
+  }
+}
+
+const NONE = /** @type {never[]} */ (Object.freeze([]))
+class Effects {
+  /** @type {API.Effects} */
+  static none = Object.freeze(new Effects(NONE, NONE))
+  /**
+   * @param {object} source
+   * @param {API.QueryEffect[]} [source.query]
+   * @param {API.LoopEffect[]} [source.loop]
+   */
+  static new({ loop, query } = {}) {
+    return new this(query, loop)
+  }
+  /**
+   * @param {object} source
+   * @param {API.QueryEffect[]} [source.query]
+   * @param {API.LoopEffect[]} [source.loop]
+   * @returns {API.Effects}
+   */
+  static build({ loop = NONE, query = NONE }) {
+    return new this(query, loop)
+  }
+  /**
+   *
+   * @returns {API.Effects}
+   */
+  build() {
+    return this
+  }
+  /**
+   * @param {API.QueryEffect[]} query
+   * @param {API.LoopEffect[]} loop
+   */
+  constructor(query = [], loop = []) {
+    this.query = query
+    this.loop = loop
+  }
+  /**
+   * @param {API.Effects} other
+   */
+  merge({ loop, query }) {
+    if (loop) {
+      this.loop.push(...loop)
+    }
+
+    if (query) {
+      this.query.push(...query)
+    }
+
+    return this
   }
 }

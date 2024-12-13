@@ -20,13 +20,11 @@ export const testAnalyzer = {
     const plan = Analyzer.plan(and)
 
     assert.deepEqual(plan.toJSON(), {
-      cost: 82,
       And: [
-        { cost: 60, Case: [$.child, 'semantic/type', 'child'] },
-        { cost: 20, Case: [$.uncle, 'relation/nephew', $.child] },
+        { Case: [$.child, 'semantic/type', 'child'] },
+        { Case: [$.uncle, 'relation/nephew', $.child] },
         {
-          cost: 2,
-          Not: { cost: 2, Case: [$.child, 'legal/guardian', $.uncle] },
+          Not: { Case: [$.child, 'legal/guardian', $.uncle] },
         },
       ],
     })
@@ -55,27 +53,20 @@ export const testAnalyzer = {
     const plan = Analyzer.plan(branch)
 
     assert.deepEqual(plan.toJSON(), {
-      cost: 86,
       And: [
-        { cost: 60, Case: [$.x, 'type', 'document'] },
+        { Case: [$.x, 'type', 'document'] },
         {
-          cost: 26,
           Or: [
             {
-              cost: 6,
               Case: [$.x, 'status', 'draft'],
             },
             {
-              cost: 26,
               And: [
                 {
-                  cost: 20,
                   Case: [$.x, 'owner', $.user],
                 },
                 {
-                  cost: 6,
                   Not: {
-                    cost: 6,
                     Case: [$.user, 'status', 'blocked'],
                   },
                 },
@@ -111,19 +102,16 @@ export const testAnalyzer = {
 
     const plan = Analyzer.plan(branch)
     assert.deepEqual(plan.toJSON(), {
-      cost: 128,
       And: [
-        { Case: [$.x, 'type', 'doc'], cost: 60 },
-        { Case: [$.user, 'dept', 'eng'], cost: 60 },
+        { Case: [$.x, 'type', 'doc'] },
+        { Case: [$.user, 'dept', 'eng'] },
         {
-          cost: 8,
           Or: [
-            { Case: [$.x, 'status', 'draft'], cost: 6 },
+            { Case: [$.x, 'status', 'draft'] },
             {
-              cost: 8,
               And: [
-                { Case: [$.x, 'owner', $.user], cost: 2 },
-                { Case: [$.user, 'role', 'admin'], cost: 6 },
+                { Case: [$.user, 'role', 'admin'] },
+                { Case: [$.x, 'owner', $.user] },
               ],
             },
           ],
@@ -142,11 +130,10 @@ export const testAnalyzer = {
     })
 
     assert.deepEqual(plan.toJSON(), {
-      cost: 100,
       And: [
-        { cost: 60, Case: [$.actor, 'person/name', 'Arnold Schwarzenegger'] },
-        { cost: 20, Case: [$.movie, 'movie/cast', $.actor] },
-        { cost: 20, Case: [$.movie, 'movie/title', $.title] },
+        { Case: [$.actor, 'person/name', 'Arnold Schwarzenegger'] },
+        { Case: [$.movie, 'movie/cast', $.actor] },
+        { Case: [$.movie, 'movie/title', $.title] },
       ],
     })
   },
@@ -173,14 +160,12 @@ export const testAnalyzer = {
 
     const plan = Analyzer.plan(branch)
     assert.deepEqual(plan.toJSON(), {
-      cost: 80,
       Or: [
-        { cost: 60, Case: [$.x, 'status', 'draft'] },
+        { Case: [$.x, 'status', 'draft'] },
         {
-          cost: 80,
           And: [
-            { cost: 60, Case: [$.user, 'role', 'admin'] },
-            { cost: 20, Case: [$.x, 'owner', $.user] },
+            { Case: [$.user, 'role', 'admin'] },
+            { Case: [$.x, 'owner', $.user] },
           ],
         },
       ],
@@ -212,29 +197,24 @@ export const testAnalyzer = {
       plan.toJSON(),
       {
         And: [
-          { Case: [$.doc, 'type', 'document'], cost: 60 },
+          { Case: [$.doc, 'type', 'document'] },
           {
             Or: [
-              { Case: [$.doc, 'status', 'published'], cost: 6 },
+              { Case: [$.doc, 'status', 'published'] },
               {
                 And: [
-                  { Case: [$.doc, 'draft', $.version], cost: 20 },
-                  { Case: [$.reviewer, 'role', 'editor'], cost: 60 },
+                  { Case: [$.reviewer, 'role', 'editor'] },
+                  { Case: [$.doc, 'draft', $.version] },
                   {
                     Not: {
                       Case: [$.version, 'approved-by', $.reviewer],
-                      cost: 2,
                     },
-                    cost: 2,
                   },
                 ],
-                cost: 82,
               },
             ],
-            cost: 82,
           },
         ],
-        cost: 142,
       },
       'Verify Not runs after reviewer role is established'
     )
@@ -262,20 +242,17 @@ export const testAnalyzer = {
     // author1 and reviewer2 should be local to their respective branches
     const plan = Analyzer.plan(branch)
     assert.deepEqual(plan.toJSON(), {
-      cost: 80,
       Or: [
         {
-          cost: 80,
           And: [
-            { cost: 60, Case: [$.author1, 'department', 'eng'] },
-            { cost: 20, Case: [$.doc, 'author', $.author1] },
+            { Case: [$.author1, 'department', 'eng'] },
+            { Case: [$.doc, 'author', $.author1] },
           ],
         },
         {
-          cost: 80,
           And: [
-            { cost: 60, Case: [$.reviewer2, 'level', 'senior'] },
-            { cost: 20, Case: [$.doc, 'reviewer', $.reviewer2] },
+            { Case: [$.reviewer2, 'level', 'senior'] },
+            { Case: [$.doc, 'reviewer', $.reviewer2] },
           ],
         },
       ],
@@ -302,16 +279,14 @@ export const testAnalyzer = {
 
     const plan = Analyzer.plan(branch)
     assert.deepEqual(plan.toJSON(), {
-      cost: 140,
       And: [
-        { cost: 60, Case: [$.x, 'type', 'doc'] },
-        { cost: 60, Case: [$.user, 'role', 'admin'] },
+        { Case: [$.user, 'role', 'admin'] },
+        { Case: [$.x, 'type', 'doc'] },
         {
-          cost: 20,
           Or: [
-            { cost: 6, Case: [$.x, 'status', 'draft'] },
-            { cost: 20, Case: [$.x, 'review', $.review] },
-            { cost: 2, Case: [$.x, 'owner', $.user] },
+            { Case: [$.x, 'status', 'draft'] },
+            { Case: [$.x, 'review', $.review] },
+            { Case: [$.x, 'owner', $.user] },
           ],
         },
       ],
@@ -342,30 +317,22 @@ export const testAnalyzer = {
     assert.deepEqual(
       plan.toJSON(),
       {
-        cost: 92,
         And: [
           {
-            cost: 60,
             Case: [$.doc, 'status', 'draft'],
           },
           {
-            cost: 26,
             Or: [
               {
-                cost: 20,
                 Case: [$.doc, 'author', $.user],
               },
               {
-                cost: 26,
                 And: [
                   {
-                    cost: 20,
                     Case: [$.doc, 'team', $.team],
                   },
                   {
-                    cost: 6,
                     Not: {
-                      cost: 6,
                       Case: [$.team, 'archived', true],
                     },
                   },
@@ -374,9 +341,7 @@ export const testAnalyzer = {
             ],
           },
           {
-            cost: 6,
             Not: {
-              cost: 6,
               Case: [$.doc, 'deleted', true],
             },
           },
@@ -484,12 +449,11 @@ export const testAnalyzer = {
     const plan = Analyzer.plan(branch)
 
     assert.deepEqual(plan.toJSON(), {
-      cost: 22,
       And: [
-        { cost: 0, Is: [$.type, 'document'] },
-        { cost: 0, Is: [$.status, $.type] },
-        { cost: 20, Case: [$.x, 'type', $.type] },
-        { cost: 2, Case: [$.x, 'status', $.status] },
+        { Is: [$.type, 'document'] },
+        { Is: [$.status, $.type] },
+        { Case: [$.x, 'type', $.type] },
+        { Case: [$.x, 'status', $.status] },
       ],
     })
   },
@@ -506,11 +470,10 @@ export const testAnalyzer = {
     const plan = Analyzer.plan(branch)
 
     assert.deepEqual(plan.toJSON(), {
-      cost: 202,
       And: [
-        { cost: 200, Case: [$.x, 'type', $.type] },
-        { cost: 0, Is: [$.status, $.type] },
-        { cost: 2, Case: [$.x, 'status', $.status] },
+        { Case: [$.x, 'type', $.type] },
+        { Is: [$.status, $.type] },
+        { Case: [$.x, 'status', $.status] },
       ],
     })
   },
@@ -537,19 +500,16 @@ export const testAnalyzer = {
     const plan = Analyzer.plan(branch)
 
     assert.deepEqual(plan.toJSON(), {
-      cost: 240,
       And: [
-        { Case: [$.doc, 'size', $.size], cost: 200 },
-        { Match: [$.size, 'text/length', $.length], cost: 20 },
+        { Case: [$.doc, 'size', $.size] },
+        { Match: [$.size, 'text/length', $.length] },
         {
-          cost: 20,
           Or: [
-            { Is: [$.length, 0], cost: 0 },
+            { Is: [$.length, 0] },
             {
-              cost: 20,
               And: [
-                { Is: [$.size, $.length], cost: 0 },
-                { Match: [$.length, '==', 100], cost: 20 },
+                { Is: [$.size, $.length] },
+                { Match: [$.length, '==', 100] },
               ],
             },
           ],
@@ -569,11 +529,7 @@ export const testAnalyzer = {
     const plan = Analyzer.plan(branch)
 
     assert.deepEqual(plan.toJSON(), {
-      cost: 60,
-      And: [
-        { Case: [$.x, 'type', 'doc'], cost: 60 },
-        { Is: [$.x, $.y], cost: 0 },
-      ],
+      And: [{ Case: [$.x, 'type', 'doc'] }, { Is: [$.x, $.y] }],
     })
   },
 
@@ -610,14 +566,12 @@ export const testAnalyzer = {
 
     const plan = Analyzer.plan(branch)
     assert.deepEqual(plan.toJSON(), {
-      cost: 120,
       And: [
-        { Case: [$.user, 'role', 'admin'], cost: 60 },
+        { Case: [$.user, 'role', 'admin'] },
         {
-          cost: 60,
           Or: [
-            { Case: [$.doc, 'status', 'draft'], cost: 60 },
-            { Case: [$.doc, 'reviewer', $.user], cost: 20 },
+            { Case: [$.doc, 'status', 'draft'] },
+            { Case: [$.doc, 'reviewer', $.user] },
           ],
         },
       ],
@@ -1184,8 +1138,6 @@ export const testAnalyzer = {
           },
         },
       })
-
-      console.log(rule)
     }, /circular dependency/)
   },
   'errors on cycles even with initial output': async (assert) => {
@@ -1235,5 +1187,251 @@ export const testAnalyzer = {
     })
 
     assert.ok(rule, 'Rule should analyze successfully')
+  },
+
+  'plans rule when inputs are bound': async (assert) => {
+    const rule = Analyzer.analyze({
+      Rule: {
+        match: { x: $.x, y: $.y },
+        rule: {
+          case: { x: $.x, y: $.y },
+          when: [
+            { Match: [[$.x, 1], '+', $.y] }, // Needs $.x to produce $.y
+          ],
+        },
+      },
+    })
+
+    const plan = Analyzer.plan(rule, {
+      bindings: new Set([Var.id($.x)]), // $.x bound
+    })
+
+    assert.ok(!plan.error, 'Should plan successfully when inputs are bound')
+  },
+  'fails to plan rule when inputs missing': async (assert) => {
+    const rule = Analyzer.analyze({
+      Rule: {
+        match: { x: $.x, y: $.y },
+        rule: {
+          case: { x: $.x, y: $.y },
+          when: [
+            { Match: [[$.x, 1], '+', $.y] }, // Needs $.x to produce $.y
+          ],
+        },
+      },
+    })
+
+    const plan = Analyzer.plan(rule, {
+      bindings: new Set(), // No bindings
+    })
+
+    assert.ok(plan.error, 'Should fail when required inputs not bound')
+  },
+
+  'inflates rule cost based on recursion': async (assert) => {
+    const recursive = Analyzer.analyze({
+      Rule: {
+        match: { x: $.x, y: $.y },
+        rule: {
+          case: { x: $.x, y: $.y },
+          when: [
+            { Match: [[$.x, 1], '+', $.y] },
+            {
+              Recur: {
+                match: { x: $.next, y: $.y },
+                where: [{ Match: [[$.x, 1], '+', $.next] }],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const nonRecursive = Analyzer.analyze({
+      Rule: {
+        match: { x: $.x, y: $.y },
+        rule: {
+          case: { x: $.x, y: $.y },
+          when: [{ Match: [[$.x, 1], '+', $.y] }],
+        },
+      },
+    })
+
+    const recursivePlan = Analyzer.plan(recursive, {
+      bindings: new Set([Var.id($.x)]),
+    })
+    const simplePlan = Analyzer.plan(nonRecursive, {
+      bindings: new Set([Var.id($.x)]),
+    })
+
+    if (recursivePlan.error) {
+      return assert.fail(recursivePlan.error)
+    }
+
+    if (simplePlan.error) {
+      return assert.fail(simplePlan.error)
+    }
+
+    assert.ok(
+      recursivePlan.cost > simplePlan.cost,
+      'Recursive rule should have higher cost'
+    )
+  },
+  'considers mapping in cost calculation': async (assert) => {
+    const rule = Analyzer.analyze({
+      Rule: {
+        match: { x: $.input, y: $.output }, // Different variable names in match
+        rule: {
+          case: { x: $.x, y: $.y },
+          when: [{ Match: [[$.x, 1], '+', $.y] }],
+        },
+      },
+    })
+
+    const plan = Analyzer.plan(rule, {
+      bindings: new Set([Var.id($.input)]), // Bound in outer scope
+    })
+
+    assert.ok(!plan.error, 'Should plan with mapped variables')
+  },
+
+  'plans rule with no body': async (assert) => {
+    const rule = Analyzer.analyze({
+      Rule: {
+        match: { as: $.x },
+        rule: {
+          case: { this: $, as: $ }, // No when clause - just unifies variables
+        },
+      },
+    })
+
+    const plan = Analyzer.plan(rule, {
+      bindings: new Set([Var.id($.x)]),
+    })
+
+    assert.ok(
+      (plan.cost ?? Infinity) < 1,
+      'Empty rule should have very low cost as it just unifies variables'
+    )
+  },
+  'compares Between rule cost to scan': async (assert) => {
+    const between = Analyzer.analyze({
+      Rule: {
+        match: { value: $.value, from: $.from, to: $.to },
+        rule: {
+          case: { value: $.value, from: $.from, to: $.to },
+          when: {
+            deduce: {
+              And: [
+                { Match: [[$.from, $.to], '<'] },
+                { Match: [$.from, '==', $.value] },
+              ],
+            },
+            induce: {
+              Recur: {
+                match: { from: $.next, to: $.to, value: $.value },
+                where: [
+                  { Match: [[$.from, 1], '+', $.next] },
+                  { Match: [[$.next, $.to], '<'] },
+                ],
+              },
+            },
+          },
+        },
+      },
+    })
+
+    const scan = Analyzer.analyze({
+      Case: [$.entity, 'type', 'document'],
+    })
+
+    const betweenPlan = Analyzer.plan(between, {
+      bindings: new Set([Var.id($.from), Var.id($.to)]),
+    })
+
+    const scanPlan = Analyzer.plan(scan)
+
+    assert.ok(!betweenPlan.error, 'Between rule should plan successfully')
+
+    if (scanPlan.error) {
+      return assert.fail(scanPlan.error)
+    }
+    if (betweenPlan.error) {
+      return assert.fail(betweenPlan.error)
+    }
+
+    assert.ok(
+      betweenPlan.cost < scanPlan.cost,
+      'Between rule using only formula operations should be cheaper than a full scan'
+    )
+  },
+
+  'estimates costs correctly for Case patterns': async (assert) => {
+    // Helper to create a test case
+    /**
+     *
+     * @param {API.Pattern} pattern
+     * @param {*} bindings
+     */
+    const testCost = (pattern, bindings = new Set()) =>
+      /** @type {number} */ (
+        Analyzer.plan({ Case: pattern }, { bindings }).cost
+      )
+
+    // Test EAV index cases
+    const entityId = Link.of('test-entity')
+    assert.ok(
+      testCost([entityId, 'type', $.value]) <
+        testCost([$.entity, 'type', $.value]),
+      'Known entity should be cheaper than unknown'
+    )
+
+    // Test attribute selectivity
+    assert.ok(
+      testCost([$.entity, 'type', $.value]) <
+        testCost([$.entity, $.attribute, $.value]),
+      'Known attribute should be cheaper than unknown'
+    )
+
+    // Test value types
+    assert.ok(
+      testCost([$.entity, $.attribute, entityId]) <
+        testCost([$.entity, $.attribute, 'some-string']),
+      'Entity value should be more selective than string'
+    )
+
+    assert.ok(
+      testCost([$.entity, $.attribute, 'string']) <
+        testCost([$.entity, $.attribute, true]),
+      'String should be more selective than boolean'
+    )
+
+    // Test index usage
+    assert.ok(
+      testCost([entityId, 'type', $.value]) <
+        testCost([entityId, $.attribute, $.value]),
+      'EAV index should be cheaper than scanning entity'
+    )
+
+    assert.ok(
+      testCost([$.entity, 'type', entityId]) <
+        testCost([$.entity, $.attribute, entityId]),
+      'VAE index should be cheaper than scanning value'
+    )
+
+    // Test bound variables
+    const boundEntity = new Set([Var.id($.entity)])
+    assert.ok(
+      testCost([entityId, 'type', $.value]) ==
+        testCost([$.entity, 'type', $.value], boundEntity),
+      'Known entity should cost same as bound entity variable'
+    )
+
+    const boundValue = new Set([Var.id($.value)])
+    assert.ok(
+      testCost([$.entity, 'type', entityId]) <
+        testCost([$.entity, 'type', $.value], boundValue),
+      'Known entity value should be cheaper than bound value variable'
+    )
   },
 }
