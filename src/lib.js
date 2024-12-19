@@ -381,7 +381,7 @@ const iterateFacts = (db, [entity, attribute, value]) =>
  * @param {API.Pattern} pattern
  * @param {API.Bindings} bindings
  */
-const matchFact = function* (fact, pattern, bindings) {
+export const matchFact = function* (fact, pattern, bindings) {
   const result = matchPattern(pattern, fact, bindings)
   if (result.ok) {
     yield result.ok
@@ -395,7 +395,7 @@ const matchFact = function* (fact, pattern, bindings) {
  * @param {API.Bindings} bindings
  * @returns {API.Result<API.Bindings, Error>}
  */
-const matchPattern = (pattern, [entity, attribute, value], bindings) => {
+export const matchPattern = (pattern, [entity, attribute, value], bindings) => {
   let result = Term.match(pattern[ENTITY], entity, bindings)
   result =
     result.error ? result : Term.match(pattern[ATTRIBUTE], attribute, result.ok)

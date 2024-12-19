@@ -43,7 +43,23 @@ class Scope {
   ) {
     const scope = /** @type {API.Scope} */ (
       new Proxy(
-        /** @type {any} */ (Object.assign(function () {}, { vars })),
+        /** @type {any} */ (
+          Object.assign(function () {}, {
+            vars,
+            toString() {
+              return '?'
+            },
+            [Symbol.toPrimitive]() {
+              return '?'
+            },
+            get [Symbol.toStringTag]() {
+              return '?'
+            },
+            [Symbol.for('nodejs.util.inspect.custom')]() {
+              return '?'
+            },
+          })
+        ),
         Scope
       )
     )
@@ -52,10 +68,14 @@ class Scope {
   }
 
   /**
-   * @param {{vars: Map<string|symbol, API.Variable<any>>}} scope
+   * @param {{vars: Map<string|symbol, API.Variable<any>>, toString: () => string}} scope
    * @param {string|symbol} key
    */
-  static get({ vars }, key) {
+  static get({ vars, ...target }, key) {
+    if (key in target) {
+      // @ts-expect-error
+      return target[key]
+    }
     const variable = vars.get(key)
     if (variable) {
       return variable

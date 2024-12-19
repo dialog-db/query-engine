@@ -77,5 +77,4 @@ export const of = (value) => {
  * @param {API.Link} self
  * @param {API.Link} other
  */
-export const compare = (self, other) =>
-  self.toString().localeCompare(other.toString())
+export const compare = (self, other) => Bytes.compare(self['/'], other['/'])

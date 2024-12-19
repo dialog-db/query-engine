@@ -2,6 +2,7 @@ import * as API from './api.js'
 import * as Link from './link.js'
 import * as Bytes from './bytes.js'
 import * as Entity from './entity.js'
+import * as Type from './type.js'
 
 export { Link, Bytes }
 
@@ -103,10 +104,114 @@ export const toString = (self) => {
 
 /**
  * @param {API.Constant} self
- * @param {API.Constant} other
  */
-export const compare = (self, other) =>
-  toString(self).localeCompare(toString(other))
+export const toDebugString = (self) => {
+  if (self === null) {
+    return 'null'
+  } else if (self instanceof Uint8Array) {
+    return Bytes.toString(self)
+  } else if (Link.is(self)) {
+    return `${self}`
+  } else {
+    return JSON.stringify(self)
+  }
+}
+
+/**
+ * @param {API.Constant} value
+ */
+const toTypeOrder = (value) => {
+  switch (typeof value) {
+    case 'boolean':
+      return BOOLEAN
+    case 'number':
+      return (
+        Number.isInteger(value) ? INT32
+        : Number.isFinite(value) ? FLOAT32
+        : INT64
+      )
+    case 'bigint':
+      return INT64
+    case 'string':
+      return STRING
+    default:
+      if (value === null) {
+        return NULL
+      } else if (value instanceof Uint8Array) {
+        return BYTES
+      } else if (Entity.is(value)) {
+        return REFERENCE
+      } else {
+        return RECORD
+      }
+  }
+}
+
+const NULL = 0
+const BOOLEAN = 1
+const INT32 = 2
+const INT64 = 3
+const FLOAT32 = 4
+const STRING = 5
+const BYTES = 6
+const RECORD = 7
+const REFERENCE = 9
+
+/**
+ * @param {API.Constant} self
+ * @param {API.Constant} to
+ * @returns {0|-1|1}
+ */
+export const compare = (self, to) => {
+  // If we have a same value there is no point in trying to compare
+  if (self === to) {
+    return 0
+  }
+
+  const selfType = toTypeOrder(self)
+  const toType = toTypeOrder(to)
+  if (selfType < toType) {
+    return -1
+  } else if (selfType > toType) {
+    return 1
+  }
+
+  // Doing this so that TS will not complain about them possibly being null
+  // if the both were first if would have returned already. If one of them
+  // was than type comparison would have returned already.
+  self = /** @type {API.Constant&{}} */ (self)
+  to = /** @type {API.Constant&{}} */ (to)
+
+  // If we got this far we have constants of the same type that are not
+  // equal.
+  switch (selfType) {
+    // If boolean `true` is greater than `false`
+    case BOOLEAN:
+      return self === true ? -1 : 1
+    case INT32:
+    case INT64:
+    case FLOAT32:
+      return to ? -1 : 1
+    case STRING:
+      return /** @type {-1|0|1} */ (
+        /** @type {string} */ (self).localeCompare(/** @type {string} */ (to))
+      )
+    case BYTES:
+      return Bytes.compare(
+        /** @type {Uint8Array} */ (self),
+        /** @type {Uint8Array} */ (to)
+      )
+    case RECORD:
+      return Link.compare(Link.of(self), Link.of(to))
+    case REFERENCE:
+      return Link.compare(
+        /** @type {API.Entity} */ (self),
+        /** @type {API.Entity} */ (to)
+      )
+    default:
+      return 0
+  }
+}
 
 /**
  * @param {API.Constant} actual

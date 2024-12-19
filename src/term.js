@@ -3,8 +3,6 @@ import * as Variable from './variable.js'
 import * as Constant from './constant.js'
 import * as Bindings from './bindings.js'
 
-const { equal } = Constant
-
 /**
  * @param {unknown} term
  * @returns {term is API.Term}
@@ -43,14 +41,12 @@ export const match = (term, value, bindings) =>
   // We have a special `_` variable that matches anything. Unlike all other
   // variables it is not unified across all the relations which is why we treat
   // it differently and do add no bindings for it.
-  isBlank(term)
-    ? { ok: bindings }
-    : // All other variables get unified which is why we attempt to match them
-      // against the data in the current state.
-      Variable.is(term)
-      ? matchVariable(term, value, bindings)
-      : // If term is a constant we simply ensure that it matches the data.
-        Constant.unify(term, value, bindings)
+  isBlank(term) ? { ok: bindings }
+    // All other variables get unified which is why we attempt to match them
+    // against the data in the current state.
+  : Variable.is(term) ? matchVariable(term, value, bindings)
+    // If term is a constant we simply ensure that it matches the data.
+  : Constant.unify(term, value, bindings)
 
 /**
  *
@@ -176,4 +172,22 @@ const amend = (variable, term, bindings) => {
 const isDependent = (term, variable, frame) => {
   // We'd need to implement this at some point.
   return false
+}
+
+/**
+ * @param {API.Term} term
+ * @param {API.Term} to
+ * @returns {0|1|-1}
+ */
+export const compare = (term, to) => {
+  // If both are variables we compare them by variable comparison otherwise
+  // non variable is greater.
+  if (Variable.is(term)) {
+    return Variable.is(to) ? Variable.compare(term, to) : -1
+  }
+  // If term is a constant and `to` is a variable return 1 as we consider
+  // constant greater than variable, otherwise we compare by constants.
+  else {
+    return Variable.is(to) ? 1 : Constant.compare(term, to)
+  }
 }

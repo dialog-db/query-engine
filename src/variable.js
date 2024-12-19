@@ -174,3 +174,16 @@ export { _ }
  * @returns {boolean}
  */
 export const isBlank = (variable) => id(variable) === 0
+
+/**
+ * @param {API.Variable} variable
+ * @param {API.Variable} to
+ * @returns {-1|0|1}
+ */
+export const compare = ({ ['?']: { id: left } }, { ['?']: { id: right } }) => {
+  return (
+    left < right ? -1
+    : left > right ? 1
+    : 0
+  )
+}

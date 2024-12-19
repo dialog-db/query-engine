@@ -166,17 +166,20 @@ export type Constant =
  * Supported primitive types. Definition utilizes `Phantom` type to describe
  * the type for compile type inference and `Variant` type to describe it for
  * the runtime inference.
+ *
+ * Note we denote lexical order between types via `order` field. This is used
+ * when comparing data across types.
  */
 export type Type<T extends Constant = Constant> = Phantom<T> &
   Variant<{
-    Boolean: Unit
-    Int32: Unit
-    Int64: Unit
-    Float32: Unit
-    String: Unit
-    Bytes: Unit
-    Link: Unit
-    Null: Unit
+    Null: { order: 0 }
+    Boolean: { order: 1 }
+    Int32: { order: 2 }
+    Int64: { order: 3 }
+    Float32: { order: 4 }
+    String: { order: 5 }
+    Bytes: { order: 6 }
+    Link: { order: 9 }
   }>
 
 // /**
@@ -473,23 +476,79 @@ export type Conclusion = Row<Variable> & {
   this?: Variable
 }
 
-export interface Rule<Match extends Conclusion = Conclusion> {
-  /**
-   * Pattern to match against.
-   */
-  match: Match
+export type Rule<Match extends Conclusion = Conclusion> =
+  | DeductiveRule<Match>
+  | InductiveRule<Match>
 
-  /**
-   * Disjuncts making up the rule body.
-   */
+export type When =
+  // Has or semantics
+  | Disjuncts
+  // Has and semantics
+  | Conjuncts
+
+export type Constraint = Variant<{
+  Select: Pattern
+  Where: RuleApplication
+  Match: Formula
+}>
+
+export type Operation = Variant<{
+  Select: Pattern
+  Where: RuleApplication
+  Match: Formula
+  Not: Constraint
+}>
+
+export type Operation2 = FactSelection | RuleApplication | FormulaApplication
+
+export interface FactSelection {
+  select: Pattern
+  rule?: undefined
+}
+
+export interface FormulaApplication {
+  compute: string
+  from: Pattern
+}
+
+export type InferFormulaApplication<
+  Operator extends string,
+  Formula extends (input: In) => Iterable<Out>,
+  In extends Operand = Parameters<Formula>[0],
+  Out extends Operand = InferYield<ReturnType<Formula>>,
+> = {
+  compute: Operator
+  from: InferOperand<In>
+  to?: InferOperand<Out>
+}
+
+export interface DeductiveRule<Match extends Conclusion = Conclusion> {
+  repeat?: null
+  match: Match
   when?: When
 }
 
-export type When =
-  // Can be defined as a named set of disjunctions
-  | Record<string, Premise>
-  // Or as anonymous set of disjunctions
-  | Premise[]
+export interface InductiveRule<
+  Match extends Conclusion = Conclusion,
+  Repeat extends Match = Match,
+> {
+  match: Match
+  when: Conjuncts
+  repeat: Repeat
+  while: When
+}
+
+/**
+ * Conjuncts are a set of {@link Operation}s that must be evaluated sequentially
+ * in an optimal order determined by interdependence of the operations.
+ */
+export type Conjuncts = readonly [Operation, ...Operation[]]
+
+/**
+ * Disjuncts are a named set of {@link Conclusions}s that can be
+ * evaluated in parallel.
+ */
+export interface Disjuncts extends Record<string, Conjuncts> {}
 
 // Premise is an extension of the {@link Clause} with additional variant for
 // the recursive rule application.
@@ -515,17 +574,16 @@ export type Premise = Variant<{
 
 export interface RuleRecursion<Case extends Conclusion = Conclusion> {
   match: RuleBindings<Case>
-  // Clause that defining condition for the recursion
-  where: Clause[]
+  when: Conjuncts
 }
 
 export type RuleBindings<Case extends Conclusion = Conclusion> = {
   [Key in keyof Case]: Term<Constant>
 }
 
-export interface RuleApplication<Case extends Conclusion = Conclusion> {
-  match: RuleBindings<Case>
-  rule: Rule<Case>
+export interface RuleApplication<Match extends Conclusion = Conclusion> {
+  match: RuleBindings<Match>
+  rule: Rule<Match>
 }
 
 export type InferRuleMatch<Case extends Conclusion> = {
@@ -629,12 +687,8 @@ export interface Unplannable extends Error {
 }
 
 export interface EvaluationPlan {
-  error?: undefined
-
   cost: number
   evaluate(context: EvaluationContext): Task<Bindings[], EvaluationError>
-
-  toJSON(): {}
 }
 
 export type Plan = Unplannable | EvaluationPlan

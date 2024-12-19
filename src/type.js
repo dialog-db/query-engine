@@ -73,11 +73,11 @@ export const infer = (value) => {
     case 'bigint':
       return Int64
     case 'number':
-      return Number.isInteger(value)
-        ? Int32
-        : Number.isFinite(value)
-          ? Float32
-          : unreachable(`Number ${value} can not be inferred`)
+      return (
+        Number.isInteger(value) ? Int32
+        : Number.isFinite(value) ? Float32
+        : unreachable(`Number ${value} can not be inferred`)
+      )
     default: {
       if (value instanceof Uint8Array) {
         return Bytes
@@ -175,11 +175,24 @@ export const unreachable = (message) => {
 }
 
 export const Unit = /** @type {API.Unit} */ Object.freeze({})
-export const Boolean = /** @type {API.Type<boolean>} */ ({ Boolean: Unit })
-export const Int32 = /** @type {API.Type<API.Int32>} */ ({ Int32: Unit })
-export const Float32 = /** @type {API.Type<API.Float32>} */ ({ Float32: Unit })
-export const Int64 = /** @type {API.Type<API.Int64>} */ ({ Int64: Unit })
-export const String = /** @type {API.Type<string>} */ ({ String: Unit })
-export const Bytes = /** @type {API.Type<API.Bytes>} */ ({ Bytes: Unit })
-export const Link = /** @type {API.Type<API.Link>} */ ({ Link: Unit })
-export const Null = /** @type {API.Type<API.Null>} */ ({ Null: Unit })
+export const Null = /** @type {API.Type<API.Null>} */ ({ Null: { order: 0 } })
+export const Boolean = /** @type {API.Type<boolean>} */ ({
+  Boolean: { order: 1 },
+})
+export const Int32 = /** @type {API.Type<API.Int32>} */ ({
+  Int32: { order: 2 },
+})
+export const Int64 = /** @type {API.Type<API.Int64>} */ ({
+  Int64: { order: 3 },
+})
+
+export const Float32 = /** @type {API.Type<API.Float32>} */ ({
+  Float32: { order: 4 },
+})
+
+export const String = /** @type {API.Type<string>} */ ({ String: { order: 5 } })
+
+export const Bytes = /** @type {API.Type<API.Bytes>} */ ({
+  Bytes: { order: 6 },
+})
+export const Link = /** @type {API.Type<API.Link>} */ ({ Link: { order: 9 } })
