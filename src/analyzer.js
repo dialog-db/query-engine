@@ -3,81 +3,102 @@ import * as Variable from './variable.js'
 import * as Terms from './terms.js'
 import * as Bindings from './bindings.js'
 import * as Term from './term.js'
-import { Constant, matchFact } from './lib.js'
+import { Constant, Link, matchFact, Var, $ } from './lib.js'
 import * as Formula from './formula.js'
+import * as Task from './task.js'
+import * as Selector from './selector.js'
+
+export { $ }
 
 /**
- * @param {API.Pattern} pattern
+ * @param {API.Select} selector
  */
-export const select = (pattern) => Select.from(pattern)
+export const select = (selector) =>
+  Select.new(Circuit.new(), { match: selector })
 
 /**
  * @template {API.Conclusion} Match
- * @param {API.DeductiveRule<Match>} source
+ * @param {API.Deduction<Match>} source
  */
-export const rule = (source) => DeductiveRule.from(source)
+export const rule = (source) => DeductiveRule.new(Circuit.new(), source)
 
 /**
  * @template {API.Conclusion} Match
  * @template {Match} Repeat
- * @param {API.InductiveRule<Match, Repeat>} source
+ * @param {API.Induction<Match, Repeat>} source
  */
-export const loop = (source) => InductiveRule.from(source)
+export const loop = (source) => InductiveRule.new(Circuit.new(), source)
 
 /**
  * @template {API.Conclusion} Match
  * @param {API.RuleApplication<Match>} application
  */
 export const plan = (application) => {
-  const operation = RuleApplication.from(application)
+  const operation = RuleApplication.new(Circuit.new(), application)
   return operation.plan(new Set())
 }
 
 /**
- * @param {API.Operation} source
+ * @typedef {object} Scope
+ * @property {Map<API.Variable, string>} provided
+ * @property {Map<API.Variable, Select[]>} dependencies
  */
-export const from = (source) => {
-  if (source.Select) {
-    return Select.from(source.Select)
-  } else if (source.Match) {
-    return FormulaApplication.from(source.Match)
-  } else if (source.Where) {
-    return RuleApplication.from(source.Where)
-  } else if (source.Not) {
-    return Not.from(source.Not)
-  } else {
-    throw new SyntaxError(`Unsupported operation ${Object.keys(source)[0]}`)
-  }
-}
 
 class Select {
   /**
-   * @param {API.Pattern} pattern
+   * @param {Circuit} circuit
+   * @param {API.MatchFact} source
    */
-  static from(pattern) {
-    const [entity, attribute, value] = pattern
+  static new(circuit, { match }) {
+    const { of, the, is } = match
     const cells = new Map()
+    const select = new this(circuit, match, cells)
 
-    if (Variable.is(entity)) {
-      cells.set(entity, 500)
-    }
-    if (Variable.is(attribute)) {
-      cells.set(attribute, 200)
-    }
-    if (Variable.is(value)) {
-      cells.set(value, 300)
+    // Entity is variable
+    if (Variable.is(of)) {
+      cells.set(of, 500)
+      circuit.open(of, select)
     }
 
-    return new this(pattern, cells)
+    // Attribute is a variable
+    if (Variable.is(the)) {
+      cells.set(the, 200)
+      circuit.open(the, select)
+    }
+
+    // Value is a variable
+    if (Variable.is(is)) {
+      cells.set(is, 300)
+      circuit.open(is, select)
+    }
+
+    return select
   }
   /**
-   * @param {API.Pattern} pattern
+   * @param {Circuit} circuit
+   * @param {API.Select} selector
    * @param {Map<API.Variable, number>} cells
    */
-  constructor(pattern, cells) {
+  constructor(circuit, selector, cells) {
+    this.circuit = circuit
     this.cells = cells
-    this.pattern = pattern
+    this.selector = selector
   }
+
+  *tokens() {
+    const { the, of, is } = this.selector
+    if (the != null) {
+      yield the
+    }
+    if (of != null) {
+      yield of
+    }
+
+    if (is != null) {
+      yield is
+    }
+  }
+
   /**
    * Base execution cost of the select operation.
    */
@@ -95,19 +116,49 @@ class Select {
    */
   *evaluate({ source, selection }) {
     const matches = []
+    const { selector } = this
     for (const bindings of selection) {
-      const pattern = Bindings.resolve(bindings, this.pattern)
-      const [entity, attribute, value] = pattern
+      const the =
+        selector.the ?
+          Bindings.get(bindings, selector.the) ?? selector.the
+        : undefined
+
+      const of =
+        selector.of ?
+          Bindings.get(bindings, selector.of) ?? selector.of
+        : undefined
+
+      const is =
+        selector.is ?
+          Bindings.get(bindings, selector.is) ?? selector.is
+        : undefined
+
       // Note: We expect that there will be LRUCache wrapping the db
       // so calling scan over and over again will not actually cause new scans.
       const facts = yield* source.scan({
-        entity: Variable.is(entity) ? undefined : entity,
-        attribute: Variable.is(attribute) ? undefined : attribute,
-        value: Variable.is(value) ? undefined : value,
+        entity: Variable.is(of) ? undefined : of,
+        attribute: Variable.is(the) ? undefined : the,
+        value: Variable.is(is) ? undefined : is,
       })
 
-      for (const fact of facts) {
-        matches.push(...matchFact(fact, pattern, bindings))
+      for (const [entity, attribute, value] of facts) {
+        /** @type {API.Result<API.Bindings, Error>} */
+        let result = { ok: bindings }
+        if (result.ok && of !== undefined) {
+          result = Term.match(of, entity, bindings)
+        }
+
+        if (result.ok && the !== undefined) {
+          result = Term.match(the, attribute, result.ok)
+        }
+
+        if (result.ok && is !== undefined) {
+          result = Term.match(is, value, result.ok)
+        }
+
+        if (result.ok) {
+          matches.push(result.ok)
+        }
       }
     }
 
@@ -116,40 +167,116 @@ class Select {
 
   toJSON() {
     return {
-      Select: this.pattern,
+      match: this.selector,
     }
+  }
+
+  toDebugString() {
+    const { of, the, is } = this.selector
+    const parts = []
+    if (the !== undefined) {
+      parts.push(`the: ${Term.toDebugString(the)}`)
+    }
+
+    if (of !== undefined) {
+      parts.push(`of: ${Term.toDebugString(of)}`)
+    }
+
+    if (is !== undefined) {
+      parts.push(`is: ${Term.toDebugString(is)}`)
+    }
+
+    return `{ match: {${parts.join(' ')}} }`
+  }
+
+  refer() {
+    const { circuit, selector } = this
+    const { the, of, is } = selector
+    const match = {}
+    if (the !== undefined) {
+      match.the = circuit.resolve(the)
+    }
+
+    if (of !== undefined) {
+      match.of = circuit.resolve(of)
+    }
+
+    if (is !== undefined) {
+      match.is = circuit.resolve(is)
+    }
+
+    return Link.of({
+      match: match,
+      fact: {},
+    })
+  }
+  debug() {
+    const { circuit, selector } = this
+    const { the, of, is } = selector
+    const parts = []
+    if (the !== undefined) {
+      parts.push(`the: ${circuit.resolve(the)}`)
+    }
+
+    if (of !== undefined) {
+      parts.push(`of: ${circuit.resolve(of)}`)
+    }
+
+    if (is !== undefined) {
+      parts.push(`is: ${circuit.resolve(is)}`)
+    }
+
+    return `{ match: {${parts.join(' ')}} }`
   }
 
   /**
    * @param {Select} other
    */
-  compare({ pattern: [toEntity, toAttribute, toValue] }) {
-    const [entity, attribute, value] = this.pattern
-    const termOrder = Term.compare(entity, toEntity)
-    if (termOrder !== 0) {
-      return termOrder
+  compare(other) {
+    const { the, of, is } = this.selector
+    const { the: toThe, of: toOf, is: toIs } = other.selector
+
+    let order = Term.compare(the ?? Variable._, toThe ?? Variable._)
+    if (order !== 0) {
+      return order
     }
 
-    const attributeOrder = Term.compare(attribute, toAttribute)
-    if (attributeOrder !== 0) {
-      return attributeOrder
+    order = Term.compare(of ?? Variable._, toOf ?? Variable._)
+    if (order !== 0) {
+      return order
     }
 
-    return Term.compare(value, toValue)
+    return Term.compare(is ?? Variable._, toIs ?? Variable._)
   }
 }
 
 class FormulaApplication {
   /**
-   * @param {API.Formula} formula
+   * @param {Circuit} circuit
+   * @param {API.SystemOperator} source
    */
-  static from(formula) {
-    const [from, , to] = formula
+  static new(circuit, source) {
+    const { match } = source
+
+    const { of, is, ...rest } =
+      /** @type {{is?: API.Term, of?: API.Term[]|API.Term}} */ (match)
+
+    const from =
+      Object.keys(rest).length > 0 ?
+        /** @type {Record<string, API.Term>} */ ({ ...rest, of })
+      : /** @type {API.Term} */ (of)
+
+    /** @type {Record<string, API.Term>} */
+    const to = is ? { is } : {}
+
     const cells = new Map()
+    const application = new this(circuit, source, cells, from, to)
+
     for (const variable of Terms.variables(from)) {
       // Cost of omitting an input variable is Infinity meaning that we can not
       // execute the operation without binding the variable.
       cells.set(variable, Infinity)
+      circuit.open(variable, application)
     }
 
     for (const variable of Terms.variables(to)) {
@@ -162,17 +289,55 @@ class FormulaApplication {
       // Cost of omitting an output variable is 0 meaning that we can execute
       // the operation without binding the variable.
       cells.set(variable, 0)
+
+      circuit.open(variable, application)
     }
 
-    return new this(formula, cells)
+    return application
+  }
+
+  /**
+   * @returns {Iterable<API.Term>}
+   */
+  *tokens() {
+    yield 'match'
+
+    if (Term.is(this.from)) {
+      yield 'of'
+      yield this.from
+    } else {
+      for (const [key, term] of Object.entries(this.from)) {
+        yield key
+        yield term
+      }
+    }
+
+    if (Term.is(this.to)) {
+      yield 'is'
+      yield this.to
+    } else {
+      for (const [key, term] of Object.entries(this.to)) {
+        yield key
+        yield term
+      }
+    }
+
+    yield 'operator'
+    yield this.source.operator
   }
   /**
-   * @param {API.Formula} formula
+   * @param {Circuit} circuit
+   * @param {API.SystemOperator} source
    * @param {Map<API.Variable, number>} cells
+   * @param {Record<string, API.Term>|API.Term} from
+   * @param {Record<string, API.Term>} to
    */
-  constructor(formula, cells) {
+  constructor(circuit, source, cells, from, to) {
+    this.circuit = circuit
     this.cells = cells
-    this.formula = formula
+    this.source = source
+    this.from = from
+    this.to = to
   }
   /**
    * Base execution cost of the formula application operation.
@@ -188,59 +353,200 @@ class FormulaApplication {
   /**
    * @param {API.EvaluationContext} context
    */
-  evaluate(context) {
-    return Formula.evaluate(context.source, this.formula, context.selection)
+  *evaluate(context) {
+    const { from, to, source } = this
+    const operator =
+      /** @type {(input: API.Operand) => Iterable<API.Operand>} */
+      (source.formula ?? Formula.operators[this.source.operator])
+
+    const matches = []
+    next: for (const frame of context.selection) {
+      const input = Formula.resolve(from, frame)
+      for (const output of operator(input)) {
+        // If function returns single output we treat it as { is: output }
+        // because is will be a cell in the formula application.
+        const out = Constant.is(output) ? { is: output } : output
+        const terms = Object.entries(to)
+        if (terms.length === 0) {
+          matches.push(frame)
+        } else {
+          const extension = /** @type {Record<string, API.Constant>} */ (out)
+          let bindings = frame
+          for (const [key, term] of terms) {
+            const match = Term.unify(extension[key], term, frame)
+            if (match.ok) {
+              bindings = match.ok
+            } else {
+              continue next
+            }
+          }
+          matches.push(bindings)
+        }
+      }
+    }
+
+    return matches
   }
 
   toJSON() {
     return {
-      Match: this.formula,
+      match: this.source.match,
+      operator: this.source.operator,
     }
   }
 
   toDebugString() {
-    const [from, formula, to] = this.formula
-    const members = [Terms.toDebugString(from), JSON.stringify(formula)]
-    if (to !== undefined) {
-      members.push(Terms.toDebugString(to))
-    }
+    const { match, operator } = this.source
 
-    return `{ Match: [${members.join(', ')}] }`
+    return `{ match: ${Terms.toDebugString(match)}, operator: "${operator}" }`
   }
 
   /**
    * @param {FormulaApplication} other
    */
-  compare(other) {
-    const [from, formula, to] = this.formula
-    const [vsIn, vsFormula, vsOut] = other.formula
-    const inOrder = Terms.compare(from, vsIn)
-    if (inOrder !== 0) {
-      return inOrder
+  compare({ source: to }) {
+    const { match, operator } = this.source
+    let order = Terms.compare(match, to.match)
+    if (order !== 0) {
+      return order
     }
 
-    const formulaOrder = Constant.compare(formula, vsFormula)
-    if (formulaOrder !== 0) {
-      return formulaOrder
-    }
-
-    if (to === undefined) {
-      return vsOut === undefined ? 0 : -1
-    } else {
-      return vsOut === undefined ? 1 : Terms.compare(to, vsOut)
-    }
+    return Constant.compare(operator, to.operator)
   }
 }
 
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
  */
+class RuleApplication {
+  /**
+   * @template {API.Conclusion} Match
+   * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
+   * @param {API.RuleBindings<Match>} terms
+   */
+  static apply(rule, terms) {
+    const cells = new Map()
+    // Map between rule's variables and application variables
+    const mapping = new Map()
+    const application = new this(terms, rule, mapping, cells)
+
+    for (const [at, inner] of Object.entries(rule.case)) {
+      const term = terms[at]
+      const cost = rule.cells.get(inner) ?? 0
+      // If binding is not provided during application, but it is used as input
+      // inside a rule we raise a reference error because variable is not bound.
+      if (term === undefined && cost >= Infinity) {
+        throw new ReferenceError(
+          `Rule application omits required binding for "${at}"`
+        )
+      }
+
+      // If provided term in the rule application is a variable we create a
+      // mapping between rules inner variable and the term - application
+      // variable.
+      if (Variable.is(term)) {
+        cells.set(term, cost)
+        rule.circuit.open(term, application)
+      }
+
+      if (term !== undefined) {
+        mapping.set(inner, term)
+      }
+    }
+
+    return application
+  }
+  /**
+   * @template {API.Conclusion} [Match=API.Conclusion]
+   * @param {Circuit} circuit
+   * @param {API.RuleApplication<Match>} source
+   * @returns {RuleApplication<Match>}
+   */
+  static new(circuit, source) {
+    // Build the underlying rule first
+    const rule =
+      isInductive(source.rule) ?
+        InductiveRule.new(circuit, source.rule)
+      : DeductiveRule.new(circuit, source.rule)
+
+    return this.apply(rule, source.match)
+  }
+
+  /**
+   * @param {API.RuleBindings<Match>} match
+   * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
+   * @param {Map<API.Variable, API.Variable>} mapping
+   * @param {Map<API.Variable, number>} cells
+   */
+  constructor(match, rule, mapping, cells) {
+    this.match = match
+    this.rule = rule
+    this.mapping = mapping
+    this.cells = cells
+  }
+  get cost() {
+    return this.rule.cost
+  }
+
+  /**
+   * @param {Set<API.Variable>} bindings
+   */
+  plan(bindings = EMPTY_SET) {
+    // Convert outer bindings to rule's internal variables
+    const scope = new Set()
+    for (const [inner, outer] of this.mapping) {
+      if (!Variable.is(outer) || bindings.has(outer)) {
+        scope.add(inner)
+      }
+    }
+
+    return new RuleApplicationPlan(
+      this.match,
+      this.rule.plan(scope),
+      this.mapping
+    )
+  }
+
+  *tokens() {
+    yield 'match'
+    for (const [key, term] of Object.entries(this.match)) {
+      yield `:${key}`
+      yield term
+    }
+  }
+
+  /**
+   * @param {object} input
+   * @param {API.Querier} input.source
+   */
+  query(input) {
+    return this.plan(new Set()).query(input)
+  }
+}
+
+/**
+ * @param {API.Conclusion} match
+ * @returns {Map<API.Variable, string>}
+ */
+const ruleBindings = (match) => {
+  const bindings = new Map()
+  for (const [name, variable] of Object.entries(match)) {
+    if (Variable.is(variable)) {
+      bindings.set(variable, name)
+    }
+  }
+  return bindings
+}
+/**
+ * @template {API.Conclusion} [Match=API.Conclusion]
+ */
 class DeductiveRule {
   /**
+   * @param {Circuit} circuit
    * @template {API.Conclusion} Case
-   * @param {API.DeductiveRule<Case>} source
+   * @param {API.Deduction<Case>} source
    */
-  static from(source) {
+  static new(circuit, source) {
     const disjuncts =
       Array.isArray(source.when) ? { when: source.when } : source.when ?? {}
 
@@ -275,16 +581,18 @@ class DeductiveRule {
       }
     }
 
-    return new this(source.match, cells, total, when)
+    return new this(circuit, source.match, cells, total, when)
   }
 
   /**
+   * @param {Circuit} circuit
    * @param {Match} match - Pattern to match against
    * @param {Map<API.Variable, number>} cells - Cost per variable when not bound
    * @param {number} cost - Base execution cost
    * @param {Record<string, Join>} when - Named deductive branches that must be evaluated
    */
-  constructor(match, cells, cost, when) {
+  constructor(circuit, match, cells, cost, when) {
+    this.circuit = circuit
     this.case = match
     this.cells = cells
     this.cost = cost
@@ -296,7 +604,7 @@ class DeductiveRule {
    * @returns {RuleApplication<Match>}
    */
   match(terms) {
-    return RuleApplication.new(this, terms)
+    return RuleApplication.apply(this, terms)
   }
 
   /**
@@ -329,6 +637,14 @@ class DeductiveRule {
 
     return new DeductivePlan(this.case, when, cost)
   }
+
+  /**
+   * @param {object} input
+   * @param {API.Querier} input.source
+   */
+  query(input) {
+    return this.plan(new Set()).query(input)
+  }
 }
 
 /**
@@ -338,10 +654,11 @@ class DeductiveRule {
 class InductiveRule {
   /**
    * @template {API.Conclusion} Match
+   * @param {Circuit} circuit
    * @template {Match} [Repeat=Match]
-   * @param {API.InductiveRule<Match, Repeat>} source
+   * @param {API.Induction<Match, Repeat>} source
    */
-  static from(source) {
+  static new(circuit, source) {
     const bindings = ruleBindings(source.match)
 
     // If `source.when` is not an array we throw an exception as it must be
@@ -419,10 +736,19 @@ class InductiveRule {
       }
     }
 
-    return new this(source.match, when, source.repeat, induction, cells, total)
+    return new this(
+      circuit,
+      source.match,
+      when,
+      source.repeat,
+      induction,
+      cells,
+      total
+    )
   }
 
   /**
+   * @param {Circuit} circuit
    * @param {Match} match - Initial pattern to match
    * @param {Join} when - Initial conditions that must be met
    * @param {Repeat} repeat - Pattern to match in recursive iterations
@@ -430,7 +756,8 @@ class InductiveRule {
    * @param {Map<API.Variable, number>} cells - Cost per variable when not bound
    * @param {number} cost - Base cost including initial conditions and exponentially weighted recursive costs.
    */
-  constructor(match, when, repeat, loop, cells, cost) {
+  constructor(circuit, match, when, repeat, loop, cells, cost) {
+    this.circuit = circuit
     this.case = match
     this.when = when
     this.repeat = repeat
@@ -444,7 +771,7 @@ class InductiveRule {
    * @returns {RuleApplication<Match>}
    */
   match(terms) {
-    return RuleApplication.new(this, terms)
+    return RuleApplication.apply(this, terms)
   }
 
   /**
@@ -470,116 +797,16 @@ const EMPTY_SET = Object.freeze(new Set())
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
  * @param {API.Rule<Match>} rule
- * @returns {rule is API.InductiveRule<Match>}
+ * @returns {rule is API.Induction<Match>}
  */
 const isInductive = (rule) => rule.repeat !== undefined
-/**
- * @template {API.Conclusion} [Match=API.Conclusion]
- */
-class RuleApplication {
-  /**
-   * @template {API.Conclusion} Match
-   * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
-   * @param {API.RuleBindings<Match>} terms
-   */
-  static new(rule, terms) {
-    const cells = new Map()
-    // Map between rule's variables and application variables
-    const mapping = new Map()
-
-    for (const [at, inner] of Object.entries(rule.case)) {
-      const term = terms[at]
-      const cost = rule.cells.get(inner) ?? 0
-      // If binding is not provided during application, but it is used as input
-      // inside a rule we raise a reference error because variable is not bound.
-      if (term === undefined && cost >= Infinity) {
-        throw new ReferenceError(
-          `Rule application omits required binding for "${at}"`
-        )
-      }
-
-      // If provided term in the rule application is a variable we create a
-      // mapping between rules inner variable and the term - application
-      // variable.
-      if (Variable.is(term)) {
-        cells.set(term, cost)
-      }
-      mapping.set(inner, term)
-    }
-
-    return new this(terms, rule, mapping, cells)
-  }
-  /**
-   * @template {API.Conclusion} [Match=API.Conclusion]
-   * @param {API.RuleApplication<Match>} source
-   * @returns {RuleApplication<Match>}
-   */
-  static from(source) {
-    // Build the underlying rule first
-    const rule =
-      isInductive(source.rule) ?
-        InductiveRule.from(source.rule)
-      : DeductiveRule.from(source.rule)
-
-    return this.new(rule, source.match)
-  }
-
-  /**
-   * @param {API.RuleBindings<Match>} match
-   * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
-   * @param {Map<API.Variable, API.Variable>} mapping
-   * @param {Map<API.Variable, number>} cells
-   */
-  constructor(match, rule, mapping, cells) {
-    this.match = match
-    this.rule = rule
-    this.mapping = mapping
-    this.cells = cells
-  }
-  get cost() {
-    return this.rule.cost
-  }
-
-  /**
-   * @param {Set<API.Variable>} bindings
-   */
-  plan(bindings = EMPTY_SET) {
-    // Convert outer bindings to rule's internal variables
-    const scope = new Set()
-    for (const [inner, outer] of this.mapping) {
-      if (!Variable.is(outer) || bindings.has(outer)) {
-        scope.add(inner)
-      }
-    }
-
-    return new RuleApplicationPlan(
-      this.match,
-      this.rule.plan(scope),
-      this.mapping
-    )
-  }
-}
-
-/**
- * @param {API.Conclusion} match
- * @returns {Map<API.Variable, string>}
- */
-const ruleBindings = (match) => {
-  const bindings = new Map()
-  for (const [name, variable] of Object.entries(match)) {
-    if (Variable.is(variable)) {
-      bindings.set(variable, name)
-    }
-  }
-  return bindings
-}
 
 class Join {
   /**
    * @param {object} source
    * @param {Map<API.Variable, string>} source.bindings
    * @param {string|number} source.name
-   * @param {API.Conjuncts} source.conjuncts
+   * @param {API.Every} source.conjuncts
    */
   static from({ name, conjuncts, bindings }) {
     const cells = new Map()
@@ -590,8 +817,10 @@ class Join {
     let outputs = new Set()
     const assertion = []
     const negation = []
+    const circuit = new Circuit(bindings)
 
-    for (const conjunct of conjuncts.map(from)) {
+    for (const source of conjuncts) {
+      const conjunct = circuit.create(source)
       if (conjunct instanceof Not) {
         negation.push(conjunct)
       } else {
@@ -640,6 +869,8 @@ class Join {
       )
     }
 
+    circuit.connect()
+
     return new this(assertion, negation, cells, total, `${name}`)
   }
 
@@ -660,7 +891,7 @@ class Join {
   }
 
   /**
-   * @param {ReturnType<from>[]} assertion
+   * @param {Constraint[]} assertion
    * @param {Not[]} negation
    * @param {Map<API.Variable, number>} cells
    * @param {number} cost
@@ -776,6 +1007,56 @@ class Join {
   }
 }
 
+/**
+ * @typedef {Select|FormulaApplication|RuleApplication} Constraint
+ */
+class Not {
+  /**
+   * @param {Circuit} circuit
+   * @param {API.Constraint} constraint
+   * @returns {Not}
+   */
+  static new(circuit, constraint) {
+    const operation = /** @type {Constraint} */ (
+      Circuit.new().create(constraint)
+    )
+
+    // Not's cost includes underlying operation
+    const cells = new Map()
+    for (const [variable, cost] of operation.cells) {
+      // Not has no output but all the inputs must be bound before it can be
+      // evaluated.
+      if (cost > 0) {
+        cells.set(variable, cost)
+      }
+    }
+
+    return new this(circuit, operation, cells)
+  }
+  /**
+   * @param {Circuit} circuit
+   * @param {Constraint} constraint
+   * @param {Map<API.Variable, number>} cells
+   */
+  constructor(circuit, constraint, cells) {
+    this.circuit = circuit
+    this.constraint = constraint
+    this.cells = cells
+  }
+
+  get cost() {
+    return this.constraint.cost
+  }
+
+  /**
+   * @param {Set<API.Variable>} bindings
+   * @returns {Negate}
+   */
+  plan(bindings) {
+    return new Negate(this.constraint.plan(bindings))
+  }
+}
+
 class JoinPlan {
   /**
    * @param {API.EvaluationPlan[]} assertion - Ordered binding operations
@@ -807,6 +1088,13 @@ class JoinPlan {
 
   toJSON() {
     return [...this.assertion.map(toJSON), ...this.negation.map(toJSON)]
+  }
+
+  debug() {
+    return [
+      ...this.assertion.map(($) => $.debug()),
+      ...this.negation.map(($) => $.debug()),
+    ].join('\n')
   }
 }
 
@@ -847,7 +1135,7 @@ class DisjoinPlan {
  */
 class DeductivePlan extends DisjoinPlan {
   /**
-   * @param {API.RuleBindings<Match>} match
+   * @param {Match} match
    * @param {Record<string, API.EvaluationPlan>} disjuncts
    * @param {number} cost
    */
@@ -866,6 +1154,31 @@ class DeductivePlan extends DisjoinPlan {
       when: when.length === 1 ? when[0][1] : Object.fromEntries(when),
     }
   }
+
+  debug() {
+    const head = `${Object.keys(this.match)}`
+    let body = ['']
+    for (const [name, disjunct] of Object.entries(this.disjuncts)) {
+      body.push(`:${name}\n[${indent(`${disjunct.debug()}]`, ' ')}`)
+    }
+
+    return `(rule (${head})${indent(body.join('\n'))})`
+  }
+
+  /**
+   * @param {object} input
+   * @param {API.Querier} input.source
+   */
+  *query({ source }) {
+    const { match: selector } = this
+
+    const frames = yield* this.evaluate({
+      source,
+      selection: [{}],
+    })
+
+    return Selector.select(selector, frames)
+  }
 }
 
 /**
@@ -879,6 +1192,7 @@ export const toJSON = (source) =>
 /**
  *
  * @param {{}} source
+ * @returns {string}
  */
 export const toDebugString = (source) =>
   // @ts-expect-error
@@ -954,7 +1268,7 @@ class RuleApplicationPlan {
       for (const [inner, outer] of this.mapping) {
         const value = Bindings.get(bindings, outer)
         if (value !== undefined) {
-          const result = Term.unify(inner, inner, scope)
+          const result = Term.unify(inner, value, scope)
           if (result.error) {
             continue next
           } else {
@@ -971,11 +1285,11 @@ class RuleApplicationPlan {
 
       // For each result, create new outer bindings with mapped values
       for (const result of results) {
-        const output = { ...bindings }
+        let output = { ...bindings }
         for (const [inner, outer] of this.mapping) {
           const value = Bindings.get(result, inner)
-          if (value !== undefined) {
-            Bindings.set(output, outer, value)
+          if (Variable.is(outer) && value !== undefined) {
+            output = Bindings.set(output, outer, value)
           }
         }
         matches.push(output)
@@ -987,11 +1301,24 @@ class RuleApplicationPlan {
 
   toJSON() {
     return {
-      Where: {
-        match: this.match,
-        rule: toJSON(this.plan),
-      },
+      match: this.match,
+      rule: toJSON(this.plan),
     }
+  }
+
+  /**
+   * @param {object} input
+   * @param {API.Querier} input.source
+   */
+  *query({ source }) {
+    const { match: selector } = this
+
+    const frames = yield* this.evaluate({
+      source,
+      selection: [{}],
+    })
+
+    return Selector.select(selector, frames)
   }
 }
 /**
@@ -1010,54 +1337,6 @@ const estimate = ({ cells, cost = 0 }, scope) => {
     }
   }
   return total
-}
-
-/**
- * @typedef {Select|FormulaApplication|RuleApplication} Constraint
- */
-class Not {
-  /**
-   * @param {API.Constraint} constraint
-   */
-  static from(constraint) {
-    const operation =
-      constraint.Select ? Select.from(constraint.Select)
-      : constraint.Match ? FormulaApplication.from(constraint.Match)
-      : RuleApplication.from(constraint.Where)
-
-    // Not's cost includes underlying operation
-    const cells = new Map()
-    for (const [variable, cost] of operation.cells) {
-      // Not has no output but all the inputs must be bound before it can be
-      // evaluated.
-      if (cost > 0) {
-        cells.set(variable, cost)
-      }
-    }
-
-    return new this(operation, cells)
-  }
-  /**
-   *
-   * @param {Constraint} constraint
-   * @param {Map<API.Variable, number>} cells
-   */
-  constructor(constraint, cells) {
-    this.constraint = constraint
-    this.cells = cells
-  }
-
-  get cost() {
-    return this.constraint.cost
-  }
-
-  /**
-   * @param {Set<API.Variable>} bindings
-   * @returns {Negate}
-   */
-  plan(bindings) {
-    return new Negate(this.constraint.plan(bindings))
-  }
 }
 
 class Negate {
@@ -1092,7 +1371,7 @@ class Negate {
   }
 
   toJSON() {
-    return { Not: toJSON(this.operand) }
+    return { not: toJSON(this.operand) }
   }
 }
 
@@ -1203,5 +1482,576 @@ function* findUnresolvableCycle(dependencies) {
     if (!hasIndependentVar) {
       yield cycle
     }
+  }
+}
+
+const THIS = '@'
+
+/**
+ * @typedef {object} Connection
+ * @property {() => Iterable<API.Term>} tokens
+ */
+
+class Circuit {
+  static new() {
+    return new this(new Map())
+  }
+  /**
+   * @param {Map<API.Variable, string>} ports
+   */
+  constructor(ports) {
+    /** @type {Map<API.Variable, [Connection, ...Connection[]]>} */
+    this.opened = new Map()
+
+    /** @type {Map<API.Variable, Trace>} */
+    this.ready = new Map()
+    for (const [port, id] of ports) {
+      this.ready.set(port, new Trace().add(id))
+    }
+  }
+
+  /**
+   * @param {API.Variable} port
+   * @param {Connection} connection
+   */
+  open(port, connection) {
+    // Skip if variable is provided in scope
+    if (!this.ready.has(port)) {
+      const connections = this.opened.get(port)
+      if (connections) {
+        connections.push(connection)
+      } else {
+        this.opened.set(port, [connection])
+      }
+    }
+  }
+
+  connect() {
+    const { ready, opened } = this
+    let size = -1
+
+    // Keep resolving until we reach a fixed point and are unable to compile any
+    // more connections
+    while (size !== ready.size) {
+      size = ready.size
+      for (const [port, connections] of opened) {
+        if (!ready.has(port)) {
+          const connection = connect(port, connections, ready)
+
+          // If we managed to compile a connection remove it from the open list
+          // and add it to the ready list.
+          if (connection != null) {
+            opened.delete(port)
+            ready.set(port, connection)
+          }
+        }
+      }
+    }
+
+    if (opened.size > 0) {
+      const reasons = []
+      for (const [port, connections] of opened) {
+        const unresolved = []
+        for (const connection of connections) {
+          unresolved.push(toDebugString(connection))
+        }
+        reasons.push(`${port} with connections: ${unresolved.join('\n  - ')}`)
+      }
+
+      throw new ReferenceError(
+        reasons.length === 1 ?
+          `Unable to resolve ${reasons[0]}`
+        : `Unable to resolve:\n  ${reasons.join('\n')}`
+      )
+    }
+
+    return this
+  }
+
+  /**
+   * @param {API.Conjunct} source
+   */
+  create(source) {
+    if (source.not) {
+      return Not.new(this, source.not)
+    } else if (source.rule) {
+      return RuleApplication.new(this, source)
+    } else if (source.operator) {
+      return FormulaApplication.new(this, source)
+    } else {
+      return Select.new(this, source)
+    }
+  }
+
+  /**
+   *
+   * @param {API.Term} term
+   */
+  resolve(term) {
+    if (Variable.is(term)) {
+      return this.ready.get(term)
+    } else {
+      return term
+    }
+  }
+}
+
+/**
+ * @param {API.Variable} cell
+ * @param {[Connection, ...Connection[]]} connections
+ * @param {Map<API.Variable, Trace>} build
+ */
+const connect = (cell, connections, build) => {
+  /** @type {Trace|null} */
+  let trace = null
+  // For each connection, check if all its dependencies are ready
+  for (const connection of connections) {
+    const candidate = new Trace()
+    for (const token of connection.tokens()) {
+      // If this the variable that we are trying to compile we denote
+      // it with `THIS`.
+      if (cell === token) {
+        candidate.add(THIS)
+      } else if (Variable.is(token)) {
+        // If we already have a resolved id for this cell we use it
+        // otherwise we continue to the next connection.
+        const frame = build.get(token)
+        if (frame !== undefined) {
+          candidate.add(frame)
+        }
+        // If we can do not have a frame for this variable we can't connect
+        // this connection yet, but that means there is a variable that could
+        // not be resolved yet. We will try another connection if some can be
+        // connected they will be shorter traces and that is the one we pick
+        // anyway.
+        else {
+          break
+        }
+      } else {
+        candidate.add(token)
+      }
+    }
+
+    // Choose between the current and the candidate traces based on which is
+    // shorter
+    trace =
+      trace == null || Trace.compare(trace, candidate) > 0 ? candidate : trace
+  }
+
+  return trace
+}
+
+class Trace {
+  /**
+   * @param {number} size
+   */
+  constructor(size = 1) {
+    this.size = size
+    /**
+     * @type {Array<API.Constant>}
+     */
+    this.frames = []
+  }
+  /**
+   * @param {API.Constant|Trace} frame
+   */
+  add(frame) {
+    if (frame instanceof Trace) {
+      this.size += frame.size
+      if (frame.frames.length > 1) {
+        this.frames.push('(', ...frame.frames, ')')
+      } else {
+        this.frames.push(...frame.frames)
+      }
+    } else {
+      this.frames.push(frame)
+    }
+    return this
+  }
+
+  get [Symbol.toStringTag]() {
+    const parts = []
+    for (const frame of this.frames) {
+      parts.push(String(frame))
+    }
+    return parts.length === 1 ? parts[0] : `(${parts.join(' ')})`
+  }
+
+  [Symbol.for('nodejs.util.inspect.custom')]() {
+    return this[Symbol.toStringTag]
+  }
+
+  /**
+   * @returns {IterableIterator<API.Constant>}
+   */
+  *tokens() {
+    for (const frame of this.frames) {
+      if (frame instanceof Trace) {
+        yield* frame.tokens()
+      } else {
+        yield frame
+      }
+    }
+  }
+
+  toString() {
+    const parts = []
+    for (const frame of this.frames) {
+      if (frame instanceof Trace) {
+        parts.push(frame.toString())
+      } else {
+        parts.push(String(frame))
+      }
+    }
+    return parts.length > 1 ? `(${parts.join(' ')})` : parts[0]
+  }
+
+  /**
+   * @param {Trace} leader
+   * @param {Trace} candidate
+   */
+  static compare(leader, candidate) {
+    if (leader.size < candidate.size) {
+      return -1
+    } else if (candidate.size < leader.size) {
+      return 1
+    } else {
+      const leaderTokens = leader.tokens()
+      const candidateTokens = candidate.tokens()
+      while (true) {
+        const { value: leaderToken, done: lead } = leaderTokens.next()
+        const { value: candidateToken, done: exit } = candidateTokens.next()
+        if (lead && exit) {
+          return 0
+        } else if (!lead) {
+          return -1
+        } else if (!exit) {
+          return 1
+        }
+
+        const delta = Constant.compare(leaderToken, candidateToken)
+        if (delta !== 0) {
+          return delta
+        }
+      }
+    }
+  }
+}
+
+/**
+ * @param {string} message
+ */
+export const indent = (message, indent = '  ') =>
+  `${message.split('\n').join(`\n${indent}`)}`
+
+/**
+ * @param {string} message
+ */
+export const li = (message) => indent(`- ${message}`)
+
+export const text = () => new Text({})
+export const integer = () => new Integer()
+export const decimal = () => new Decimal()
+
+export const entity = () => new Entity()
+
+class Entity {
+  constructor() {
+    this.Reference = {}
+  }
+}
+
+/**
+ * @template {Record<string, API.Schema>} Schema
+ * @param {Schema} schema
+ */
+export const record = (schema) => new Product(schema)
+
+/**
+ *
+ * @param {API.Schema} of
+ */
+export const array = (of) => new ArrayOf(of)
+
+class Text {
+  /**
+   * @param {API.Schema['String'] & {}} schema
+   */
+  constructor(schema) {
+    this.String = schema
+  }
+
+  /**
+   * @param {string} value
+   */
+  implicit(value) {
+    return new Text({ implicit: value })
+  }
+
+  /**
+   * @param {API.Schema['String'] & {}} schema
+   * @param {unknown} data
+   */
+  static assert(schema, data) {
+    if (typeof data === 'string') {
+      return data
+    } else {
+      throw new TypeError(`Expected string but got ${typeof data}`)
+    }
+  }
+}
+
+class Integer {
+  constructor() {
+    this.Int32 = {}
+  }
+  /**
+   *
+   * @param {(API.Schema['Int32'] | API.Schema['Int64']) & {}} schema
+   * @param {unknown} data
+   */
+  static assert(schema, data) {
+    if (Number.isInteger(data)) {
+      return data
+    } else {
+      throw new TypeError(`Expected integer but got ${typeof data}`)
+    }
+  }
+}
+
+class Decimal {
+  constructor() {
+    this.Float64 = {}
+  }
+  /**
+   * @param {API.Schema['Float32'] & {}} schema
+   * @param {unknown} data
+   */
+  static assert(schema, data) {
+    if (Number.isFinite(data)) {
+      return data
+    } else {
+      throw new TypeError(`Expected number but got ${typeof data}`)
+    }
+  }
+}
+
+class Bool {
+  constructor() {
+    this.Boolean = {}
+  }
+  /**
+   * @param {API.Schema['Boolean'] & {}} schema
+   * @param {unknown} data
+   */
+  static assert(schema, data) {
+    if (typeof data === 'boolean') {
+      return data
+    } else {
+      throw new TypeError(`Expected boolean but got ${typeof data}`)
+    }
+  }
+}
+
+class Null {
+  constructor() {
+    this.Null = {}
+  }
+  /**
+   * @param {API.Schema['Null'] & {}} schema
+   * @param {unknown} data
+   */
+  static assert(schema, data) {
+    if (data === null) {
+      return null
+    } else {
+      throw new TypeError(`Expected null but got ${typeof data}`)
+    }
+  }
+}
+
+class Bytes {
+  constructor() {
+    this.Bytes = {}
+  }
+  /**
+   * @param {API.Schema['Bytes'] & {}} schema
+   * @param {unknown} data
+   */
+  static assert(schema, data) {
+    if (data instanceof Uint8Array) {
+      return data
+    } else {
+      throw new TypeError(`Expected bytes but got ${typeof data}`)
+    }
+  }
+}
+
+class Reference {
+  constructor() {
+    this.Reference = {}
+  }
+  /**
+   * @param {API.Schema['Reference'] & {}} schema
+   * @param {unknown} data
+   * @returns {API.Entity}
+   */
+  static assert(schema, data) {
+    if (Link.is(data)) {
+      return data
+    } else {
+      throw new TypeError(`Expected reference but got ${typeof data}`)
+    }
+  }
+}
+
+/**
+ * @template {Record<string, API.Schema>} Model
+ */
+class Product {
+  /**
+   * @param {Model} members
+   */
+
+  constructor(members) {
+    this.Object = { members }
+    this.$ = Object.assign(
+      Variable.variable(),
+      Object.fromEntries(
+        Object.entries(members).map(([name, schema]) => [
+          name,
+          Variable.variable(),
+        ])
+      )
+    )
+  }
+
+  /**
+   * @template {Record<string, API.Schema>} Extension
+   * @param {Extension} extension
+   */
+  extend(extension) {
+    return new Product({ ...this.Object.members, ...extension })
+  }
+
+  /**
+   * @template {Record<string, API.Schema>} Model
+   * @param {API.Schema['Object'] & { members: Model }} schema
+   * @param {unknown} data
+   * @returns {Required<API.InferObjectAssert<Model>>}
+   */
+  static assert(schema, data) {
+    if (typeof data !== 'object' || data === null) {
+      throw new TypeError(`Expected object but got ${typeof data}`)
+    }
+
+    const source = /** @type {Record<string, any>} */ (data)
+    /** @type {Record<string, any>} */
+    const assertion = { this: source.this ?? Link.of(data) }
+    for (const [name, member] of Object.entries(schema.members)) {
+      assertion[name] = assert(member, source[name])
+    }
+
+    return /** @type {Required<API.InferObjectAssert<Model>>} */ (assertion)
+  }
+
+  /**
+   * @param {API.InferObjectAssert<Model> & { this?: API.Entity } } data
+   */
+  assert(data) {
+    return Product.assert(this.Object, data)
+  }
+
+  /**
+   * @param {API.When} when
+   */
+  when(when) {
+    return DeductiveRule.new(Circuit.new(), {
+      match: this.$,
+      when,
+    })
+  }
+
+  /**
+   * @param {(input: API.InferObjectVariables<Model>) => API.When} body
+   */
+  derive(body) {
+    return this.when(body(/** @type {any} */ (this.$)))
+  }
+
+  /**
+   *
+   * @param {Iterable<API.Bindings>} selection
+   */
+  select(selection) {
+    return Selector.select(this.$, selection)
+  }
+
+  /**
+   * @param {API.InferObjectTerms<Model> & { this?: API.Term<API.Entity> }} terms
+   * @returns {API.Conjunct}
+   */
+  where(terms) {
+    throw 0
+  }
+}
+
+/**
+ * @template {API.Schema} Schema
+ * @param {Schema} schema
+ * @param {API.InferSchemaAssert<Schema>} data
+ */
+const assert = (schema, data) => {
+  if (schema.Null) {
+    return Null.assert(schema.Null, data)
+  }
+
+  if (schema.Boolean) {
+    return Bool.assert(schema.Boolean, data)
+  }
+
+  if (schema.String) {
+    return Text.assert(schema.String, data)
+  }
+
+  if (schema.Int32) {
+    return Integer.assert(schema.Int32, data)
+  }
+
+  if (schema.Float32) {
+    return Decimal.assert(schema.Float32, data)
+  }
+
+  if (schema.Bytes) {
+    return Bytes.assert(schema.Bytes, data)
+  }
+
+  if (schema.Reference) {
+    return Reference.assert(schema.Reference, data)
+  }
+
+  if (schema.Array) {
+    return ArrayOf.assert(schema.Array, data)
+  }
+
+  if (schema.Object) {
+    return Product.assert(schema.Object, data)
+  }
+}
+
+class ArrayOf {
+  /**
+   * @param {API.Schema} of
+   */
+  constructor(of) {
+    this.Array = { of }
+  }
+
+  /**
+   * @param {API.Schema['Array'] & { of: API.Schema }} schema
+   * @param {unknown} data
+   */
+  static assert(schema, data) {
+    return []
   }
 }

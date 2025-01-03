@@ -1,6 +1,6 @@
-import { match } from 'entail/assert'
 import * as Analyzer from '../src/analyzer.js'
 import { Task, Link, $, Var, API } from 'datalogia'
+import { operators } from '../src/formula.js'
 
 /**
  * @type {import('entail').Suite}
@@ -12,24 +12,28 @@ export const testAnalyzer = {
       rule: {
         match: { child: $.child, uncle: $.uncle },
         when: [
-          { Select: [$.child, 'semantic/type', 'child'] },
-          { Select: [$.uncle, 'relation/nephew', $.child] },
-          { Not: { Select: [$.child, 'legal/guardian', $.uncle] } },
+          { match: { the: 'semantic/type', of: $.child, is: 'child' } },
+          { match: { the: 'relation/nephew', of: $.uncle, is: $.child } },
+          {
+            not: { match: { the: 'legal/guardian', of: $.child, is: $.uncle } },
+          },
         ],
       },
     })
 
     assert.deepEqual(plan.toJSON(), {
-      Where: {
+      match: { child: $.child, uncle: $.uncle },
+      rule: {
         match: { child: $.child, uncle: $.uncle },
-        rule: {
-          match: { child: $.child, uncle: $.uncle },
-          when: [
-            { Select: [$.child, 'semantic/type', 'child'] },
-            { Select: [$.uncle, 'relation/nephew', $.child] },
-            { Not: { Select: [$.child, 'legal/guardian', $.uncle] } },
-          ],
-        },
+        when: [
+          { match: { the: 'semantic/type', of: $.child, is: 'child' } },
+          { match: { the: 'relation/nephew', of: $.uncle, is: $.child } },
+          {
+            not: {
+              match: { the: 'legal/guardian', of: $.child, is: $.uncle },
+            },
+          },
+        ],
       },
     })
   },
@@ -38,10 +42,10 @@ export const testAnalyzer = {
     const Allowed = /** @type {const} */ ({
       match: { this: $.x },
       when: {
-        draft: [{ Select: [$.x, 'status', 'draft'] }],
+        draft: [{ match: { the: 'status', of: $.x, is: 'draft' } }],
         activeOwner: [
-          { Select: [$.x, 'owner', $.user] },
-          { Not: { Select: [$.user, 'status', 'blocked'] } },
+          { match: { the: 'owner', of: $.x, is: $.user } },
+          { not: { match: { the: 'status', of: $.user, is: 'blocked' } } },
         ],
       },
     })
@@ -51,36 +55,54 @@ export const testAnalyzer = {
       rule: {
         match: { x: $.x },
         when: [
-          { Select: [$.x, 'type', 'doc'] },
-          { Where: { match: { this: $.x }, rule: Allowed } },
+          { match: { the: 'type', of: $.x, is: 'doc' } },
+          { match: { this: $.x }, rule: Allowed },
         ],
       },
     })
 
     assert.deepEqual(plan.toJSON(), {
-      Where: {
-        match: { x: $.y },
-        rule: {
-          match: { x: $.x },
-          when: [
-            { Select: [$.x, 'type', 'doc'] },
-            {
-              Where: {
-                match: { this: $.x },
-                rule: {
-                  match: { this: $.x },
-                  when: {
-                    draft: [{ Select: [$.x, 'status', 'draft'] }],
-                    activeOwner: [
-                      { Select: [$.x, 'owner', $.user] },
-                      { Not: { Select: [$.user, 'status', 'blocked'] } },
-                    ],
+      match: { x: $.y },
+      rule: {
+        match: { x: $.x },
+        when: [
+          { match: { the: 'type', of: $.x, is: 'doc' } },
+          {
+            match: { this: $.x },
+            rule: {
+              match: { this: $.x },
+              when: {
+                draft: [
+                  {
+                    match: {
+                      the: 'status',
+                      of: $.x,
+                      is: 'draft',
+                    },
                   },
-                },
+                ],
+                activeOwner: [
+                  {
+                    match: {
+                      the: 'owner',
+                      of: $.x,
+                      is: $.user,
+                    },
+                  },
+                  {
+                    not: {
+                      match: {
+                        the: 'status',
+                        of: $.user,
+                        is: 'blocked',
+                      },
+                    },
+                  },
+                ],
               },
             },
-          ],
-        },
+          },
+        ],
       },
     })
   },
@@ -89,10 +111,10 @@ export const testAnalyzer = {
     const Allowed = /** @type {const} */ ({
       match: { this: $.x },
       when: {
-        draft: [{ Select: [$.x, 'status', 'draft'] }],
+        draft: [{ match: { the: 'status', of: $.x, is: 'draft' } }],
         activeOwner: [
-          { Select: [$.x, 'owner', $.user] },
-          { Not: { Select: [$.user, 'status', 'blocked'] } },
+          { match: { the: 'owner', of: $.x, is: $.user } },
+          { not: { match: { the: 'status', of: $.user, is: 'blocked' } } },
         ],
       },
     })
@@ -100,9 +122,9 @@ export const testAnalyzer = {
     const Test = /** @type {const} */ ({
       match: { x: $.x },
       when: [
-        { Select: [$.x, 'type', 'doc'] },
-        { Where: { match: { this: $.x }, rule: Allowed } },
-        { Select: [$.user, 'dept', 'eng'] },
+        { match: { the: 'type', of: $.x, is: 'doc' } },
+        { match: { this: $.x }, rule: Allowed },
+        { match: { the: 'dept', of: $.user, is: 'eng' } },
       ],
     })
 
@@ -111,35 +133,31 @@ export const testAnalyzer = {
       rule: Test,
     })
 
-    // assert.deepEqual(branch.input, new Set([]))
-    // assert.deepEqual(branch.output, new Set([Var.id($.x), Var.id($.user)]))
-
-    // const plan = Analyzer.plan(branch)
     assert.deepEqual(plan.toJSON(), {
-      Where: {
-        match: { x: $.myX },
-        rule: {
-          match: { x: $.x },
-          when: [
-            { Select: [$.x, 'type', 'doc'] },
-            { Select: [$.user, 'dept', 'eng'] },
-            {
-              Where: {
-                match: { this: $.x },
-                rule: {
-                  match: { this: $.x },
-                  when: {
-                    draft: [{ Select: [$.x, 'status', 'draft'] }],
-                    activeOwner: [
-                      { Select: [$.x, 'owner', $.user] },
-                      { Not: { Select: [$.user, 'status', 'blocked'] } },
-                    ],
+      match: { x: $.myX },
+      rule: {
+        match: { x: $.x },
+        when: [
+          { match: { the: 'type', of: $.x, is: 'doc' } },
+          { match: { the: 'dept', of: $.user, is: 'eng' } },
+          {
+            match: { this: $.x },
+            rule: {
+              match: { this: $.x },
+              when: {
+                draft: [{ match: { the: 'status', of: $.x, is: 'draft' } }],
+                activeOwner: [
+                  { match: { the: 'owner', of: $.x, is: $.user } },
+                  {
+                    not: {
+                      match: { the: 'status', of: $.user, is: 'blocked' },
+                    },
                   },
-                },
+                ],
               },
             },
-          ],
-        },
+          },
+        ],
       },
     })
   },
@@ -150,24 +168,34 @@ export const testAnalyzer = {
       rule: {
         match: { title: $.title, actor: $.actor },
         when: [
-          { Select: [$.movie, 'movie/title', $.title] },
-          { Select: [$.movie, 'movie/cast', $.actor] },
-          { Select: [$.actor, 'person/name', 'Arnold Schwarzenegger'] },
+          { match: { the: 'movie/title', of: $.movie, is: $.title } },
+          { match: { the: 'movie/cast', of: $.movie, is: $.actor } },
+          {
+            match: {
+              the: 'person/name',
+              of: $.actor,
+              is: 'Arnold Schwarzenegger',
+            },
+          },
         ],
       },
     })
 
     assert.deepEqual(plan.toJSON(), {
-      Where: {
+      match: { title: $.title, actor: $.actor },
+      rule: {
         match: { title: $.title, actor: $.actor },
-        rule: {
-          match: { title: $.title, actor: $.actor },
-          when: [
-            { Select: [$.actor, 'person/name', 'Arnold Schwarzenegger'] },
-            { Select: [$.movie, 'movie/cast', $.actor] },
-            { Select: [$.movie, 'movie/title', $.title] },
-          ],
-        },
+        when: [
+          {
+            match: {
+              the: 'person/name',
+              of: $.actor,
+              is: 'Arnold Schwarzenegger',
+            },
+          },
+          { match: { the: 'movie/cast', of: $.movie, is: $.actor } },
+          { match: { the: 'movie/title', of: $.movie, is: $.title } },
+        ],
       },
     })
   },
@@ -179,14 +207,18 @@ export const testAnalyzer = {
         match: { doc: $.doc },
         when: {
           published: [
-            { Select: [$.doc, 'type', 'document'] },
-            { Select: [$.doc, 'status', 'published'] },
+            { match: { the: 'type', of: $.doc, is: 'document' } },
+            { match: { the: 'status', of: $.doc, is: 'published' } },
           ],
           draft: [
-            { Select: [$.doc, 'type', 'document'] },
-            { Select: [$.doc, 'draft', $.version] },
-            { Not: { Select: [$.version, 'approved-by', $.reviewer] } },
-            { Select: [$.reviewer, 'role', 'editor'] },
+            { match: { the: 'type', of: $.doc, is: 'document' } },
+            { match: { the: 'draft', of: $.doc, is: $.version } },
+            {
+              not: {
+                match: { the: 'approved-by', of: $.version, is: $.reviewer },
+              },
+            },
+            { match: { the: 'role', of: $.reviewer, is: 'editor' } },
           ],
         },
       },
@@ -195,22 +227,24 @@ export const testAnalyzer = {
     assert.deepEqual(
       plan.toJSON(),
       {
-        Where: {
+        match: { doc: $.doc },
+        rule: {
           match: { doc: $.doc },
-          rule: {
-            match: { doc: $.doc },
-            when: {
-              published: [
-                { Select: [$.doc, 'type', 'document'] },
-                { Select: [$.doc, 'status', 'published'] },
-              ],
-              draft: [
-                { Select: [$.doc, 'type', 'document'] },
-                { Select: [$.doc, 'draft', $.version] },
-                { Select: [$.reviewer, 'role', 'editor'] },
-                { Not: { Select: [$.version, 'approved-by', $.reviewer] } },
-              ],
-            },
+          when: {
+            published: [
+              { match: { the: 'type', of: $.doc, is: 'document' } },
+              { match: { the: 'status', of: $.doc, is: 'published' } },
+            ],
+            draft: [
+              { match: { the: 'type', of: $.doc, is: 'document' } },
+              { match: { the: 'draft', of: $.doc, is: $.version } },
+              { match: { the: 'role', of: $.reviewer, is: 'editor' } },
+              {
+                not: {
+                  match: { the: 'approved-by', of: $.version, is: $.reviewer },
+                },
+              },
+            ],
           },
         },
       },
@@ -225,32 +259,30 @@ export const testAnalyzer = {
         match: { x: $.x },
         when: {
           author: [
-            { Select: [$.x, 'author', $.author1] },
-            { Select: [$.author1, 'department', 'eng'] },
+            { match: { the: 'author', of: $.x, is: $.author1 } },
+            { match: { the: 'department', of: $.author1, is: 'eng' } },
           ],
           reviewer: [
-            { Select: [$.x, 'reviewer', $.reviewer2] },
-            { Select: [$.reviewer2, 'level', 'senior'] },
+            { match: { the: 'reviewer', of: $.x, is: $.reviewer2 } },
+            { match: { the: 'level', of: $.reviewer2, is: 'senior' } },
           ],
         },
       },
     })
 
     assert.deepEqual(plan.toJSON(), {
-      Where: {
-        match: { x: $.doc },
-        rule: {
-          match: { x: $.x },
-          when: {
-            author: [
-              { Select: [$.author1, 'department', 'eng'] },
-              { Select: [$.x, 'author', $.author1] },
-            ],
-            reviewer: [
-              { Select: [$.reviewer2, 'level', 'senior'] },
-              { Select: [$.x, 'reviewer', $.reviewer2] },
-            ],
-          },
+      match: { x: $.doc },
+      rule: {
+        match: { x: $.x },
+        when: {
+          author: [
+            { match: { the: 'department', of: $.author1, is: 'eng' } },
+            { match: { the: 'author', of: $.x, is: $.author1 } },
+          ],
+          reviewer: [
+            { match: { the: 'level', of: $.reviewer2, is: 'senior' } },
+            { match: { the: 'reviewer', of: $.x, is: $.reviewer2 } },
+          ],
         },
       },
     })
@@ -263,15 +295,15 @@ export const testAnalyzer = {
         match: { doc: $.doc },
         when: {
           branch1: [
-            { Select: [$.doc, 'status', 'draft'] },
-            { Not: { Select: [$.doc, 'deleted', true] } },
-            { Select: [$.doc, 'author', $.user] },
+            { match: { the: 'status', of: $.doc, is: 'draft' } },
+            { not: { match: { the: 'deleted', of: $.doc, is: true } } },
+            { match: { the: 'author', of: $.doc, is: $.user } },
           ],
           branch2: [
-            { Not: { Select: [$.team, 'archived', true] } },
-            { Select: [$.doc, 'status', 'draft'] },
-            { Not: { Select: [$.doc, 'deleted', true] } },
-            { Select: [$.doc, 'team', $.team] },
+            { not: { match: { the: 'archived', of: $.team, is: true } } },
+            { match: { the: 'status', of: $.doc, is: 'draft' } },
+            { not: { match: { the: 'deleted', of: $.doc, is: true } } },
+            { match: { the: 'team', of: $.doc, is: $.team } },
           ],
         },
       },
@@ -280,23 +312,21 @@ export const testAnalyzer = {
     assert.deepEqual(
       plan.toJSON(),
       {
-        Where: {
-          match: { doc: $.document },
-          rule: {
-            match: { doc: $.doc },
-            when: {
-              branch1: [
-                { Select: [$.doc, 'status', 'draft'] },
-                { Select: [$.doc, 'author', $.user] },
-                { Not: { Select: [$.doc, 'deleted', true] } },
-              ],
-              branch2: [
-                { Select: [$.doc, 'status', 'draft'] },
-                { Select: [$.doc, 'team', $.team] },
-                { Not: { Select: [$.team, 'archived', true] } },
-                { Not: { Select: [$.doc, 'deleted', true] } },
-              ],
-            },
+        match: { doc: $.document },
+        rule: {
+          match: { doc: $.doc },
+          when: {
+            branch1: [
+              { match: { the: 'status', of: $.doc, is: 'draft' } },
+              { match: { the: 'author', of: $.doc, is: $.user } },
+              { not: { match: { the: 'deleted', of: $.doc, is: true } } },
+            ],
+            branch2: [
+              { match: { the: 'status', of: $.doc, is: 'draft' } },
+              { match: { the: 'team', of: $.doc, is: $.team } },
+              { not: { match: { the: 'archived', of: $.team, is: true } } },
+              { not: { match: { the: 'deleted', of: $.doc, is: true } } },
+            ],
           },
         },
       },
@@ -309,28 +339,26 @@ export const testAnalyzer = {
       rule: {
         match: { x: $.x, user: $.user },
         when: [
-          { Select: [$.user, 'role', 'admin'] },
-          { Select: [$.x, 'review', $.review] },
-          { Select: [$.x, 'type', 'doc'] },
-          { Select: [$.x, 'owner', $.user] },
-          { Select: [$.x, 'status', 'draft'] },
+          { match: { the: 'role', of: $.user, is: 'admin' } },
+          { match: { the: 'review', of: $.x, is: $.review } },
+          { match: { the: 'type', of: $.x, is: 'doc' } },
+          { match: { the: 'owner', of: $.x, is: $.user } },
+          { match: { the: 'status', of: $.x, is: 'draft' } },
         ],
       },
     })
 
     assert.deepEqual(plan.toJSON(), {
-      Where: {
+      match: { x: $.x, user: $.user },
+      rule: {
         match: { x: $.x, user: $.user },
-        rule: {
-          match: { x: $.x, user: $.user },
-          when: [
-            { Select: [$.user, 'role', 'admin'] },
-            { Select: [$.x, 'type', 'doc'] },
-            { Select: [$.x, 'owner', $.user] },
-            { Select: [$.x, 'status', 'draft'] },
-            { Select: [$.x, 'review', $.review] },
-          ],
-        },
+        when: [
+          { match: { the: 'role', of: $.user, is: 'admin' } },
+          { match: { the: 'type', of: $.x, is: 'doc' } },
+          { match: { the: 'owner', of: $.x, is: $.user } },
+          { match: { the: 'status', of: $.x, is: 'draft' } },
+          { match: { the: 'review', of: $.x, is: $.review } },
+        ],
       },
     })
   },
@@ -341,24 +369,22 @@ export const testAnalyzer = {
       rule: {
         match: { doc: $.doc, count: $.count, size: $.size },
         when: [
-          { Match: [$.count, 'text/length', $.size] },
-          { Match: [$.size, '==', 1000] },
-          { Select: [$.doc, 'word-count', $.count] },
+          { match: { of: $.count, is: $.size }, operator: 'text/length' },
+          { match: { of: $.size, is: 1000 }, operator: '==' },
+          { match: { the: 'word-count', of: $.doc, is: $.count } },
         ],
       },
     })
 
     assert.deepEqual(plan.toJSON(), {
-      Where: {
+      match: { doc: $.doc, count: $.count, size: $.size },
+      rule: {
         match: { doc: $.doc, count: $.count, size: $.size },
-        rule: {
-          match: { doc: $.doc, count: $.count, size: $.size },
-          when: [
-            { Select: [$.doc, 'word-count', $.count] },
-            { Match: [$.count, 'text/length', $.size] },
-            { Match: [$.size, '==', 1000] },
-          ],
-        },
+        when: [
+          { match: { the: 'word-count', of: $.doc, is: $.count } },
+          { match: { of: $.count, is: $.size }, operator: 'text/length' },
+          { match: { of: $.size, is: 1000 }, operator: '==' },
+        ],
       },
     })
   },
@@ -370,12 +396,12 @@ export const testAnalyzer = {
         rule: {
           match: { doc: $.doc },
           when: [
-            { Select: [$.doc, 'status', 'ready'] },
-            { Match: [$.user, '==', 'admin'] },
+            { match: { the: 'status', of: $.doc, is: 'ready' } },
+            { match: { of: $.user, is: 'admin' }, operator: '==' },
           ],
         },
       })
-    }, /Unbound \?user variable referenced from { Match: \[\?user, "==", "admin"\] }/)
+    }, /Unbound \?user variable referenced from { match: { of: \?user, is: "admin" }, operator: "==" }/)
   },
 
   'terms in match affect planning': async (assert) => {
@@ -385,26 +411,24 @@ export const testAnalyzer = {
         match: { user: $.user },
         when: {
           author: [
-            { Select: [$.doc, 'draft', $.version] },
-            { Select: [$.doc, 'author', $.user] },
+            { match: { the: 'draft', of: $.doc, is: $.version } },
+            { match: { the: 'author', of: $.doc, is: $.user } },
           ],
-          reviewer: [{ Select: [$.doc, 'reviewer', $.user] }],
+          reviewer: [{ match: { the: 'reviewer', of: $.doc, is: $.user } }],
         },
       },
     })
 
     assert.deepEqual(plan.toJSON(), {
-      Where: {
-        match: { user: 1 },
-        rule: {
-          match: { user: $.user },
-          when: {
-            author: [
-              { Select: [$.doc, 'author', $.user] },
-              { Select: [$.doc, 'draft', $.version] },
-            ],
-            reviewer: [{ Select: [$.doc, 'reviewer', $.user] }],
-          },
+      match: { user: 1 },
+      rule: {
+        match: { user: $.user },
+        when: {
+          author: [
+            { match: { the: 'author', of: $.doc, is: $.user } },
+            { match: { the: 'draft', of: $.doc, is: $.version } },
+          ],
+          reviewer: [{ match: { the: 'reviewer', of: $.doc, is: $.user } }],
         },
       },
     })
@@ -418,14 +442,14 @@ export const testAnalyzer = {
           match: { doc: $.doc },
           when: {
             branch1: [
-              { Match: [$.count, '==', 100] },
-              { Select: [$.doc, 'type', 'counter'] },
+              { match: { of: $.count, is: 100 }, operator: '==' },
+              { match: { the: 'type', of: $.doc, is: 'counter' } },
             ],
-            branch2: [{ Select: [$.doc, 'type', 'doc'] }],
+            branch2: [{ match: { the: 'type', of: $.doc, is: 'doc' } }],
           },
         },
       })
-    }, /Unbound \?count variable referenced from { Match: \[\?count, "==", 100\] }/)
+    }, /Unbound \?count variable referenced from { match: { of: \?count, is: 100 }, operator: "==" }/)
   },
 
   'correctly maps variables across scopes': async (assert) => {
@@ -434,22 +458,20 @@ export const testAnalyzer = {
       rule: {
         match: { x: $.x, y: $.y },
         when: [
-          { Select: [$.y, 'type', 'person'] },
-          { Select: [$.y, 'name', $.x] },
+          { match: { the: 'type', of: $.y, is: 'person' } },
+          { match: { the: 'name', of: $.y, is: $.x } },
         ],
       },
     })
 
     assert.deepEqual(plan.toJSON(), {
-      Where: {
-        match: { x: $.y, y: $.x },
-        rule: {
-          match: { x: $.x, y: $.y },
-          when: [
-            { Select: [$.y, 'type', 'person'] },
-            { Select: [$.y, 'name', $.x] },
-          ],
-        },
+      match: { x: $.y, y: $.x },
+      rule: {
+        match: { x: $.x, y: $.y },
+        when: [
+          { match: { the: 'type', of: $.y, is: 'person' } },
+          { match: { the: 'name', of: $.y, is: $.x } },
+        ],
       },
     })
   },
@@ -462,7 +484,7 @@ export const testAnalyzer = {
           match: { x: $.output, y: $.input },
           rule: {
             match: { x: $.x, y: $.y },
-            when: [{ Select: [$.y, 'type', 'person'] }],
+            when: [{ match: { the: 'type', of: $.y, is: 'person' } }],
           },
         }),
       /Rule case "when" does not bind variable \?x that rule matches as "x"/
@@ -477,7 +499,7 @@ export const testAnalyzer = {
             match: { x: $.x, y: $.y },
             when: {
               base: [
-                { Select: [$.y, 'type', 'person'] },
+                { match: { the: 'type', of: $.y, is: 'person' } },
                 // Missing handling of $.x
               ],
             },
@@ -495,9 +517,9 @@ export const testAnalyzer = {
           match: { x: $.output, y: $.input },
           rule: {
             match: { x: $.x, y: $.y },
-            when: [{ Select: [$.x, 'link', $.y] }],
+            when: [{ match: { the: 'link', of: $.x, is: $.y } }],
             repeat: { x: $.x, y: $.z },
-            while: [{ Select: [$.x, 'link', $.z] }],
+            while: [{ match: { the: 'link', of: $.x, is: $.z } }],
           },
         }),
       /Rule case "while" does not bind variable \?y that rule matches as "y"/
@@ -513,7 +535,12 @@ export const testAnalyzer = {
           rule: {
             match: { x: $.x },
             repeat: { x: $.inc },
-            while: [{ Match: [[$.x, 1], '+', $.inc] }],
+            while: [
+              {
+                match: { of: $.x, with: 1, is: $.inc },
+                operator: '+',
+              },
+            ],
           },
         }),
       /Inductive rule must have "when" property establishing base case of recursion/
@@ -530,9 +557,9 @@ export const testAnalyzer = {
         rule: {
           match: { x: $.x, y: $.y },
           when: [
-            { Match: [$.type, '==', 'type'] },
-            { Select: [$.y, $.type, 'person'] },
-            { Select: [$.y, 'name', $.x] },
+            { match: { of: $.type, is: 'type' }, operator: '==' },
+            { match: { the: $.type, of: $.y, is: 'person' } },
+            { match: { the: 'name', of: $.y, is: $.x } },
           ],
         },
       })
@@ -540,16 +567,14 @@ export const testAnalyzer = {
     assert.deepEqual(
       make($.input).toJSON(),
       {
-        Where: {
-          match: { x: $.input, y: $.output },
-          rule: {
-            match: { x: $.x, y: $.y },
-            when: [
-              { Select: [$.y, $.type, 'person'] },
-              { Match: [$.type, '==', 'type'] },
-              { Select: [$.y, 'name', $.x] },
-            ],
-          },
+        match: { x: $.input, y: $.output },
+        rule: {
+          match: { x: $.x, y: $.y },
+          when: [
+            { match: { the: $.type, of: $.y, is: 'person' } },
+            { match: { of: $.type, is: 'type' }, operator: '==' },
+            { match: { the: 'name', of: $.y, is: $.x } },
+          ],
         },
       },
       'without bindings order remains same'
@@ -558,16 +583,14 @@ export const testAnalyzer = {
     assert.deepEqual(
       make('John').toJSON(),
       {
-        Where: {
-          match: { x: 'John', y: $.output },
-          rule: {
-            match: { x: $.x, y: $.y },
-            when: [
-              { Select: [$.y, 'name', $.x] },
-              { Select: [$.y, $.type, 'person'] },
-              { Match: [$.type, '==', 'type'] },
-            ],
-          },
+        match: { x: 'John', y: $.output },
+        rule: {
+          match: { x: $.x, y: $.y },
+          when: [
+            { match: { the: 'name', of: $.y, is: $.x } },
+            { match: { the: $.type, of: $.y, is: 'person' } },
+            { match: { of: $.type, is: 'type' }, operator: '==' },
+          ],
         },
       },
       'with bindings plans more more efficiently'
@@ -584,10 +607,10 @@ export const testAnalyzer = {
         rule: {
           match: { person: $.person },
           when: {
-            manager: [{ Select: [$.person, 'role', 'manager'] }],
+            manager: [{ match: { the: 'role', of: $.person, is: 'manager' } }],
             senior: [
-              { Select: [$.person, 'role', 'employee'] },
-              { Select: [$.person, 'level', 'senior'] },
+              { match: { the: 'role', of: $.person, is: 'employee' } },
+              { match: { the: 'level', of: $.person, is: 'senior' } },
             ],
           },
         },
@@ -605,36 +628,41 @@ export const testAnalyzer = {
         rule: {
           match: { result: $.result },
           when: {
-            ref: [{ Match: [$.result, 'data/type', 'reference'] }],
+            ref: [
+              {
+                match: { of: $.result, is: 'reference' },
+                operator: 'data/type',
+              },
+            ],
             else: [
-              { Match: [$.type, '==', 'b'] },
-              { Select: [$.x, $.type, 'b'] },
-              { Select: [$.x, 'value', $.result] },
+              { match: { of: $.type, is: 'b' }, operator: '==' },
+              { match: { the: $.type, of: $.x, is: 'b' } },
+              { match: { the: 'value', of: $.result, is: $.x } },
             ],
           },
         },
       })
 
     assert.deepEqual(plan('data').toJSON(), {
-      Where: {
-        match: { result: 'data' },
-        rule: {
-          match: { result: $.result },
-          when: {
-            ref: [{ Match: [$.result, 'data/type', 'reference'] }],
-            else: [
-              { Select: [$.x, 'value', $.result] },
-              { Select: [$.x, $.type, 'b'] },
-              { Match: [$.type, '==', 'b'] },
-            ],
-          },
+      match: { result: 'data' },
+      rule: {
+        match: { result: $.result },
+        when: {
+          ref: [
+            { match: { of: $.result, is: 'reference' }, operator: 'data/type' },
+          ],
+          else: [
+            { match: { the: 'value', of: $.result, is: $.x } },
+            { match: { the: $.type, of: $.x, is: 'b' } },
+            { match: { of: $.type, is: 'b' }, operator: '==' },
+          ],
         },
       },
     })
 
     assert.throws(
       () => plan($.q),
-      /Unbound \?result variable referenced from { Match: \[\?result, "data\/type", "reference"\] }/
+      /Unbound \?result variable referenced from { match: { of: \?result, is: "reference" }, operator: "data\/type" }/
     )
   },
 
@@ -646,7 +674,7 @@ export const testAnalyzer = {
           match: { x: $.input },
           rule: {
             match: { x: $.x, y: $.y },
-            when: [{ Match: [[$.x, $.y], '>'] }],
+            when: [{ match: { this: $.x, than: $.y }, operator: '>' }],
           },
         }),
       /Rule application omits required binding for "y"/
@@ -656,14 +684,14 @@ export const testAnalyzer = {
   'rule output may be provided': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
-      when: [{ Match: [[$.x, 1], '-', $.y] }],
+      when: [{ match: { of: $.x, by: 1, is: $.y }, operator: '-' }],
     })
 
     const application = rule.match({ x: $.outX, y: $.outY })
 
     assert.throws(() => {
       application.plan()
-    }, /Unbound \?x variable referenced from { Match: \[\[\?x, 1\], "-", \?y\] }/)
+    }, /Unbound \?x variable referenced from { match: { of: \?x, by: 1, is: \?y }, operator: "-" }/)
 
     assert.ok(application.plan(new Set([$.outX])).toJSON())
     assert.ok(application.plan(new Set([$.outX, $.outY])).toJSON())
@@ -672,7 +700,12 @@ export const testAnalyzer = {
   'rule maps multi-variable input terms correctly': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.a, y: $.b },
-      when: [{ Match: [[$.a, $.b], 'text/concat', $.result] }],
+      when: [
+        {
+          match: { of: $.a, with: $.b, is: $.result },
+          operator: 'text/concat',
+        },
+      ],
     })
 
     const match = rule.match({
@@ -681,12 +714,15 @@ export const testAnalyzer = {
     })
 
     assert.deepEqual(match.plan(new Set([$.x, $.y])).toJSON(), {
-      Where: {
-        match: { x: $.x, y: $.y },
-        rule: {
-          match: { x: $.a, y: $.b },
-          when: [{ Match: [[$.a, $.b], 'text/concat', $.result] }],
-        },
+      match: { x: $.x, y: $.y },
+      rule: {
+        match: { x: $.a, y: $.b },
+        when: [
+          {
+            match: { of: $.a, with: $.b, is: $.result },
+            operator: 'text/concat',
+          },
+        ],
       },
     })
 
@@ -714,7 +750,7 @@ export const testAnalyzer = {
   'unification + input': async (assert) => {
     const RequireAB = Analyzer.rule({
       match: { a: $.a, b: $.a, c: $.c }, // Same variable $.a in both positions
-      when: [{ Match: [$.a, '==', $.c] }],
+      when: [{ match: { of: $.a, is: $.c }, operator: '==' }],
     })
 
     const requireAB = RequireAB.match({ a: $.x, b: $.y, c: $.z })
@@ -729,7 +765,10 @@ export const testAnalyzer = {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
       when: [
-        { Match: [[$.z, $.y], '+', $.x] }, // $.z not in case
+        {
+          match: { of: $.z, with: $.y, is: $.x }, // $.z not in case
+          operator: '+',
+        },
       ],
     })
 
@@ -740,7 +779,9 @@ export const testAnalyzer = {
       /Unbound \?z variable referenced from/
     )
   },
-  'errors if deductive branch doesnt handle case variable': async (assert) => {
+  'errors if deductive branch does not handle case variable': async (
+    assert
+  ) => {
     assert.throws(
       () =>
         Analyzer.plan({
@@ -748,7 +789,7 @@ export const testAnalyzer = {
           rule: {
             match: { x: $.x, y: $.y },
             when: [
-              { Select: [$.x, 'type', 'person'] }, // Doesn't handle $.y
+              { match: { the: 'type', of: $.x, is: 'person' } }, // Doesn't handle $.y
             ],
           },
         }),
@@ -760,12 +801,12 @@ export const testAnalyzer = {
       () =>
         Analyzer.loop({
           match: { head: $.head, tail: $.tail },
-          when: [{ Select: [$.head, 'next', $.tail] }],
+          when: [{ match: { the: 'next', of: $.head, is: $.tail } }],
           // @ts-expect-error - tail is missing
           repeat: { head: $.head },
-          while: [{ Select: [$.head, 'next', $.tail] }],
+          while: [{ match: { the: 'next', of: $.head, is: $.tail } }],
         }),
-      /Rule has inconsistent bindings across repeat: {head: \?head} and match: {head: \?head, tail: \?tail}\n  - "tail" is missing in repeat/
+      /Rule has inconsistent bindings across repeat: { head: \?head } and match: { head: \?head, tail: \?tail }\n  - "tail" is missing in repeat/
     )
   },
   'throws on unknown references': async (assert) => {
@@ -773,9 +814,9 @@ export const testAnalyzer = {
       () =>
         Analyzer.loop({
           match: { head: $.head, tail: $.tail },
-          when: [{ Select: [$.head, 'next', $.tail] }],
+          when: [{ match: { the: 'next', of: $.head, is: $.tail } }],
           repeat: { head: $.next, tail: $.tail },
-          while: [{ Select: [$.head, 'next', $.tail] }],
+          while: [{ match: { the: 'next', of: $.head, is: $.tail } }],
         }),
       /Rule case "while" does not bind variable \?next that rule matches as "head"/
     )
@@ -787,12 +828,17 @@ export const testAnalyzer = {
         Analyzer.loop({
           match: { x: $.x },
           repeat: { x: $.inc },
-          while: [{ Match: [[$.x, 1], '+', $.inc] }],
+          while: [
+            {
+              match: { of: $.x, with: 1, is: $.inc },
+              operator: '+',
+            },
+          ],
         }),
       /Inductive rule must have "when" property/
     )
   },
-  'recursive rule needs a non empty when': async (assert) => {
+  'inductive rule needs a non empty when': async (assert) => {
     assert.throws(
       () =>
         Analyzer.loop({
@@ -801,8 +847,8 @@ export const testAnalyzer = {
           when: [],
           repeat: { this: $.inc, from: $.from, to: $.to },
           while: [
-            { Match: [[$.from, 1], '+', $.inc] },
-            { Match: [[$.inc, $.to], '<'] },
+            { match: { of: $.from, with: 1, is: $.inc }, operator: '+' },
+            { match: { this: $.inc, than: $.to }, operator: '<' },
           ],
         }),
       /Inductive rule must have "when" property establishing base case of recursion/
@@ -813,11 +859,11 @@ export const testAnalyzer = {
       () =>
         Analyzer.loop({
           match: { this: $.value, from: $.from, to: $.to },
-          when: [{ Match: [[$.from, $.to], '<'] }],
+          when: [{ match: { this: $.from, than: $.to }, operator: '<' }],
           repeat: { this: $.inc, from: $.from, to: $.to },
           while: [
-            { Match: [[$.from, 1], '+', $.inc] },
-            { Match: [[$.inc, $.to], '<'] },
+            { match: { of: $.from, with: 1, is: $.inc }, operator: '+' },
+            { match: { this: $.inc, than: $.to }, operator: '<' },
           ],
         }),
       /Rule case "when" does not bind variable \?value that rule matches as "this"/
@@ -829,7 +875,7 @@ export const testAnalyzer = {
       match: { x: 'test' },
       rule: {
         match: { x: $.x, y: $.y },
-        when: [{ Match: [$.x, 'math/absolute', $.y] }],
+        when: [{ match: { of: $.x, is: $.y }, operator: 'math/absolute' }],
       },
     })
 
@@ -842,8 +888,8 @@ export const testAnalyzer = {
         rule: {
           match: { x: $.x, y: $.y },
           when: [
-            { Match: [$.y, 'math/absolute', $.x] },
-            { Match: [[$.x, 1], '+', $.y] },
+            { match: { of: $.y, is: $.x }, operator: 'math/absolute' },
+            { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
           ],
         },
       })
@@ -857,9 +903,9 @@ export const testAnalyzer = {
           rule: {
             match: { x: $.x, y: $.y },
             when: [
-              { Select: [$.x, 'type', 'person'] }, // Outputs $.x
-              { Match: [[$.x, 1], '+', $.y] }, // Uses $.x to produce $.y
-              { Match: [[$.y, 1], '-', $.x] }, // Creates cycle by producing $.x again
+              { match: { the: 'type', of: $.x, is: 'person' } }, // Outputs $.x
+              { match: { of: $.x, with: 1, is: $.y }, operator: '+' }, // Uses $.x to produce $.y
+              { match: { of: $.y, by: 1, is: $.x }, operator: '-' }, // Creates cycle by producing $.x again
             ],
           },
         }),
@@ -867,13 +913,18 @@ export const testAnalyzer = {
     )
   },
 
-  'cycle in Match clause': async (assert) => {
+  'cycle in formula': async (assert) => {
     assert.throws(() => {
       Analyzer.plan({
         match: { x: $.x },
         rule: {
           match: { x: $.x },
-          when: [{ Match: [[$.x, 1], '+', $.x] }],
+          when: [
+            {
+              match: { of: $.x, with: 1, is: $.x },
+              operator: '+',
+            },
+          ],
         },
       })
     }, /Variable .* cannot appear in both input and output of Match clause/)
@@ -885,8 +936,13 @@ export const testAnalyzer = {
       rule: {
         match: { x: $.x, y: $.y },
         when: {
-          branch1: [{ Match: [[$.x, 1], '+', $.y] }],
-          branch2: [{ Match: [[$.y, 1], '-', $.x] }],
+          branch1: [
+            {
+              match: { of: $.x, with: 1, is: $.y },
+              operator: '+',
+            },
+          ],
+          branch2: [{ match: { of: $.y, by: 1, is: $.x }, operator: '-' }],
         },
       },
     })
@@ -900,8 +956,8 @@ export const testAnalyzer = {
       rule: {
         match: { x: $.x },
         when: [
-          { Select: [$.x, 'type', 'person'] },
-          { Select: [$.x, 'name', $.name] },
+          { match: { the: 'type', of: $.x, is: 'person' } },
+          { match: { the: 'name', of: $.x, is: $.name } },
         ],
       },
     })
@@ -916,10 +972,19 @@ export const testAnalyzer = {
           match: { x: $.x },
           rule: {
             match: { x: $.x },
-            when: [{ Match: [[$.y, 1], '+', $.x] }],
+            when: [
+              {
+                match: {
+                  of: $.y, // y is not bound
+                  with: 1,
+                  is: $.x,
+                },
+                operator: '+',
+              },
+            ],
           },
         }),
-      /Unbound \?y variable referenced from { Match: \[\[\?y, 1\], "\+", \?x\] }/,
+      /Unbound \?y variable referenced from { match: { of: \?y, with: 1, is: \?x }, operator: "\+" }/,
       'Should fail when required inputs not bound'
     )
   },
@@ -928,7 +993,8 @@ export const testAnalyzer = {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
       when: [
-        { Match: [[$.x, 1], '+', $.y] }, // Needs $.x to produce $.y
+        // Needs $.x to produce $.y
+        { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
       ],
     })
 
@@ -937,7 +1003,7 @@ export const testAnalyzer = {
     assert.ok(match.plan(new Set([$.in])), 'Plans when input is bound')
     assert.throws(
       () => match.plan(),
-      /Unbound \?x variable referenced from { Match: \[\[\?x, 1\], "\+", \?y\] }/
+      /Unbound \?x variable referenced from { match: { of: \?x, with: 1, is: \?y }, operator: "\+" }/
     )
   },
 
@@ -948,17 +1014,17 @@ export const testAnalyzer = {
      * @param {API.Term} source.to
      * @returns
      */
-    const Between = ({ from, to }) =>
+    const Inductive = ({ from, to }) =>
       Analyzer.plan({
         match: { n: $.n, from, to },
         rule: {
           match: { n: $.n, from: $.from, to: $.to },
           when: [
-            { Match: [[$.from, $.to], '<'] },
-            { Match: [$.from, '==', $.n] },
+            { match: { this: $.from, than: $.to }, operator: '<' },
+            { match: { of: $.from, is: $.n }, operator: '==' },
           ],
           repeat: { n: $.n, from: $.inc, to: $.to },
-          while: [{ Match: [[$.from, 1], '+', $.inc] }],
+          while: [{ match: { of: $.from, with: 1, is: $.inc }, operator: '+' }],
         },
       })
 
@@ -968,35 +1034,34 @@ export const testAnalyzer = {
      * @param {API.Term} source.to
      * @returns
      */
-    const NonRecursive = ({ from, to }) =>
+    const Deductive = ({ from, to }) =>
       Analyzer.plan({
         match: { n: $.n, from, to },
         rule: {
           match: { n: $.n, from: $.from, to: $.to },
           when: {
             base: [
-              { Match: [[$.from, $.to], '<'] },
-              { Match: [$.from, '==', $.n] },
+              { match: { this: $.from, than: $.to }, operator: '<' },
+              { match: { of: $.from, is: $.n }, operator: '==' },
             ],
             else: [
-              { Match: [[$.from, 1], '+', $.n] },
-              { Match: [[$.n, $.to], '<'] },
+              { match: { of: $.from, with: 1, is: $.n }, operator: '+' },
+              { match: { this: $.n, than: $.to }, operator: '<' },
             ],
           },
         },
       })
 
     assert.ok(
-      Between({ from: 0, to: 10 }).cost >
-        NonRecursive({ from: 0, to: 10 }).cost,
-      'Recursive rule should have higher cost'
+      Inductive({ from: 0, to: 10 }).cost > Deductive({ from: 0, to: 10 }).cost,
+      'Inductive rule should have higher cost'
     )
   },
 
   'considers variable mapping in cost estimation': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x },
-      when: [{ Match: [[$.x, 1], '+', $.y] }],
+      when: [{ match: { of: $.x, with: 1, is: $.y }, operator: '+' }],
     })
 
     assert.ok(rule.match({ x: 1 }).plan(), 'Should plan with mapped variables')
@@ -1026,16 +1091,16 @@ export const testAnalyzer = {
     const Between = Analyzer.loop({
       match: { value: $.value, from: $.from, to: $.to },
       when: [
-        { Match: [[$.from, $.to], '<'] },
-        { Match: [$.from, '==', $.value] },
+        { match: { this: $.from, than: $.to }, operator: '<' },
+        { match: { of: $.from, is: $.value }, operator: '==' },
       ],
       repeat: { value: $.value, from: $.next, to: $.to },
-      while: [{ Match: [[$.from, 1], '+', $.next] }],
+      while: [{ match: { of: $.from, with: 1, is: $.next }, operator: '+' }],
     })
 
     const Scan = Analyzer.rule({
       match: { x: $.x },
-      when: [{ Select: [$.x, 'type', 'document'] }],
+      when: [{ match: { the: 'type', of: $.x, is: 'document' } }],
     })
 
     const between = Between.match({ from: 0, to: 100, value: $.n }).plan()
@@ -1052,64 +1117,65 @@ export const testAnalyzer = {
     // Helper to create a test case
 
     /**
-     * @param {API.Pattern} pattern
+     * @param {API.Select} match
      * @param {API.Conclusion} [terms]
      * @param {Set<API.Variable>} bindings
      */
-    const testCost = (pattern, terms = {}, bindings = new Set()) =>
+    const testCost = (match, terms = {}, bindings = new Set()) =>
       /** @type {number} */ (
         Analyzer.rule({
           match: terms,
-          when: [{ Select: pattern }],
+          when: [{ match }],
         }).plan(bindings).cost
       )
 
     // Test EAV index cases
     const entityId = Link.of('test-entity')
     assert.ok(
-      testCost([entityId, 'type', $.value]) <
-        testCost([$.entity, 'type', $.value]),
+      testCost({ the: 'type', of: entityId, is: $.value }) <
+        testCost({ the: 'type', of: $.entity, is: $.value }),
       'Known entity should be cheaper than unknown'
     )
 
     // Test attribute selectivity
     assert.ok(
-      testCost([$.entity, 'type', $.value]) <
-        testCost([$.entity, $.attribute, $.value]),
+      testCost({ the: 'type', of: $.entity, is: $.value }) <
+        testCost({ the: $.attribute, of: $.entity, is: $.value }),
       'Known attribute should be cheaper than unknown'
     )
 
     // Test value types
     assert.ok(
-      testCost([$.entity, $.attribute, entityId]) ==
-        testCost([$.entity, $.attribute, 'some-string']),
-      'Entity value should be more selective than string'
+      testCost({ the: $.attribute, of: $.entity, is: entityId }) ==
+        testCost({ the: $.attribute, of: $.entity, is: 'some-string' }),
+
+      'Entity value should be as selective as string'
     )
 
     assert.ok(
-      testCost([$.entity, $.attribute, 'string']) ==
-        testCost([$.entity, $.attribute, true]),
-      'String should be more selective than boolean'
+      testCost({ the: $.attribute, of: $.entity, is: 'string' }) ==
+        testCost({ the: $.attribute, of: $.entity, is: true }),
+      'String should be as selective as boolean'
     )
 
     // Test index usage
     assert.ok(
-      testCost([entityId, 'type', $.value]) <
-        testCost([entityId, $.attribute, $.value]),
+      testCost({ the: 'type', of: entityId, is: $.value }) <
+        testCost({ the: $.attribute, of: entityId, is: $.value }),
       'EAV index should be cheaper than scanning entity'
     )
 
     assert.ok(
-      testCost([$.entity, 'type', entityId]) <
-        testCost([$.entity, $.attribute, entityId]),
+      testCost({ the: 'type', of: $.entity, is: entityId }) <
+        testCost({ the: $.attribute, of: $.entity, is: entityId }),
       'VAE index should be cheaper than scanning value'
     )
 
     // Test bound variables
     assert.ok(
-      testCost([entityId, 'type', $.value]) ==
+      testCost({ the: 'type', of: entityId, is: $.value }) ==
         testCost(
-          [$.entity, 'type', $.value],
+          { the: 'type', of: $.entity, is: $.value },
           { entity: $.entity, value: $.value },
           new Set([$.entity])
         ),
@@ -1117,13 +1183,35 @@ export const testAnalyzer = {
     )
 
     assert.ok(
-      testCost([$.entity, 'type', entityId]) ==
+      testCost({ the: 'type', of: $.entity, is: entityId }) ==
         testCost(
-          [$.entity, 'type', $.value],
+          { the: 'type', of: $.entity, is: $.value },
           { entity: $.entity, value: $.value },
           new Set([$.value])
         ),
       'Known value should cost same as bound value variable'
     )
+  },
+
+  'test select circuit': (assert) => {
+    const plan = Analyzer.plan({
+      match: { x: $.x },
+      rule: {
+        match: { x: $.x },
+        when: {
+          basic: [
+            { match: { the: 'type', of: $.x, is: 'document' } },
+            { match: { the: 'status', of: $.x, is: $.status } },
+          ],
+          advanced: [
+            { match: { the: 'type', of: $.x, is: 'document' } },
+            { match: { the: 'status', of: $.x, is: $.status } },
+            { match: { the: 'author', of: $.x, is: $.author } },
+          ],
+        },
+      },
+    })
+
+    console.log('\n', plan.plan.debug())
   },
 }
