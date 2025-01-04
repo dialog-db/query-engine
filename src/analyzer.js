@@ -5,7 +5,6 @@ import * as Bindings from './bindings.js'
 import * as Term from './term.js'
 import { Constant, Link, matchFact, Var, $ } from './lib.js'
 import * as Formula from './formula.js'
-import * as Task from './task.js'
 import * as Selector from './selector.js'
 
 export { $ }
@@ -417,6 +416,7 @@ class FormulaApplication {
 
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
+ * @implements {API.MatchRule<Match>}
  */
 class RuleApplication {
   /**
@@ -430,7 +430,7 @@ class RuleApplication {
     const mapping = new Map()
     const application = new this(terms, rule, mapping, cells)
 
-    for (const [at, inner] of Object.entries(rule.case)) {
+    for (const [at, inner] of Object.entries(rule.match)) {
       const term = terms[at]
       const cost = rule.cells.get(inner) ?? 0
       // If binding is not provided during application, but it is used as input
@@ -522,6 +522,13 @@ class RuleApplication {
   query(input) {
     return this.plan(new Set()).query(input)
   }
+
+  toDebugString() {
+    const { match, rule } = this
+    return `{ match: ${Terms.toDebugString(match)}, rule: ${toDebugString(
+      rule
+    )} }`
+  }
 }
 
 /**
@@ -539,6 +546,7 @@ const ruleBindings = (match) => {
 }
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
+ * @implements {API.Deduction<Match>}
  */
 class DeductiveRule {
   /**
@@ -593,17 +601,22 @@ class DeductiveRule {
    */
   constructor(circuit, match, cells, cost, when) {
     this.circuit = circuit
-    this.case = match
+    this.match = match
     this.cells = cells
     this.cost = cost
-    this.when = when
+    this.disjuncts = when
+  }
+
+  /** @type {API.When} */
+  get when() {
+    return /** @type {any} */ (this.disjuncts)
   }
 
   /**
    * @param {API.RuleBindings<Match>} terms
    * @returns {RuleApplication<Match>}
    */
-  match(terms) {
+  apply(terms) {
     return RuleApplication.apply(this, terms)
   }
 
@@ -614,7 +627,7 @@ class DeductiveRule {
     /** @type {Record<string, ReturnType<typeof Join.prototype.plan>>} */
     const when = {}
     let cost = 0
-    const disjuncts = Object.entries(this.when)
+    const disjuncts = Object.entries(this.disjuncts)
     for (const [name, disjunct] of disjuncts) {
       const plan = disjunct.plan(bindings)
       when[name] = plan
@@ -635,7 +648,7 @@ class DeductiveRule {
       }
     }
 
-    return new DeductivePlan(this.case, when, cost)
+    return new DeductivePlan(this.match, when, cost)
   }
 
   /**
@@ -645,11 +658,23 @@ class DeductiveRule {
   query(input) {
     return this.plan(new Set()).query(input)
   }
+
+  toDebugString() {
+    const disjuncts = Object.entries(this.disjuncts)
+    const when = []
+    for (const [name, disjunct] of disjuncts) {
+      when.push(`${name}: ${toDebugString(disjunct)}`)
+    }
+    const body = when.length === 1 ? when[0] : `when: { ${when.join(',\n  ')} }`
+
+    return `{ match: ${Terms.toDebugString(this.match)}, ${body}} }`
+  }
 }
 
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
  * @template {Match} [Repeat=Match]
+ * @implements {API.Induction<Match, Repeat>}
  */
 class InductiveRule {
   /**
@@ -758,19 +783,28 @@ class InductiveRule {
    */
   constructor(circuit, match, when, repeat, loop, cells, cost) {
     this.circuit = circuit
-    this.case = match
-    this.when = when
+    this.match = match
+    this.base = when
     this.repeat = repeat
     this.loop = loop
     this.cells = cells
     this.cost = cost
   }
 
+  /** @type {API.Every} */
+  get when() {
+    return /** @type {any} */ (this.base)
+  }
+
+  /** @type {API.When} */
+  get while() {
+    return /** @type {any} */ (this.loop)
+  }
   /**
    * @param {API.RuleBindings<Match>} terms
    * @returns {RuleApplication<Match>}
    */
-  match(terms) {
+  apply(terms) {
     return RuleApplication.apply(this, terms)
   }
 
@@ -778,7 +812,7 @@ class InductiveRule {
    * @param {Set<API.Variable>} bindings
    */
   plan(bindings) {
-    const when = this.when.plan(bindings)
+    const when = this.base.plan(bindings)
     let cost = when.cost
     /** @type {Record<string, ReturnType<typeof Join.prototype.plan>>} */
     const loop = {}
@@ -810,6 +844,7 @@ class Join {
    */
   static from({ name, conjuncts, bindings }) {
     const cells = new Map()
+    const internal = new Map()
     const dependencies = new Map()
     let total = 0
 
@@ -832,12 +867,19 @@ class Join {
       for (const [variable, cost] of conjunct.cells) {
         // Only track costs for variables exposed in rule match
         if (bindings.has(variable)) {
-          const base = cells.get(variable) ?? 0
-          cells.set(variable, base + cost)
+          const base = cells.get(variable)
+          cells.set(
+            variable,
+            base === undefined ? cost : combineCosts(base, cost)
+          )
         }
         // Local variables contribute to base cost
         else {
-          total += cost
+          const base = internal.get(variable)
+          internal.set(
+            variable,
+            base === undefined ? cost : combineCosts(base, cost)
+          )
         }
 
         if (cost < Infinity) {
@@ -860,6 +902,10 @@ class Join {
       }
       outputs.clear()
       inputs.clear()
+    }
+
+    for (const cost of Object.values(internal)) {
+      total += cost
     }
 
     // Check for unresolvable cycles
@@ -1005,6 +1051,19 @@ class Join {
       cost
     )
   }
+
+  toJSON() {
+    return [...this.assertion, ...this.negation]
+  }
+
+  toDebugString() {
+    const content = [
+      ...this.assertion.map(toDebugString),
+      ...this.negation.map(toDebugString),
+    ].join(',\n  ')
+
+    return `[${content}]`
+  }
 }
 
 /**
@@ -1092,8 +1151,8 @@ class JoinPlan {
 
   debug() {
     return [
-      ...this.assertion.map(($) => $.debug()),
-      ...this.negation.map(($) => $.debug()),
+      ...this.assertion.map(($) => debug($)),
+      ...this.negation.map(($) => debug($)),
     ].join('\n')
   }
 }
@@ -1159,7 +1218,7 @@ class DeductivePlan extends DisjoinPlan {
     const head = `${Object.keys(this.match)}`
     let body = ['']
     for (const [name, disjunct] of Object.entries(this.disjuncts)) {
-      body.push(`:${name}\n[${indent(`${disjunct.debug()}]`, ' ')}`)
+      body.push(`:${name}\n[${indent(`${debug(disjunct)}]`, ' ')}`)
     }
 
     return `(rule (${head})${indent(body.join('\n'))})`
@@ -1320,6 +1379,13 @@ class RuleApplicationPlan {
 
     return Selector.select(selector, frames)
   }
+
+  toDebugString() {
+    const { match, plan } = this
+    return `{ match: ${Terms.toDebugString(match)}, rule: ${toDebugString(
+      plan
+    )} }`
+  }
 }
 /**
  * Calculates cost of the executing this operation.
@@ -1337,6 +1403,20 @@ const estimate = ({ cells, cost = 0 }, scope) => {
     }
   }
   return total
+}
+
+/**
+ * @param {number} total
+ * @param {number} cost
+ */
+const combineCosts = (total, cost) => {
+  if (total >= Infinity) {
+    return cost
+  } else if (cost >= Infinity) {
+    return total
+  } else {
+    return total + cost
+  }
 }
 
 class Negate {
@@ -1694,6 +1774,10 @@ class Trace {
     }
   }
 
+  /**
+   *
+   * @returns {string}
+   */
   toString() {
     const parts = []
     for (const frame of this.frames) {
@@ -2054,4 +2138,14 @@ class ArrayOf {
   static assert(schema, data) {
     return []
   }
+}
+
+/**
+ *
+ * @param {any} source
+ * @returns
+ */
+
+export const debug = (source) => {
+  return source.debug ? source.debug() : JSON.stringify(source, null, 2)
 }

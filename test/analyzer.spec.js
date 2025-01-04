@@ -1,6 +1,5 @@
 import * as Analyzer from '../src/analyzer.js'
 import { Task, Link, $, Var, API } from 'datalogia'
-import { operators } from '../src/formula.js'
 
 /**
  * @type {import('entail').Suite}
@@ -122,8 +121,8 @@ export const testAnalyzer = {
     const Test = /** @type {const} */ ({
       match: { x: $.x },
       when: [
-        { match: { the: 'type', of: $.x, is: 'doc' } },
         { match: { this: $.x }, rule: Allowed },
+        { match: { the: 'type', of: $.x, is: 'doc' } },
         { match: { the: 'dept', of: $.user, is: 'eng' } },
       ],
     })
@@ -139,7 +138,6 @@ export const testAnalyzer = {
         match: { x: $.x },
         when: [
           { match: { the: 'type', of: $.x, is: 'doc' } },
-          { match: { the: 'dept', of: $.user, is: 'eng' } },
           {
             match: { this: $.x },
             rule: {
@@ -157,6 +155,7 @@ export const testAnalyzer = {
               },
             },
           },
+          { match: { the: 'dept', of: $.user, is: 'eng' } },
         ],
       },
     })
@@ -687,7 +686,7 @@ export const testAnalyzer = {
       when: [{ match: { of: $.x, by: 1, is: $.y }, operator: '-' }],
     })
 
-    const application = rule.match({ x: $.outX, y: $.outY })
+    const application = rule.apply({ x: $.outX, y: $.outY })
 
     assert.throws(() => {
       application.plan()
@@ -708,7 +707,7 @@ export const testAnalyzer = {
       ],
     })
 
-    const match = rule.match({
+    const match = rule.apply({
       x: $.x,
       y: $.y,
     })
@@ -742,7 +741,7 @@ export const testAnalyzer = {
       match: { this: $, as: $ },
     })
 
-    const same = Same.match({ this: $.x, as: $.y })
+    const same = Same.apply({ this: $.x, as: $.y })
 
     assert.throws(() => same.plan(), /Rule application omits required binding/)
   },
@@ -753,7 +752,7 @@ export const testAnalyzer = {
       when: [{ match: { of: $.a, is: $.c }, operator: '==' }],
     })
 
-    const requireAB = RequireAB.match({ a: $.x, b: $.y, c: $.z })
+    const requireAB = RequireAB.apply({ a: $.x, b: $.y, c: $.z })
 
     assert.ok(
       requireAB.plan(new Set([$.x, $.y])).cost >=
@@ -772,7 +771,7 @@ export const testAnalyzer = {
       ],
     })
 
-    const match = rule.match({ x: $.a, y: $.b })
+    const match = rule.apply({ x: $.a, y: $.b })
 
     assert.throws(
       () => match.plan(new Set([$.a, $.b])),
@@ -998,7 +997,7 @@ export const testAnalyzer = {
       ],
     })
 
-    const match = rule.match({ x: $.in, y: $.out })
+    const match = rule.apply({ x: $.in, y: $.out })
 
     assert.ok(match.plan(new Set([$.in])), 'Plans when input is bound')
     assert.throws(
@@ -1064,9 +1063,9 @@ export const testAnalyzer = {
       when: [{ match: { of: $.x, with: 1, is: $.y }, operator: '+' }],
     })
 
-    assert.ok(rule.match({ x: 1 }).plan(), 'Should plan with mapped variables')
+    assert.ok(rule.apply({ x: 1 }).plan(), 'Should plan with mapped variables')
     assert.ok(
-      rule.match({ x: $.thing }).plan(new Set([$.thing])),
+      rule.apply({ x: $.thing }).plan(new Set([$.thing])),
       'Should plan with bound variables'
     )
   },
@@ -1076,7 +1075,7 @@ export const testAnalyzer = {
       match: { this: $, as: $ },
     })
 
-    const same = Same.match({ this: $.x, as: $.x })
+    const same = Same.apply({ this: $.x, as: $.x })
 
     const plan = same.plan(new Set([$.x]))
 
@@ -1103,9 +1102,9 @@ export const testAnalyzer = {
       when: [{ match: { the: 'type', of: $.x, is: 'document' } }],
     })
 
-    const between = Between.match({ from: 0, to: 100, value: $.n }).plan()
+    const between = Between.apply({ from: 0, to: 100, value: $.n }).plan()
 
-    const scan = Scan.match({ x: $.x }).plan()
+    const scan = Scan.apply({ x: $.x }).plan()
 
     assert.ok(
       between.cost < scan.cost,
@@ -1212,6 +1211,20 @@ export const testAnalyzer = {
       },
     })
 
-    console.log('\n', plan.plan.debug())
+    console.log('\n', Analyzer.debug(plan.plan))
+  },
+
+  'test correctly merges cost estimates': (assert) => {
+    const rule = Analyzer.rule({
+      match: { of: $.of },
+      when: [
+        { match: { the: 'name', of: $.of, is: $.name } },
+        { match: { of: $.name, is: 'string' }, operator: 'data/type' },
+      ],
+    })
+
+    const application = rule.apply({ of: $.subject })
+
+    assert.ok(application.cost < Infinity)
   },
 }
