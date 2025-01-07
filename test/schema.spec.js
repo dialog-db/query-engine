@@ -107,6 +107,46 @@ export const testSchema = {
     ])
   },
 
+  'can do a nested selection': async (assert) => {
+    const Point = Schema.schema({
+      Point: {
+        x: Number,
+        y: Number,
+      },
+    })
+
+    const Line = Schema.schema({
+      Line: {
+        a: Point,
+        b: Point,
+      },
+    })
+
+    const result = await Line.select({
+      b: { y: 2 },
+      from: db,
+    })
+
+    assert.deepEqual(result, [
+      Line.new({
+        a: Point.new({
+          this: Link.of({ 'Point/x': 1, 'Point/y': 10 }),
+          x: 1,
+          y: 10,
+        }),
+        b: Point.new({
+          this: Link.of({ 'Point/x': 10, 'Point/y': 2 }),
+          x: 10,
+          y: 2,
+        }),
+        this: Link.of({
+          'Line/a': { 'Point/x': 1, 'Point/y': 10 },
+          'Line/b': { 'Point/x': 10, 'Point/y': 2 },
+        }),
+      }),
+    ])
+  },
+
   'define rule from schema': async (assert) => {
     const Cursor = Schema.schema({
       Cursor: {

@@ -155,32 +155,30 @@ export const entity = (schema = /** @type {Schema} */ ({})) =>
  */
 export const schema = (descriptor) =>
   /** @type {API.EntitySchema<API.InferSchemaType<Descriptor>, Descriptor, Label>} */ (
-    Entity.build([], descriptor)
+    Entity.build(descriptor)
   )
 
 /**
  * @param {API.TypeDescriptor} descriptor
- * @param {[...path:string[], name:string]} at
  * @returns {API.EntityMember}
  */
-const buildSchema = (descriptor, at) => {
+const build = (descriptor) => {
   if (descriptor === null) {
-    return new NullSchema(at)
+    return new NullSchema()
   } else if (globalThis.Boolean === descriptor) {
-    return new BooleanSchema(at)
+    return new BooleanSchema()
   } else if (descriptor === String) {
-    return new StringSchema(at)
+    return new StringSchema()
   } else if (descriptor === Number) {
-    return new IntegerSchema(at)
+    return new IntegerSchema()
   } else if (descriptor === BigInt) {
-    return new BigIntSchema(at)
+    return new BigIntSchema()
   } else if (descriptor === Uint8Array) {
-    return new BytesSchema(at)
+    return new BytesSchema()
   } else {
-    return Entity.build(
-      at,
-      /** @type {API.ModelDescriptor} */ (descriptor).Object ?? descriptor
-    )
+    return /** @type {API.EntitySchema} */ (descriptor).Object ?
+        /** @type {API.EntitySchema} */ (descriptor)
+      : Entity.build(/** @type {API.ObjectDescriptor} */ (descriptor))
   }
 }
 
@@ -190,11 +188,10 @@ const buildSchema = (descriptor, at) => {
 class Entity {
   /**
    * @template {API.ObjectDescriptor} Descriptor
-   * @param {string[]} path
    * @param {API.ObjectDescriptor} source
    * @returns {API.EntitySchema}
    */
-  static build(path, source) {
+  static build(source) {
     const [[label, descriptor], ...rest] = Object.entries(source)
     if (rest.length > 0) {
       throw new TypeError(
@@ -202,47 +199,51 @@ class Entity {
       )
     }
 
-    /** @type {[...string[], string]} */
-    const at = [...path, label]
-
     /** @type {API.Conjunct[]} */
     const when = []
 
     /** @type {API.Variable<API.Entity>} */
-    const entity = $[`${at.join('.')}{}`]
+    const of = $[`${label}{}`]
     /** @type {Record<string, API.Variable>} */
-    const match = { this: entity }
+    const match = { this: of }
 
     /** @type {API.SchemaVariables} */
-    const variables = { this: entity }
+    const variables = { this: of }
 
     /** @type {Record<string, API.EntityMember>} */
     const members = {}
 
     for (const [name, member] of Object.entries(descriptor)) {
       const the = `${label}/${name}`
-      const schema = buildSchema(member, [...path, the])
+      const is = $[name]
+      const schema = build(member)
 
       members[name] = schema
-      variables[name] = schema.variables.this
+      match[name] = is
+      when.push({ match: { the, of, is } })
 
+      // If member is an entity we need to copy variables and combine the match
       if (schema.Object) {
-        for (const [key, variable] of Object.entries(schema.rule.match)) {
-          match[`${name}.${key}`] = variable
+        // We namespace member variables to avoid conflicts when same type is
+        // used on several members.
+        for (const key of Object.keys(schema.rule.match)) {
+          if (key !== 'this') {
+            const id = `${name}.${key}`
+            match[id] = $[id]
+          }
         }
-      } else {
-        match[name] = schema.variables.this
+
+        // Creates namespaces variables for all the members variables so they
+        // will align with variables we added to the `match`.
+        variables[name] = withPrefix(name, schema.variables)
+        when.push(schema.match(variables[name]))
       }
-
-      when.push({
-        match: {
-          the,
-          of: entity,
-          is: schema.variables.this,
-        },
-      })
-
-      when.push(schema.match({}))
+      // If member is a scalar we add variables in both match and to the
+      // variables
+      else {
+        variables[name] = is
+        when.push(schema.match(is))
+      }
     }
 
     /**
@@ -250,7 +251,6 @@ class Entity {
      */
     const schema = class extends Entity {
       static label = label
-      static at = at
       static members = members
       static variables = variables
 
@@ -336,7 +336,7 @@ class Entity {
 
     const results = []
     for (const match of selection) {
-      results.push(this.view(match))
+      results.push(this.view(match, this.variables))
     }
 
     return results
@@ -344,15 +344,22 @@ class Entity {
 
   /**
    * @param {API.Bindings} bindings
+   * @param {API.SchemaVariables} variables
    */
-  static view(bindings) {
+  static view(bindings, variables) {
     /** @type {Record<string, any>} */
     const model = {
-      this: Bindings.get(bindings, this.variables.this),
+      this: Bindings.get(bindings, variables.this),
     }
 
     for (const [key, member] of Object.entries(this.members)) {
-      model[key] = member.view(bindings)
+      model[key] =
+        member.Object ?
+          member.view(
+            bindings,
+            /** @type {API.SchemaVariables} */ (variables[key])
+          )
+        : Bindings.get(bindings, /** @type {API.Variable} */ (variables[key]))
     }
 
     return this.new(model)
@@ -375,8 +382,8 @@ class Entity {
     ]
 
     // Add all the type constraints for the object members
-    for (const schema of Object.values(this.members)) {
-      when.push(schema.match({}))
+    for (const [key, schema] of Object.entries(this.members)) {
+      when.push(schema.match(/** @type {any} */ (this.variables[key])))
     }
 
     const { label, members, variables, at, Object: source, rule } = this
@@ -437,14 +444,33 @@ const toJSON = (object) =>
  */
 function* iterateTerms(terms, prefix = '') {
   for (const [key, term] of Object.entries(terms)) {
-    const path = prefix === '' ? key : `${prefix}.${key}`
-
     if (Term.is(term)) {
+      const path =
+        prefix === '' ? key
+        : key === 'this' ? prefix
+        : `${prefix}.${key}`
       yield [path, term]
     } else {
-      yield* iterateTerms(term, path)
+      yield* iterateTerms(term, prefix === '' ? key : `${prefix}.${key}`)
     }
   }
+}
+
+/**
+ * @param {string} prefix
+ * @param {API.SchemaVariables} object
+ * @returns {API.SchemaVariables}
+ */
+const withPrefix = (prefix, object) => {
+  const prefixed = /** @type {API.SchemaVariables} */ ({})
+  for (const [key, variable] of Object.entries(object)) {
+    if (Term.is(variable)) {
+      prefixed[key] = $[key === 'this' ? prefix : `${prefix}.${key}`]
+    } else {
+      prefixed[key] = withPrefix(`${prefix}.${key}`, variable)
+    }
+  }
+  return prefixed
 }
 
 /**
@@ -452,87 +478,56 @@ function* iterateTerms(terms, prefix = '') {
  */
 class ScalarSchema {
   /**
-   * @param {API.Bindings} bindings
-   */
-  view(bindings) {
-    return /** @type {T} */ (Bindings.get(bindings, this.variables.this))
-  }
-
-  /**
    * @param {API.TypeName} type
-   * @param {[...path:string[], name:string]} at
    */
-  constructor(type, at) {
+  constructor(type) {
     this.type = type
-    this.at = at
-    this.variables = {
-      /** @type {API.Variable<T>} */
-      this: $[`${at.join('.')}:${type}`],
-    }
   }
   /**
-   * @param {{this?:API.Term<T>}} terms
+   * @param {API.Term<T>} term
    * @returns {API.Constraint}
    */
-  match(terms) {
+  match(term) {
     return /** @type {API.SystemOperator} */ ({
-      match: { of: terms.this ?? this.variables.this, is: this.type },
+      match: { of: term, is: this.type },
       operator: 'data/type',
     })
   }
 }
 
 class NullSchema extends ScalarSchema {
-  /**
-   * @param {[...path:string[], name:string]} at
-   */
-  constructor(at) {
-    super('null', at)
+  constructor() {
+    super('null')
   }
 }
 
 class BooleanSchema extends ScalarSchema {
-  /**
-   * @param {[...path:string[], name:string]} at
-   */
-  constructor(at) {
-    super('boolean', at)
+  constructor() {
+    super('boolean')
   }
 }
 
 class StringSchema extends ScalarSchema {
-  /**
-   * @param {[...path:string[], name:string]} at
-   */
-  constructor(at) {
-    super('string', at)
+  constructor() {
+    super('string')
   }
 }
 
 class IntegerSchema extends ScalarSchema {
-  /**
-   * @param {[...path:string[], name:string]} at
-   */
-  constructor(at) {
-    super('int32', at)
+  constructor() {
+    super('int32')
   }
 }
 
 class BigIntSchema extends ScalarSchema {
-  /**
-   * @param {[...path:string[], name:string]} at
-   */
-  constructor(at) {
-    super('int64', at)
+  constructor() {
+    super('int64')
   }
 }
 
 class BytesSchema extends ScalarSchema {
-  /**
-   * @param {[...path:string[], name:string]} at
-   */
-  constructor(at) {
-    super('bytes', at)
+  constructor() {
+    super('bytes')
   }
 }
 
