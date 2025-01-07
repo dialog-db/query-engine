@@ -140,23 +140,91 @@ export const bytes = () => new Bytes()
 export const nil = () => new Null()
 
 /**
- * @template {Record<string, API.Model>} [Schema={}]
- * @param {Schema} [schema]
- * @returns {Entity<Schema>}
- */
-export const entity = (schema = /** @type {Schema} */ ({})) =>
-  new Entity(schema)
-
-/**
  * @template {API.ObjectDescriptor} Descriptor
  * @template {string} [Label=keyof Descriptor & string]
- * @param {Descriptor} descriptor
+ * @param {Descriptor} source
  * @returns {API.EntitySchema<API.InferSchemaType<Descriptor>, Descriptor, Label>}
  */
-export const schema = (descriptor) =>
-  /** @type {API.EntitySchema<API.InferSchemaType<Descriptor>, Descriptor, Label>} */ (
-    Entity.build(descriptor)
+export const schema = (source) => {
+  const [[label, descriptor], ...rest] = Object.entries(source)
+  if (rest.length > 0) {
+    throw new TypeError(`Object descriptor may contain only one top level key`)
+  }
+
+  /** @type {API.Conjunct[]} */
+  const when = []
+
+  /** @type {API.Variable<API.Entity>} */
+  const of = $[`${label}{}`]
+  /** @type {Record<string, API.Variable>} */
+  const match = { this: of }
+
+  /** @type {API.SchemaVariables} */
+  const variables = { this: of }
+
+  /** @type {Record<string, API.EntityMember>} */
+  const members = {}
+
+  for (const [name, member] of Object.entries(descriptor)) {
+    const the = `${label}/${name}`
+    const is = $[name]
+    const schema = build(member)
+
+    members[name] = schema
+    match[name] = is
+    when.push({ match: { the, of, is } })
+
+    // If member is an entity we need to copy variables and combine the match
+    if (schema.Object) {
+      // We namespace member variables to avoid conflicts when same type is
+      // used on several members.
+      for (const key of Object.keys(schema.rule.match)) {
+        if (key !== 'this') {
+          const id = `${name}.${key}`
+          match[id] = $[id]
+        }
+      }
+
+      // Creates namespaces variables for all the members variables so they
+      // will align with variables we added to the `match`.
+      variables[name] = withPrefix(name, schema.variables)
+      when.push(schema.match(variables[name]))
+    }
+    // If member is a scalar we add variables in both match and to the
+    // variables
+    else {
+      variables[name] = is
+      when.push(schema.match(is))
+    }
+  }
+
+  const schema = /** @type {any} */ (
+    Object.assign(
+      /**
+       * @param {{}} terms
+       * @returns {API.RuleApplication}
+       */
+      function apply(terms) {
+        return /** @type {API.EntitySchema} */ (apply).match(terms)
+      },
+      {
+        ...EntitySchema,
+        label,
+        members,
+        variables,
+        Object: source,
+        rule: {
+          match,
+          when,
+        },
+      }
+    )
   )
+
+  return /** @type {API.EntitySchema<API.InferSchemaType<Descriptor>, Descriptor, Label>} */ (
+    schema
+  )
+}
 
 /**
  * @param {API.TypeDescriptor} descriptor
@@ -178,175 +246,74 @@ const build = (descriptor) => {
   } else {
     return /** @type {API.EntitySchema} */ (descriptor).Object ?
         /** @type {API.EntitySchema} */ (descriptor)
-      : Entity.build(/** @type {API.ObjectDescriptor} */ (descriptor))
+      : schema(/** @type {API.ObjectDescriptor} */ (descriptor))
   }
 }
 
 /**
+ * @template {API.ObjectDescriptor} Descriptor
+ * @template [Model=API.InferSchemaType<Descriptor>]
+ * @typedef {object} EntitySchemaState
+ * @property {string} label
+ * @property {API.Deduction} rule
+ * @property {API.SchemaVariables} variables
+ * @property {Record<string, API.EntityMember>} members
+ * @property {Model} Object
+ */
+/**
  * @template Model
  */
-class Entity {
+const EntitySchema = {
   /**
-   * @template {API.ObjectDescriptor} Descriptor
-   * @param {API.ObjectDescriptor} source
-   * @returns {API.EntitySchema}
-   */
-  static build(source) {
-    const [[label, descriptor], ...rest] = Object.entries(source)
-    if (rest.length > 0) {
-      throw new TypeError(
-        `Object descriptor may contain only one top level key`
-      )
-    }
-
-    /** @type {API.Conjunct[]} */
-    const when = []
-
-    /** @type {API.Variable<API.Entity>} */
-    const of = $[`${label}{}`]
-    /** @type {Record<string, API.Variable>} */
-    const match = { this: of }
-
-    /** @type {API.SchemaVariables} */
-    const variables = { this: of }
-
-    /** @type {Record<string, API.EntityMember>} */
-    const members = {}
-
-    for (const [name, member] of Object.entries(descriptor)) {
-      const the = `${label}/${name}`
-      const is = $[name]
-      const schema = build(member)
-
-      members[name] = schema
-      match[name] = is
-      when.push({ match: { the, of, is } })
-
-      // If member is an entity we need to copy variables and combine the match
-      if (schema.Object) {
-        // We namespace member variables to avoid conflicts when same type is
-        // used on several members.
-        for (const key of Object.keys(schema.rule.match)) {
-          if (key !== 'this') {
-            const id = `${name}.${key}`
-            match[id] = $[id]
-          }
-        }
-
-        // Creates namespaces variables for all the members variables so they
-        // will align with variables we added to the `match`.
-        variables[name] = withPrefix(name, schema.variables)
-        when.push(schema.match(variables[name]))
-      }
-      // If member is a scalar we add variables in both match and to the
-      // variables
-      else {
-        variables[name] = is
-        when.push(schema.match(is))
-      }
-    }
-
-    /**
-     * @extends {Entity<API.InferSchemaType<Descriptor>>}
-     */
-    const schema = class extends Entity {
-      static label = label
-      static members = members
-      static variables = variables
-
-      static Object = source
-
-      static rule = {
-        match,
-        when: /** @type {any} */ (when),
-      }
-    }
-
-    return /** @type {any} */ (schema)
-  }
-
-  /**
-   * @template Model
    * @param {Model} model
    */
-  static new(model) {
+  new(model) {
     return model
-  }
-  /** @type {string[]} */
-  static at = []
-  static label = ''
+  },
+
+  label: '',
 
   /** @type {API.Deduction} */
-  static rule
+  rule: { match: {} },
 
   /** @type {API.SchemaVariables} */
-  static variables
+  variables: { this: $ },
 
   /** @type {Record<string, API.EntityMember>} */
-  static members = {}
+  members: {},
 
-  static Object = {}
+  Object: {},
 
   /**
    * @param {API.TermTree} terms
    * @returns {API.MatchRule}
    */
-  static match(terms) {
+  match(terms = {}) {
     /** @type {Record<string, API.Term>} */
     const match = { ...this.rule.match }
     for (const [name, term] of iterateTerms(terms)) {
       match[name] = term
     }
 
-    return {
+    return new EntityQuery({
       match,
       rule: this.rule,
-    }
-  }
+      schema: /** @type {any} */ (this),
+    })
+  },
 
   /**
    * @param {Record<string, API.Term>} terms
    */
-  static not(terms) {
+  not(terms) {
     return { not: this.match(terms) }
-  }
-
-  /**
-   * @param {API.TermTree & { from: API.Querier }} terms
-   */
-  static *query({ from, ...terms }) {
-    const { match } = this.match(terms)
-    const query = rule(this.rule).apply(match).plan()
-
-    // We set up the bindings for the terms that have being provided
-    // as part of the query as those will not be set by the rule application.
-    /** @type {API.Bindings} */
-    let bindings = {}
-    for (const [key, term] of Object.entries(match)) {
-      const variable = this.rule.match[key]
-      if (Constant.is(term)) {
-        bindings = Bindings.set(bindings, variable, term)
-      }
-    }
-
-    const selection = yield* query.evaluate({
-      source: from,
-      selection: [bindings],
-    })
-
-    const results = []
-    for (const match of selection) {
-      results.push(this.view(match, this.variables))
-    }
-
-    return results
-  }
+  },
 
   /**
    * @param {API.Bindings} bindings
    * @param {API.SchemaVariables} variables
    */
-  static view(bindings, variables) {
+  view(bindings, variables) {
     /** @type {Record<string, any>} */
     const model = {
       this: Bindings.get(bindings, variables.this),
@@ -362,21 +329,14 @@ class Entity {
         : Bindings.get(bindings, /** @type {API.Variable} */ (variables[key]))
     }
 
-    return this.new(model)
-  }
-
-  /**
-   * @param {API.TermTree & { from: API.Querier }} source
-   */
-  static select(source) {
-    return Task.perform(this.query(source))
-  }
+    return this.new(/** @type {Model} */ (model))
+  },
 
   /**
    * @template Model
    * @param {(variables: API.InferTypeVariables<Model>) => Iterable<API.Conjunct>} derive
    */
-  static when(derive) {
+  when(derive) {
     const when = [
       ...derive(/** @type {API.InferTypeVariables<Model>} */ (this.variables)),
     ]
@@ -386,35 +346,48 @@ class Entity {
       when.push(schema.match(/** @type {any} */ (this.variables[key])))
     }
 
-    const { label, members, variables, at, Object: source, rule } = this
+    const { label, members, variables, Object: source, rule } = this
 
-    /**
-     * @extends {Entity<Model>}
-     */
-    class Rule extends Entity {
-      static label = label
-      static at = at
-      static members = members
-      static variables = variables
-
-      static Object = source
-
-      static rule = {
-        ...rule,
-        /** @type {API.Every} */
-        when: /** @type {any} */ (when),
+    return Object.assign(
+      /**
+       * @param {API.TermTree} terms
+       * @returns {API.RuleApplicationView<Model>}
+       */
+      function apply(terms) {
+        return /** @type {API.EntitySchema} */ (apply).match(terms)
+      },
+      {
+        ...EntitySchema,
+        label,
+        members,
+        variables,
+        Object: source,
+        rule: {
+          ...rule,
+          when,
+        },
       }
-    }
+    )
+    // /**
+    //  * @extends {Entity<Model>}
+    //  */
+    // class Rule extends Entity {
+    //   static label = label
+    //   static at = at
+    //   static members = members
+    //   static variables = variables
 
-    return Rule
-  }
+    //   static Object = source
 
-  /**
-   * @param {Model} model
-   */
-  constructor(model) {
-    Object.assign(this, model)
-  }
+    //   static rule = {
+    //     ...rule,
+    //     /** @type {API.Every} */
+    //     when: /** @type {any} */ (when),
+    //   }
+    // }
+
+    // return Rule
+  },
 
   toJSON() {
     /** @type {Record<string, {}|null>} */
@@ -428,6 +401,66 @@ class Entity {
     }
 
     return json
+  },
+}
+
+/**
+ * @template Model
+ * @implements {API.MatchRule}
+ */
+class EntityQuery {
+  /**
+   * @param {object} source
+   * @param {API.InferTypeTerms<Model>} source.match
+   * @param {API.Deduction} source.rule
+   * @param {API.EntitySchema<Model>} source.schema
+   */
+  constructor(source) {
+    this.match =
+      /** @type {API.RuleBindings<API.InferTypeVariables<Model> & API.Conclusion>} */ (
+        source.match
+      )
+    this.rule = source.rule
+    this.schema = source.schema
+
+    this.plan = rule(this.rule)
+      .apply(/** @type {{}} */ (this.match))
+      .plan()
+  }
+
+  /**
+   * @param {{ from: API.Querier }} source
+   */
+  select(source) {
+    return Task.perform(this.query(source))
+  }
+
+  /**
+   * @param {{ from: API.Querier }} terms
+   */
+  *query({ from }) {
+    // We set up the bindings for the terms that have being provided
+    // as part of the query as those will not be set by the rule application.
+    /** @type {API.Bindings} */
+    let bindings = {}
+    for (const [key, term] of Object.entries(this.match)) {
+      const variable = this.rule.match[key]
+      if (Constant.is(term)) {
+        bindings = Bindings.set(bindings, variable, term)
+      }
+    }
+
+    const selection = yield* this.plan.evaluate({
+      source: from,
+      selection: [bindings],
+    })
+
+    const results = []
+    for (const match of selection) {
+      results.push(this.schema.view(match, this.schema.variables))
+    }
+
+    return results
   }
 }
 

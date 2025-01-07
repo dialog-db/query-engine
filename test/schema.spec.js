@@ -37,9 +37,7 @@ export const testSchema = {
       },
     })
 
-    const result = await Point.select({
-      x: 0,
-
+    const result = await Point({ x: 0 }).select({
       from: db,
     })
 
@@ -67,7 +65,7 @@ export const testSchema = {
       },
     })
 
-    const result = await Line.select({
+    const result = await Line().select({
       from: db,
     })
 
@@ -122,10 +120,7 @@ export const testSchema = {
       },
     })
 
-    const result = await Line.select({
-      b: { y: 2 },
-      from: db,
-    })
+    const result = await Line({ b: { y: 2 } }).select({ from: db })
 
     assert.deepEqual(result, [
       Line.new({
@@ -158,7 +153,7 @@ export const testSchema = {
       { match: { the: 'Point/y', of: $.this, is: $.left } },
     ])
 
-    const result = await Cursor.select({ top: 0, from: db })
+    const result = await Cursor({ top: 0 }).select({ from: db })
 
     assert.deepEqual(result, [
       Cursor.new({

@@ -943,9 +943,9 @@ export type ArrayDescriptor = [TypeDescriptor]
 
 export type TypeDescriptor =
   | ScalarDescriptor
-  | ModelDescriptor
   | ObjectDescriptor
   | ArrayDescriptor
+  | EntitySchema<any>
 
 export type ModelDescriptor<
   Descriptor extends ObjectDescriptor = ObjectDescriptor,
@@ -1096,18 +1096,15 @@ export interface SchemaDSL {
 
 export interface ScalarSchema<T extends Constant = Constant> {
   type: TypeName
-  variables: { this: Variable<T> }
-  match(terms: { this?: Term<T> }): Constraint
+  match(term: Term<T>): Constraint
 
   Object?: undefined
-
-  view(match: Bindings): T
 }
 
 export interface EntitySchema<
   Model = {},
   Descriptor extends ObjectDescriptor = ObjectDescriptor,
-  Label extends string = string,
+  Label extends string = keyof Descriptor & string,
 > {
   label: Label
   Object: Descriptor
@@ -1116,20 +1113,20 @@ export interface EntitySchema<
   members: Record<string, EntityMember>
   rule: Deduction
 
-  new (model: Model & { this: Entity }): EntityView<Model>
+  (terms?: InferTypeTerms<Model>): RuleApplicationView<Model>
+  match(terms?: InferTypeTerms<Model>): RuleApplicationView<Model>
+
   new: (model: Model & { this: Entity }) => EntityView<Model>
 
-  view(match: Bindings): EntityView<Model>
-
-  match(terms: Partial<InferTypeTerms<Model>>): Constraint
-
-  select(
-    terms: Partial<InferTypeTerms<Model>> & { from: Querier }
-  ): Invocation<EntityView<Model>[], EvaluationError>
+  view(match: Bindings, variables: SchemaVariables): EntityView<Model>
 
   when(
     derive: (variables: InferTypeVariables<Model>) => Iterable<Constraint>
   ): EntitySchema<Model, Descriptor, Label>
+}
+
+export interface RuleApplicationView<Model> extends RuleApplication {
+  select(source: { from: Querier }): Invocation<EntityView<Model>[], Error>
 }
 
 export type EntityView<Model> = Model & {
@@ -1139,7 +1136,7 @@ export type EntityView<Model> = Model & {
 export type SchemaVariables = {
   [key: string]: Variable | SchemaVariables
 } & {
-  this: Variable<Constant>
+  this: Variable<Entity>
 }
 
 export type TermTree = {
