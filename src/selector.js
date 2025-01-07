@@ -16,9 +16,8 @@ const { Link } = Constant
 export const merge = (selector, bindings, base) => {
   if (Array.isArray(selector)) {
     const [term] = selector
-    const extension = Term.is(term)
-      ? Bindings.get(bindings, term)
-      : select(term, bindings)
+    const extension =
+      Term.is(term) ? Bindings.get(bindings, term) : match(term, bindings)
     return /** @type {API.InferBindings<Selector>} */ (
       add(/** @type {unknown[]} */ (base), extension)
     )
@@ -56,23 +55,53 @@ export const merge = (selector, bindings, base) => {
  * @param {API.Bindings} bindings
  * @returns {API.InferBindings<Selector>}
  */
-export const select = (selector, bindings) =>
-  Array.isArray(selector)
-    ? [
-        Term.is(selector[0])
-          ? Bindings.get(bindings, selector[0])
-          : select(selector[0], bindings),
-      ]
-    : Object.fromEntries(
-        Object.entries(selector).map(([key, term]) => {
-          if (Term.is(term)) {
-            const value = Bindings.get(bindings, term)
-            return [key, value]
-          } else {
-            return [key, select(term, bindings)]
-          }
-        })
-      )
+export const match = (selector, bindings) =>
+  Array.isArray(selector) ?
+    [
+      Term.is(selector[0]) ?
+        Bindings.get(bindings, selector[0])
+      : match(selector[0], bindings),
+    ]
+  : Object.fromEntries(
+      Object.entries(selector).map(([key, term]) => {
+        if (Term.is(term)) {
+          const value = Bindings.get(bindings, term)
+          return [key, value]
+        } else {
+          return [key, match(term, bindings)]
+        }
+      })
+    )
+
+/**
+ * @template {API.Selector} Selector
+ * @param {Selector} selector
+ * @param {Iterable<API.Bindings>} frames
+ */
+export const select = (selector, frames) => {
+  /** @type {API.InferBindings<Selector>[]} */
+  const selection = []
+  for (const frame of frames) {
+    if (selection.length === 0) {
+      selection.push(match(selector, frame))
+    } else {
+      let joined = false
+      for (const [offset, match] of selection.entries()) {
+        const merged = merge(selector, frame, match)
+        if (merged) {
+          selection[offset] = merged
+          joined = true
+        }
+      }
+
+      if (!joined) {
+        selection.push(match(selector, frame))
+      }
+    }
+  }
+
+  return selection
+}
 
 /** @type {WeakMap<unknown[], Set<string>>} */
 const GROUP_MEMBERS = new WeakMap()

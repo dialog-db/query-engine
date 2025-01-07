@@ -191,3 +191,9 @@ export const compare = (term, to) => {
     return Variable.is(to) ? 1 : Constant.compare(term, to)
   }
 }
+
+/**
+ * @param {API.Term} term
+ */
+export const toDebugString = (term) =>
+  Variable.is(term) ? `${term}` : Constant.toDebugString(term)

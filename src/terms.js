@@ -108,8 +108,8 @@ export const toDebugString = (terms) => {
   } else if (Array.isArray(terms)) {
     return `[${terms.map(toDebugString).join(', ')}]`
   } else {
-    return `{${Object.entries(terms)
+    return `{ ${Object.entries(terms)
       .map(([key, value]) => `${key}: ${toDebugString(value)}`)
-      .join(', ')}}`
+      .join(', ')} }`
   }
 }

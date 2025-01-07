@@ -1,5 +1,5 @@
 import { ByteView } from 'multiformats'
-import { Task } from './task.js'
+import { Task, Invocation } from './task.js'
 
 export type { ByteView, Task }
 
@@ -183,7 +183,7 @@ export type Type<T extends Constant = Constant> = Phantom<T> &
   }>
 
 // /**
-//  * Variable is placeholder for a value that will be matched against by the
+//  * Variable is placeholder for a value that will be ed against by the
 //  * query engine. It is represented as an abstract `Reader` that will attempt
 //  * to read arbitrary {@type Data} and return result with either `ok` of the
 //  * `Type` or an `error`.
@@ -304,8 +304,7 @@ type EphemeralEntity =
   | Record<string, Term>
   | [Term<Entity>, ...Term<Entity>[]]
 
-export type InferOperand<T extends Operand, K = T> = K extends Constant ?
-  Term<T & Constant>
+export type InferOperand<T, K = T> = K extends Constant ? Term<T & Constant>
 : K extends Array<infer U extends Constant> ? Term<U>[]
 : {
     [Key in keyof K]: T[Key & keyof T] & K[Key] extends (
@@ -387,10 +386,10 @@ export type Formula =
   | InferFormula<'text/includes', typeof TextOperators.includes>
   | InferFormula<'text/slice', typeof TextOperators.slice>
   | InferFormula<'text/concat', typeof TextOperators.concat>
-  | InferFormula<'+', typeof MathOperators.sum>
-  | InferFormula<'-', typeof MathOperators.subtract>
-  | InferFormula<'*', typeof MathOperators.multiply>
-  | InferFormula<'/', typeof MathOperators.divide>
+  | InferFormula<'+', typeof MathOperators.addition>
+  | InferFormula<'-', typeof MathOperators.subtraction>
+  | InferFormula<'*', typeof MathOperators.multiplication>
+  | InferFormula<'/', typeof MathOperators.division>
   | InferFormula<'%', typeof MathOperators.modulo>
   | InferFormula<'**', typeof MathOperators.power>
   | InferFormula<'math/absolute', typeof MathOperators.absolute>
@@ -477,29 +476,136 @@ export type Conclusion = Row<Variable> & {
 }
 
 export type Rule<Match extends Conclusion = Conclusion> =
-  | DeductiveRule<Match>
-  | InductiveRule<Match>
+  | Deduction<Match>
+  | Induction<Match>
 
-export type When =
-  // Has or semantics
-  | Disjuncts
-  // Has and semantics
-  | Conjuncts
+export interface Deduction<Match extends Conclusion = Conclusion> {
+  readonly match: Match
+  when?: When
 
-export type Constraint = Variant<{
-  Select: Pattern
-  Where: RuleApplication
-  Match: Formula
-}>
+  repeat?: undefined
+  while?: undefined
+}
 
-export type Operation = Variant<{
-  Select: Pattern
-  Where: RuleApplication
-  Match: Formula
-  Not: Constraint
-}>
+export type Induction<
+  Match extends Conclusion = Conclusion,
+  Repeat extends Match = Match,
+> = {
+  readonly match: Match
+  readonly when: Every
+  readonly repeat: Repeat
+  readonly while: When
+}
 
-export type Operation2 = FactSelection | RuleApplication | FormulaApplication
+// export type When =
+//   // Has or semantics
+//   | Disjuncts
+//   // Has and semantics
+//   | Conjuncts
+
+// export type Constraint = Variant<{
+//   Select: Pattern
+//   Where: RuleApplication
+//   Match: Formula
+// }>
+
+// export type Operation = Variant<{
+//   Select: Pattern
+//   Where: RuleApplication
+//   Match: Formula
+//   Not: Constraint
+// }>
+
+export type Constraint = MatchFact | MatchRule | SystemOperator
+
+export interface Negation {
+  not: Constraint
+}
+
+export type Conjunct = Constraint | Negation
+
+export type Every = readonly [Conjunct, ...Conjunct[]]
+export interface Some {
+  readonly [Case: string]: Every
+}
+
+export type When = Some | Every
+
+export interface MatchRule<Match extends Conclusion = Conclusion> {
+  readonly rule: Rule<Match>
+  readonly match: RuleBindings<Match>
+
+  formula?: undefined
+  fact?: undefined
+
+  not?: undefined
+}
+
+export type MatchFact = {
+  match: Select
+
+  /**
+   * The `fact` field is reserved for the future use where it could be used to
+   * specify data source or
+   */
+  fact?: {}
+
+  /**
+   * The `rule` field can not be defined in order to be distinguishable
+   * from the {@link RuleApplication} type.
+   */
+  rule?: undefined
+
+  /**
+   * The `not` field can not be defined in order to be distinguishable
+   * from the {@link Negation} type.
+   */
+  not?: undefined
+
+  operator?: undefined
+}
+
+export type Select = SelectByAttribute | SelectByEntity | SelectByValue
+
+type SelectFact = {
+  /**
+   * {@link Term} representing a relation an entity `of` has with the value
+   * `is`. In RDF notation this will correspond to a predicate.
+   */
+  the?: Term<Attribute>
+
+  /**
+   * {@link Term} representing the entity / subject.
+   */
+  of?: Term<Entity>
+
+  /**
+   * {@link Term} representing the value of the attribute on the entity (denoted
+   * by `of`). In RDF notation this will correspond to an object.
+   */
+  is?: Term<Constant>
+
+  /**
+   * The `this` field is reserved for the future use where it could be used to
+   * bind the merkle reference for this fact.
+   */
+  this?: never
+}
+
+interface SelectByAttribute extends SelectFact {
+  // Selection by attribute requires an attribute to be specified.
+  the: Term<Attribute>
+}
+
+interface SelectByEntity extends SelectFact {
+  // Selection by entity requires an entity to be specified.
+  of: Term<Entity>
+}
+
+interface SelectByValue extends SelectFact {
+  // Selection by value requires a value to be specified.
+  is: Term<Constant>
+}
 
 export interface FactSelection {
   select: Pattern
@@ -522,61 +628,123 @@ export type InferFormulaApplication<
   to?: InferOperand<Out>
 }
 
-export interface DeductiveRule<Match extends Conclusion = Conclusion> {
-  repeat?: null
-  match: Match
-  when?: When
+// export interface InductiveRule<
+//   Match extends Conclusion = Conclusion,
+//   Repeat extends Match = Match,
+// > {
+//   match: Match
+//   when: Conjuncts
+//   repeat: Repeat
+//   while: When
+// }
+
+export type SystemOperator = {
+  [Operator in keyof SystemOperators]: MatchOperator<
+    SystemOperators[Operator],
+    Operator
+  >
+}[keyof SystemOperators]
+
+export type MatchOperator<Formula = unknown, Identifier = Formula> = {
+  readonly match: InferFormulaMatch<Formula>
+  readonly operator: Identifier
+
+  formula?: Formula
+
+  rule?: undefined
+  not?: undefined
+  fact?: undefined
 }
 
-export interface InductiveRule<
-  Match extends Conclusion = Conclusion,
-  Repeat extends Match = Match,
-> {
-  match: Match
-  when: Conjuncts
-  repeat: Repeat
-  while: When
+export type InferFormulaMatch<F> =
+  F extends (input: infer In) => Iterable<infer Out> ? FormulaMatch<In, Out>
+  : never
+
+export type FormulaMatch<In, Out> = InferCells<In, 'of'> &
+  Partial<InferCells<Out, 'is'>>
+
+export type InferCells<In, DefaultName extends string> = In extends Constant ?
+  { [key in DefaultName]: Term<In> }
+: In extends any[] ?
+  {
+    [key in DefaultName]: {
+      [Key in keyof In]: In[Key] extends Constant ? Term<In[Key]> : never
+    }
+  }
+: {
+    [Key in keyof In]: In[Key] extends Constant ? Term<In[Key]> : never
+  }
+
+type SystemOperators = {
+  '==': typeof DataOperators.is
+  '>=': typeof DataOperators.greaterOrEqual
+  '>': typeof DataOperators.greater
+  '<': typeof DataOperators.less
+  '<=': typeof DataOperators.lessOrEqual
+  'data/type': typeof DataOperators.type
+  'data/refer': typeof DataOperators.refer
+  'text/like': typeof TextOperators.like
+  'text/length': typeof TextOperators.length
+  'text/words': typeof TextOperators.words
+  'text/lines': typeof TextOperators.lines
+  'text/case/upper': typeof TextOperators.toUpperCase
+  'text/case/lower': typeof TextOperators.toUpperCase
+  'text/trim': typeof TextOperators.trim
+  'text/trim/start': typeof TextOperators.trimStart
+  'text/trim/end': typeof TextOperators.trimEnd
+  'utf8/to/text': typeof UTF8Operators.fromUTF8
+  'text/to/utf8': typeof UTF8Operators.toUTF8
+  'text/includes': typeof TextOperators.includes
+  'text/slice': typeof TextOperators.slice
+  'text/concat': typeof TextOperators.concat
+  '+': typeof MathOperators.addition
+  '-': typeof MathOperators.subtraction
+  '*': typeof MathOperators.multiplication
+  '/': typeof MathOperators.division
+  '%': typeof MathOperators.modulo
+  '**': typeof MathOperators.power
+  'math/absolute': typeof MathOperators.absolute
 }
+// /**
+//  * Conjuncts are a set of {@link Operation}s that must be evaluated sequentially
+//  * in an optimal order determined by interdependence of the operations.
+//  */
+// export type Conjuncts = readonly [Operation, ...Operation[]]
 
-/**
- * Conjuncts are a set of {@link Operation}s that must be evaluated sequentially
- * in an optimal order determined by interdependence of the operations.
- */
-export type Conjuncts = readonly [Operation, ...Operation[]]
-
-/**
- * Disjuncts are a named set of {@link Conclusions}s that can be
- * evaluated in parallel.
- */
-export interface Disjuncts extends Record<string, Conjuncts> {}
+// /**
+//  * Disjuncts are a named set of {@link Conclusions}s that can be
+//  * evaluated in parallel.
+//  */
+// export interface Disjuncts extends Record<string, Conjuncts> {}
 
 // Premise is an extension of the {@link Clause} with additional variant for
 // the recursive rule application.
-export type Premise = Variant<{
-  // and clause
-  And: Clause[]
-  // or clause
-  Or: Clause[]
-  // negation
-  Not: Clause
-  // pattern match a fact
-  Case: Pattern
+// export type Premise = Variant<{
+//   // and clause
+//   And: Clause[]
+//   // or clause
+//   Or: Clause[]
+//   // negation
+//   Not: Clause
+//   // pattern match a fact
+//   Case: Pattern
 
-  // rule application
-  Rule: RuleApplication
-  // recursive application of the rule
-  Recur: RuleRecursion
-  // assign bindings
-  Is: Is
+//   // rule application
+//   Rule: RuleApplication
+//   // recursive application of the rule
+//   Recur: RuleRecursion
+//   // assign bindings
+//   Is: Is
 
-  Match: Formula
-}>
+//   Match: Formula
+// }>
 
-export interface RuleRecursion<Case extends Conclusion = Conclusion> {
-  match: RuleBindings<Case>
-  when: Conjuncts
-}
+// export interface RuleRecursion<Case extends Conclusion = Conclusion> {
+//   match: RuleBindings<Case>
+//   when: Conjuncts
+// }
 
+type T = MatchOperator<SystemOperators['data/type'], 'data/type'>['match']['is']
 export type RuleBindings<Case extends Conclusion = Conclusion> = {
   [Key in keyof Case]: Term<Constant>
 }
@@ -621,9 +789,9 @@ export type Query<Select extends Selector = Selector> = {
 
 export type AggregateSelector = [Selector | Term]
 
-export interface NamedSelector extends Record<PropertyKey, Selector | Term> {}
+export interface NamedSelector extends Record<string, Selector | Term> {}
 
-export interface Variables extends Record<PropertyKey, Term> {}
+export interface Variables extends Record<string, Term> {}
 
 export type Selection = Selector | Variable<Link<Bindings>>
 
@@ -739,3 +907,243 @@ export interface LoopEffect {}
 export interface QueryEffect {
   select: Pattern
 }
+
+export type SchemaDescriptor = Variant<{
+  Null: {}
+  Boolean: {}
+  Int32: {}
+  Int64: {}
+  Float32: {}
+  String: { implicit?: string }
+  Bytes: {}
+  Reference: {}
+  Object: { members: Record<string, SchemaDescriptor> }
+  Array: { of: SchemaDescriptor }
+}>
+
+export type ScalarDescriptor =
+  | null
+  | BooleanConstructor
+  | StringConstructor
+  | NumberConstructor
+  | BigIntConstructor
+  | Uint8ArrayConstructor
+
+export type ObjectDescriptor = {
+  /**
+   * Object descriptor must have a top level property that denotes the type
+   * name it is kind of like tag in the tagged unions.
+   */
+  [Case: string]: {
+    [Key: string]: TypeDescriptor
+  }
+}
+
+export type ArrayDescriptor = [TypeDescriptor]
+
+export type TypeDescriptor =
+  | ScalarDescriptor
+  | ModelDescriptor
+  | ObjectDescriptor
+  | ArrayDescriptor
+
+export type ModelDescriptor<
+  Descriptor extends ObjectDescriptor = ObjectDescriptor,
+> = {
+  Object: Descriptor
+}
+
+export type Model<T extends SchemaDescriptor = SchemaDescriptor> = T &
+  Variable & {
+    match(terms: Partial<InferSchemaTerms<SchemaDescriptor>>): Constraint
+  }
+
+export type InferObjectAssert<Model> = {
+  [Key in keyof Model]: InferSchemaAssert<Model[Key]>
+} & {
+  this?: Entity
+}
+
+export type InferSchemaAssert<T> =
+  T extends { Null: {} } ? null
+  : T extends { Boolean: {} } ? boolean
+  : T extends { Int32: {} } ? number
+  : T extends { Int64: {} } ? bigint
+  : T extends { Float32: {} } ? number
+  : T extends { String: {} } ? string
+  : T extends { Bytes: {} } ? Uint8Array
+  : T extends { Reference: {} } ? Link
+  : T extends { Object: { members: infer Members } } ?
+    InferObjectAssert<Members>
+  : T extends { Array: { of: infer Element } } ? InferSchemaAssert<Element>[]
+  : never
+
+export type InferObjectTerms<Model> = {
+  [Key in keyof Model]: InferSchemaTerms<Model[Key]>['this']
+} & {
+  this?: Term<Entity>
+}
+
+export type InferSchemaTerms<T> =
+  T extends { Null: {} } ? { this: Term<null> }
+  : T extends { Boolean: {} } ? { this: Term<boolean> }
+  : T extends { Int32: {} } ? { this: Term<number> }
+  : T extends { Int64: {} } ? { this: Term<bigint> }
+  : T extends { Float32: {} } ? { this: Term<number> }
+  : T extends { String: {} } ? { this: Term<string> }
+  : T extends { Bytes: {} } ? { this: Term<Uint8Array> }
+  : T extends { Reference: {} } ? { this: Term<Link> }
+  : T extends { Object: { members: infer Members } } ? InferObjectTerms<Members>
+  : T extends { Array: { of: infer Element } } ?
+    { this: Term<Entity>; of: InferSchemaTerms<Element> }
+  : never
+
+export type InferObjectVariables<Model> = {
+  [Key in keyof Model]: InferSchemaVariables<Model[Key]>
+} & Variable<Entity> & {
+    _: Variable<any>
+  }
+
+export type InferSchemaVariables<T> =
+  T extends { Null: {} } ? Variable<null>
+  : T extends { Boolean: {} } ? Variable<boolean>
+  : T extends { Int32: {} } ? Variable<number>
+  : T extends { Int64: {} } ? Variable<bigint>
+  : T extends { Float32: {} } ? Variable<number>
+  : T extends { String: {} } ? Variable<string>
+  : T extends { Bytes: {} } ? Variable<Uint8Array>
+  : T extends { Reference: {} } ? Variable<Link>
+  : T extends { Object: { members: infer Members } } ?
+    InferObjectVariables<Members>
+  : T extends { Array: { of: infer Element } } ? InferSchemaVariables<Element>
+  : never
+
+export type InferArraySchema<T> =
+  T extends TypeDescriptor ? InferTypeSchema<T>[] : never
+
+export type InferSchemaType<T extends TypeDescriptor> =
+  T extends null ? null
+  : T extends BooleanConstructor ? boolean
+  : T extends StringConstructor ? string
+  : T extends NumberConstructor ? Int32
+  : T extends BigIntConstructor ? Int64
+  : T extends Uint8ArrayConstructor ? Bytes
+  : T extends ModelDescriptor<infer Descriptor> ? InferSchemaType<Descriptor>
+  : T extends [infer Element] ? Element[]
+  : T extends ObjectDescriptor ?
+    {
+      [Case in keyof T]: {
+        [Key in keyof T[Case]]: InferSchemaType<T[Case][Key]>
+      }
+    }[keyof T]
+  : never
+
+export type InferTypeSchema<T extends TypeDescriptor | ScalarDescriptor> =
+  T extends null ? ScalarSchema<null>
+  : T extends BooleanConstructor ? ScalarSchema<boolean>
+  : T extends StringConstructor ? ScalarSchema<string>
+  : T extends NumberConstructor ? ScalarSchema<Int32>
+  : T extends BigIntConstructor ? ScalarSchema<Int64>
+  : T extends Uint8ArrayConstructor ? ScalarSchema<Bytes>
+  : T extends [infer Element] ? InferArraySchema<Element>
+  : T extends ObjectDescriptor ?
+    ObjectSchema<string & keyof T, InferSchemaType<T>, T>
+  : T extends ModelDescriptor<infer D> ? InferTypeSchema<D>
+  : never
+
+export type InferTypeTerms<T> =
+  T extends Constant ? Term<T>
+  : Partial<
+      { this: Term<Entity> } & { [Key in keyof T]: InferTypeTerms<T[Key]> }
+    >
+
+export type InferTypeVariables<T> =
+  T extends Constant ? Variable<T>
+  : { this: Term<Entity> } & {
+      [Key in keyof T]: InferTypeVariables<T[Key]>
+    }
+
+export type ArraySchema<Of> = {
+  $: Variable<Entity>
+  match(terms: {
+    this?: Term<Entity>
+    of: Partial<InferTypeTerms<Of>>
+  }): Constraint
+}
+
+export type ObjectSchema<
+  Label extends string,
+  T,
+  Descriptor extends ObjectDescriptor,
+> = {
+  $: Variable<Entity>
+  label: Label
+  match(terms: Partial<InferTypeTerms<T>>): Constraint
+  select(
+    terms: Partial<InferTypeTerms<T>> & { from: Querier }
+  ): Invocation<T[], EvaluationError>
+
+  Object: Descriptor
+
+  when(
+    derive: (variables: InferTypeVariables<T>) => Iterable<Constraint>
+  ): ObjectSchema<Label, T, Descriptor>
+}
+
+export interface SchemaDSL {
+  variables: Variables
+}
+
+export interface ScalarSchema<T extends Constant = Constant> {
+  type: TypeName
+  variables: { this: Variable<T> }
+  match(terms: { this?: Term<T> }): Constraint
+
+  Object?: undefined
+
+  view(match: Bindings): T
+}
+
+export interface EntitySchema<
+  Model = {},
+  Descriptor extends ObjectDescriptor = ObjectDescriptor,
+  Label extends string = string,
+> {
+  label: Label
+  Object: Descriptor
+  variables: SchemaVariables
+
+  members: Record<string, EntityMember>
+  rule: Deduction
+
+  new (model: Model & { this: Entity }): EntityView<Model>
+  new: (model: Model & { this: Entity }) => EntityView<Model>
+
+  view(match: Bindings): EntityView<Model>
+
+  match(terms: Partial<InferTypeTerms<Model>>): Constraint
+
+  select(
+    terms: Partial<InferTypeTerms<Model>> & { from: Querier }
+  ): Invocation<EntityView<Model>[], EvaluationError>
+
+  when(
+    derive: (variables: InferTypeVariables<Model>) => Iterable<Constraint>
+  ): EntitySchema<Model, Descriptor, Label>
+}
+
+export type EntityView<Model> = Model & {
+  this: Entity
+}
+
+export type SchemaVariables = {
+  [key: string]: Variable | SchemaVariables
+} & {
+  this: Variable<Constant>
+}
+
+export type TermTree = {
+  [Key: string]: Term | TermTree
+}
+
+export type EntityMember = ScalarSchema | EntitySchema

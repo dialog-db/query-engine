@@ -8,11 +8,11 @@ export const is = (operand) => [operand]
 
 export const type =
   /**
-   * @param {API.Constant} value
+   * @param {API.Constant} of
    * @returns {API.TypeName[]}
    */
-  (value) => {
-    switch (typeof value) {
+  (of) => {
+    switch (typeof of) {
       case 'boolean':
         return ['boolean']
       case 'string':
@@ -20,17 +20,17 @@ export const type =
       case 'bigint':
         return ['int64']
       case 'number':
-        return Number.isInteger(value)
-          ? ['int32']
-          : Number.isFinite(value)
-            ? ['float32']
-            : []
+        return (
+          Number.isInteger(of) ? ['int32']
+          : Number.isFinite(of) ? ['float32']
+          : []
+        )
       default: {
-        if (value === null) {
+        if (of === null) {
           return ['null']
-        } else if (value instanceof Uint8Array) {
+        } else if (of instanceof Uint8Array) {
           return ['bytes']
-        } else if (Link.is(value)) {
+        } else if (Link.is(of)) {
           return ['reference']
         } else {
           return []
@@ -48,20 +48,14 @@ export const refer = (data) => [Link.of(data)]
 const SUCCESS = [{}]
 
 /**
- * @param {API.Constant[]} operands
+ * @template {number|string} T
+ * @param {object} operands
+ * @param {T} operands.this
+ * @param {T} operands.than
  * @returns {{}[]}
  */
 export const greater = (operands) => {
-  if (Array.isArray(operands) && operands.length > 0) {
-    const [first, ...rest] = /** @type {(API.Constant & {})[]} */ (operands)
-    let last = first
-    for (const operand of rest) {
-      if (last > operand) {
-        last = operand
-      } else {
-        return []
-      }
-    }
+  if (operands.this > operands.than) {
     return SUCCESS
   } else {
     return []
@@ -69,20 +63,14 @@ export const greater = (operands) => {
 }
 
 /**
- * @param {API.Constant[]} operands
+ * @template {number|string} T
+ * @param {object} operands
+ * @param {T} operands.this
+ * @param {T} operands.than
  * @returns {{}[]}
  */
 export const less = (operands) => {
-  if (Array.isArray(operands) && operands.length > 0) {
-    const [first, ...rest] = /** @type {(API.Constant & {})[]} */ (operands)
-    let last = first
-    for (const operand of rest) {
-      if (last < operand) {
-        last = operand
-      } else {
-        return []
-      }
-    }
+  if (operands.this < operands.than) {
     return SUCCESS
   } else {
     return []
@@ -90,20 +78,14 @@ export const less = (operands) => {
 }
 
 /**
- * @param {API.Constant[]} operands
+ * @template {number|string} T
+ * @param {object} operands
+ * @param {T} operands.this
+ * @param {T} operands.than
  * @returns {{}[]}
  */
 export const greaterOrEqual = (operands) => {
-  if (Array.isArray(operands) && operands.length > 0) {
-    const [first, ...rest] = /** @type {(API.Constant & {})[]} */ (operands)
-    let last = first
-    for (const operand of rest) {
-      if (last >= operand) {
-        last = operand
-      } else {
-        return []
-      }
-    }
+  if (operands.this >= operands.than) {
     return SUCCESS
   } else {
     return []
@@ -111,20 +93,14 @@ export const greaterOrEqual = (operands) => {
 }
 
 /**
- * @param {API.Constant[]} operands
+ * @template {number|string} T
+ * @param {object} operands
+ * @param {T} operands.this
+ * @param {T} operands.than
  * @returns {{}[]}
  */
 export const lessOrEqual = (operands) => {
-  if (Array.isArray(operands) && operands.length > 0) {
-    const [first, ...rest] = /** @type {(API.Constant & {})[]} */ (operands)
-    let last = first
-    for (const operand of rest) {
-      if (last <= operand) {
-        last = operand
-      } else {
-        return []
-      }
-    }
+  if (operands.this <= operands.than) {
     return SUCCESS
   } else {
     return []

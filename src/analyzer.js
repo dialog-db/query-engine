@@ -1846,20 +1846,20 @@ class Entity {
 }
 
 /**
- * @template {Record<string, API.Schema>} Schema
+ * @template {Record<string, API.SchemaDescriptor>} Schema
  * @param {Schema} schema
  */
 export const record = (schema) => new Product(schema)
 
 /**
  *
- * @param {API.Schema} of
+ * @param {API.SchemaDescriptor} of
  */
 export const array = (of) => new ArrayOf(of)
 
 class Text {
   /**
-   * @param {API.Schema['String'] & {}} schema
+   * @param {API.SchemaDescriptor['String'] & {}} schema
    */
   constructor(schema) {
     this.String = schema
@@ -1873,7 +1873,7 @@ class Text {
   }
 
   /**
-   * @param {API.Schema['String'] & {}} schema
+   * @param {API.SchemaDescriptor['String'] & {}} schema
    * @param {unknown} data
    */
   static assert(schema, data) {
@@ -1891,7 +1891,7 @@ class Integer {
   }
   /**
    *
-   * @param {(API.Schema['Int32'] | API.Schema['Int64']) & {}} schema
+   * @param {(API.SchemaDescriptor['Int32'] | API.SchemaDescriptor['Int64']) & {}} schema
    * @param {unknown} data
    */
   static assert(schema, data) {
@@ -1908,7 +1908,7 @@ class Decimal {
     this.Float64 = {}
   }
   /**
-   * @param {API.Schema['Float32'] & {}} schema
+   * @param {API.SchemaDescriptor['Float32'] & {}} schema
    * @param {unknown} data
    */
   static assert(schema, data) {
@@ -1925,7 +1925,7 @@ class Bool {
     this.Boolean = {}
   }
   /**
-   * @param {API.Schema['Boolean'] & {}} schema
+   * @param {API.SchemaDescriptor['Boolean'] & {}} schema
    * @param {unknown} data
    */
   static assert(schema, data) {
@@ -1942,7 +1942,7 @@ class Null {
     this.Null = {}
   }
   /**
-   * @param {API.Schema['Null'] & {}} schema
+   * @param {API.SchemaDescriptor['Null'] & {}} schema
    * @param {unknown} data
    */
   static assert(schema, data) {
@@ -1959,7 +1959,7 @@ class Bytes {
     this.Bytes = {}
   }
   /**
-   * @param {API.Schema['Bytes'] & {}} schema
+   * @param {API.SchemaDescriptor['Bytes'] & {}} schema
    * @param {unknown} data
    */
   static assert(schema, data) {
@@ -1976,7 +1976,7 @@ class Reference {
     this.Reference = {}
   }
   /**
-   * @param {API.Schema['Reference'] & {}} schema
+   * @param {API.SchemaDescriptor['Reference'] & {}} schema
    * @param {unknown} data
    * @returns {API.Entity}
    */
@@ -1990,7 +1990,7 @@ class Reference {
 }
 
 /**
- * @template {Record<string, API.Schema>} Model
+ * @template {Record<string, API.SchemaDescriptor>} Model
  */
 class Product {
   /**
@@ -2011,7 +2011,7 @@ class Product {
   }
 
   /**
-   * @template {Record<string, API.Schema>} Extension
+   * @template {Record<string, API.SchemaDescriptor>} Extension
    * @param {Extension} extension
    */
   extend(extension) {
@@ -2019,8 +2019,8 @@ class Product {
   }
 
   /**
-   * @template {Record<string, API.Schema>} Model
-   * @param {API.Schema['Object'] & { members: Model }} schema
+   * @template {Record<string, API.SchemaDescriptor>} Model
+   * @param {API.SchemaDescriptor['Object'] & { members: Model }} schema
    * @param {unknown} data
    * @returns {Required<API.InferObjectAssert<Model>>}
    */
@@ -2081,7 +2081,7 @@ class Product {
 }
 
 /**
- * @template {API.Schema} Schema
+ * @template {API.SchemaDescriptor} Schema
  * @param {Schema} schema
  * @param {API.InferSchemaAssert<Schema>} data
  */
@@ -2125,14 +2125,14 @@ const assert = (schema, data) => {
 
 class ArrayOf {
   /**
-   * @param {API.Schema} of
+   * @param {API.SchemaDescriptor} of
    */
   constructor(of) {
     this.Array = { of }
   }
 
   /**
-   * @param {API.Schema['Array'] & { of: API.Schema }} schema
+   * @param {API.SchemaDescriptor['Array'] & { of: API.SchemaDescriptor }} schema
    * @param {unknown} data
    */
   static assert(schema, data) {

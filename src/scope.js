@@ -27,6 +27,7 @@ export class Variable {
   }
 }
 
+/** @type {API.Variable} */
 export const _ = new Variable(0, '_')
 const $ = new Variable(1, '$')
 
