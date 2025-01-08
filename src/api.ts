@@ -152,7 +152,7 @@ export interface Link<
  * We are likely to introduce uint32, int8, uint8 and etc but for now we have
  * chosen to keep things simple.
  */
-export type Constant =
+export type Scalar =
   | null
   | boolean
   | Int32
@@ -163,6 +163,11 @@ export type Constant =
   | Link
 
 /**
+ * @deprecated Use `Scalar` instead.
+ */
+export type Constant = Scalar
+
+/**
  * Supported primitive types. Definition utilizes `Phantom` type to describe
  * the type for compile type inference and `Variant` type to describe it for
  * the runtime inference.
@@ -170,7 +175,7 @@ export type Constant =
  * Note we denote lexical order between types via `order` field. This is used
  * when comparing data across types.
  */
-export type Type<T extends Constant = Constant> = Phantom<T> &
+export type Type<T extends Scalar = Scalar> = Phantom<T> &
   Variant<{
     Null: { order: 0 }
     Boolean: { order: 1 }
@@ -201,7 +206,7 @@ export type Type<T extends Constant = Constant> = Phantom<T> &
  * Variable is placeholder for a value that will be matched against by the
  * query engine.
  */
-export interface Variable<T extends Constant = Constant> {
+export interface Variable<T extends Scalar = Scalar> {
   ['?']: {
     type?: Type<T>
     id: VariableID
@@ -214,7 +219,7 @@ export type VariableID = number
  * Term is either a constant or a {@link Variable}. Terms are used to describe
  * predicates of the query.
  */
-export type Term<T extends Constant = Constant> = T | Variable<T>
+export type Term<T extends Scalar = Scalar> = T | Variable<T>
 
 /**
  * Describes association between `entity`, `attribute`, `value` of the
@@ -228,10 +233,10 @@ export type Term<T extends Constant = Constant> = T | Variable<T>
 export type Pattern = readonly [
   entity: Term<Entity>,
   attribute: Term<Attribute>,
-  value: Term<Constant>,
+  value: Term<Scalar>,
 ]
 
-export type Is = readonly [binding: Term<Constant>, value: Term<Constant>]
+export type Is = readonly [binding: Term<Scalar>, value: Term<Scalar>]
 
 export type Clause = Variant<{
   // and clause
@@ -294,22 +299,17 @@ export type Numeric = Int32 | Int64 | Float32
 /**
  * Describes operand of the operator.
  */
-export type Operand =
-  | Constant
-  | Record<string, Constant>
-  | [Constant, ...Constant[]]
+export type Operand = Scalar | Record<string, Scalar> | [Scalar, ...Scalar[]]
 
 type EphemeralEntity =
   | Term<Entity>
   | Record<string, Term>
   | [Term<Entity>, ...Term<Entity>[]]
 
-export type InferOperand<T, K = T> = K extends Constant ? Term<T & Constant>
-: K extends Array<infer U extends Constant> ? Term<U>[]
+export type InferOperand<T, K = T> = K extends Scalar ? Term<T & Scalar>
+: K extends Array<infer U extends Scalar> ? Term<U>[]
 : {
-    [Key in keyof K]: T[Key & keyof T] & K[Key] extends (
-      infer U extends Constant
-    ) ?
+    [Key in keyof K]: T[Key & keyof T] & K[Key] extends infer U extends Scalar ?
       Term<U>
     : never
   }
@@ -416,7 +416,7 @@ export type Attribute = string | Float32 | Int32 | Int64 | Bytes
 export type Fact = readonly [
   entity: Entity,
   attribute: Attribute,
-  value: Constant,
+  value: Scalar,
 ]
 
 /**
@@ -426,7 +426,7 @@ export type Fact = readonly [
 export type Datum = readonly [
   entity: Entity,
   attribute: Attribute,
-  value: Constant,
+  value: Scalar,
   cause: Entity,
 ]
 
@@ -435,7 +435,7 @@ export type Datum = readonly [
  * Each key represents an `attribute` and corresponding value represents it's
  * `value`.
  *
- * If value is an array of {@link Constant}s then entity is associated each
+ * If value is an array of {@link Scalar}s then entity is associated each
  * value with a same attribute.
  *
  * If value is an `Instantiation` then entity is associated with a new entity
@@ -446,13 +446,13 @@ export type Datum = readonly [
  * key.
  */
 export interface Instantiation {
-  [Key: string]: Constant | Constant[] | Instantiation | Instantiation[]
+  [Key: string]: Scalar | Scalar[] | Instantiation | Instantiation[]
 }
 
 export interface FactsSelector {
   entity?: Entity
   attribute?: Attribute
-  value?: Constant
+  value?: Scalar
 }
 
 export type Instruction = Variant<{
@@ -524,7 +524,7 @@ export interface Negation {
 
 export type Conjunct = Constraint | Negation
 
-export type Every = readonly [Conjunct, ...Conjunct[]]
+export type Every = [Conjunct, ...Conjunct[]]
 export interface Some {
   readonly [Case: string]: Every
 }
@@ -583,7 +583,7 @@ type SelectFact = {
    * {@link Term} representing the value of the attribute on the entity (denoted
    * by `of`). In RDF notation this will correspond to an object.
    */
-  is?: Term<Constant>
+  is?: Term<Scalar>
 
   /**
    * The `this` field is reserved for the future use where it could be used to
@@ -604,7 +604,7 @@ interface SelectByEntity extends SelectFact {
 
 interface SelectByValue extends SelectFact {
   // Selection by value requires a value to be specified.
-  is: Term<Constant>
+  is: Term<Scalar>
 }
 
 export interface FactSelection {
@@ -663,16 +663,16 @@ export type InferFormulaMatch<F> =
 export type FormulaMatch<In, Out> = InferCells<In, 'of'> &
   Partial<InferCells<Out, 'is'>>
 
-export type InferCells<In, DefaultName extends string> = In extends Constant ?
+export type InferCells<In, DefaultName extends string> = In extends Scalar ?
   { [key in DefaultName]: Term<In> }
 : In extends any[] ?
   {
     [key in DefaultName]: {
-      [Key in keyof In]: In[Key] extends Constant ? Term<In[Key]> : never
+      [Key in keyof In]: In[Key] extends Scalar ? Term<In[Key]> : never
     }
   }
 : {
-    [Key in keyof In]: In[Key] extends Constant ? Term<In[Key]> : never
+    [Key in keyof In]: In[Key] extends Scalar ? Term<In[Key]> : never
   }
 
 type SystemOperators = {
@@ -746,7 +746,7 @@ type SystemOperators = {
 
 type T = MatchOperator<SystemOperators['data/type'], 'data/type'>['match']['is']
 export type RuleBindings<Case extends Conclusion = Conclusion> = {
-  [Key in keyof Case]: Term<Constant>
+  [Key in keyof Case]: Term<Scalar>
 }
 
 export interface RuleApplication<Match extends Conclusion = Conclusion> {
@@ -757,7 +757,7 @@ export interface RuleApplication<Match extends Conclusion = Conclusion> {
 export type InferRuleMatch<Case extends Conclusion> = {
   [Key in keyof Case]: Case[Key] extends Variable<infer U> ?
     U extends any ?
-      Term<Constant>
+      Term<Scalar>
     : Term<U>
   : never
 }
@@ -908,44 +908,36 @@ export interface QueryEffect {
   select: Pattern
 }
 
-export type SchemaDescriptor = Variant<{
-  Null: {}
-  Boolean: {}
-  Int32: {}
-  Int64: {}
-  Float32: {}
-  String: { implicit?: string }
-  Bytes: {}
-  Reference: {}
-  Object: { members: Record<string, SchemaDescriptor> }
-  Array: { of: SchemaDescriptor }
-}>
-
 export type ScalarDescriptor =
   | null
+  | { Null: {} }
   | BooleanConstructor
+  | { Boolean: {} }
   | StringConstructor
+  | { String: {} }
   | NumberConstructor
+  | { Int32: {} }
+  | { Float32: {} }
   | BigIntConstructor
+  | { Int64: {} }
   | Uint8ArrayConstructor
+  | { Bytes: {} }
 
 export type ObjectDescriptor = {
-  /**
-   * Object descriptor must have a top level property that denotes the type
-   * name it is kind of like tag in the tagged unions.
-   */
-  [Case: string]: {
-    [Key: string]: TypeDescriptor
-  }
+  [Key: string]: TypeDescriptor
 }
 
 export type ArrayDescriptor = [TypeDescriptor]
+
+export type UnknownDescriptor = Record<PropertyKey, never>
 
 export type TypeDescriptor =
   | ScalarDescriptor
   | ObjectDescriptor
   | ArrayDescriptor
   | EntitySchema<any>
+  | ScalarSchema
+  | UnknownDescriptor
 
 export type ModelDescriptor<
   Descriptor extends ObjectDescriptor = ObjectDescriptor,
@@ -953,92 +945,33 @@ export type ModelDescriptor<
   Object: Descriptor
 }
 
-export type Model<T extends SchemaDescriptor = SchemaDescriptor> = T &
-  Variable & {
-    match(terms: Partial<InferSchemaTerms<SchemaDescriptor>>): Constraint
-  }
-
-export type InferObjectAssert<Model> = {
-  [Key in keyof Model]: InferSchemaAssert<Model[Key]>
-} & {
-  this?: Entity
-}
-
-export type InferSchemaAssert<T> =
-  T extends { Null: {} } ? null
-  : T extends { Boolean: {} } ? boolean
-  : T extends { Int32: {} } ? number
-  : T extends { Int64: {} } ? bigint
-  : T extends { Float32: {} } ? number
-  : T extends { String: {} } ? string
-  : T extends { Bytes: {} } ? Uint8Array
-  : T extends { Reference: {} } ? Link
-  : T extends { Object: { members: infer Members } } ?
-    InferObjectAssert<Members>
-  : T extends { Array: { of: infer Element } } ? InferSchemaAssert<Element>[]
-  : never
-
-export type InferObjectTerms<Model> = {
-  [Key in keyof Model]: InferSchemaTerms<Model[Key]>['this']
-} & {
-  this?: Term<Entity>
-}
-
-export type InferSchemaTerms<T> =
-  T extends { Null: {} } ? { this: Term<null> }
-  : T extends { Boolean: {} } ? { this: Term<boolean> }
-  : T extends { Int32: {} } ? { this: Term<number> }
-  : T extends { Int64: {} } ? { this: Term<bigint> }
-  : T extends { Float32: {} } ? { this: Term<number> }
-  : T extends { String: {} } ? { this: Term<string> }
-  : T extends { Bytes: {} } ? { this: Term<Uint8Array> }
-  : T extends { Reference: {} } ? { this: Term<Link> }
-  : T extends { Object: { members: infer Members } } ? InferObjectTerms<Members>
-  : T extends { Array: { of: infer Element } } ?
-    { this: Term<Entity>; of: InferSchemaTerms<Element> }
-  : never
-
-export type InferObjectVariables<Model> = {
-  [Key in keyof Model]: InferSchemaVariables<Model[Key]>
-} & Variable<Entity> & {
-    _: Variable<any>
-  }
-
-export type InferSchemaVariables<T> =
-  T extends { Null: {} } ? Variable<null>
-  : T extends { Boolean: {} } ? Variable<boolean>
-  : T extends { Int32: {} } ? Variable<number>
-  : T extends { Int64: {} } ? Variable<bigint>
-  : T extends { Float32: {} } ? Variable<number>
-  : T extends { String: {} } ? Variable<string>
-  : T extends { Bytes: {} } ? Variable<Uint8Array>
-  : T extends { Reference: {} } ? Variable<Link>
-  : T extends { Object: { members: infer Members } } ?
-    InferObjectVariables<Members>
-  : T extends { Array: { of: infer Element } } ? InferSchemaVariables<Element>
-  : never
-
 export type InferArraySchema<T> =
   T extends TypeDescriptor ? InferTypeSchema<T>[] : never
 
 export type InferSchemaType<T extends TypeDescriptor> =
   T extends null ? null
+  : T extends { Null: {} } ? null
   : T extends BooleanConstructor ? boolean
+  : T extends { Boolean: {} } ? boolean
   : T extends StringConstructor ? string
+  : T extends { String: {} } ? string
   : T extends NumberConstructor ? Int32
+  : T extends { Int32: {} } ? Int32
+  : T extends { Float32: {} } ? Float32
   : T extends BigIntConstructor ? Int64
+  : T extends { Int64: {} } ? Int64
   : T extends Uint8ArrayConstructor ? Bytes
+  : T extends { Bytes: {} } ? Bytes
   : T extends ModelDescriptor<infer Descriptor> ? InferSchemaType<Descriptor>
   : T extends [infer Element] ? Element[]
+  : T extends UnknownDescriptor ? unknown
   : T extends ObjectDescriptor ?
     {
-      [Case in keyof T]: {
-        [Key in keyof T[Case]]: InferSchemaType<T[Case][Key]>
-      }
-    }[keyof T]
+      [Key in keyof T]: InferSchemaType<T[Key]>
+    }
   : never
 
-export type InferTypeSchema<T extends TypeDescriptor | ScalarDescriptor> =
+export type InferTypeSchema<T extends TypeDescriptor> =
   T extends null ? ScalarSchema<null>
   : T extends BooleanConstructor ? ScalarSchema<boolean>
   : T extends StringConstructor ? ScalarSchema<string>
@@ -1052,17 +985,20 @@ export type InferTypeSchema<T extends TypeDescriptor | ScalarDescriptor> =
   : never
 
 export type InferTypeTerms<T> =
-  T extends Constant ? Term<T>
-  : Partial<
-      { this: Term<Entity> } & { [Key in keyof T]: InferTypeTerms<T[Key]> }
-    >
+  T extends Scalar ? Term<T>
+  : unknown extends T ? Term
+  : InferEntityTerms<T>
+
+export type InferEntityTerms<T> = Partial<
+  { this: Term<Entity> } & { [Key in keyof T]: InferTypeTerms<T[Key]> }
+>
 
 export type InferTypeVariables<T> =
-  T extends Constant ? Variable<T>
+  T extends Scalar ? Variable<T>
+  : unknown extends T ? Variable<any>
   : { this: Term<Entity> } & {
       [Key in keyof T]: InferTypeVariables<T[Key]>
     }
-
 export type ArraySchema<Of> = {
   $: Variable<Entity>
   match(terms: {
@@ -1072,12 +1008,12 @@ export type ArraySchema<Of> = {
 }
 
 export type ObjectSchema<
-  Label extends string,
+  Domain extends string,
   T,
   Descriptor extends ObjectDescriptor,
 > = {
   $: Variable<Entity>
-  label: Label
+  domain: Domain
   match(terms: Partial<InferTypeTerms<T>>): Constraint
   select(
     terms: Partial<InferTypeTerms<T>> & { from: Querier }
@@ -1087,16 +1023,22 @@ export type ObjectSchema<
 
   when(
     derive: (variables: InferTypeVariables<T>) => Iterable<Constraint>
-  ): ObjectSchema<Label, T, Descriptor>
+  ): ObjectSchema<Domain, T, Descriptor>
 }
 
 export interface SchemaDSL {
   variables: Variables
 }
 
-export interface ScalarSchema<T extends Constant = Constant> {
+export interface ScalarSchema<
+  T extends Scalar = Scalar,
+  Name extends The = The,
+> {
+  the: Name
   type: TypeName
-  match(term: Term<T>): Constraint
+
+  (term: Term<T>): Conjunct
+  match(term: Term<T>): Conjunct
 
   Object?: undefined
 }
@@ -1104,9 +1046,9 @@ export interface ScalarSchema<T extends Constant = Constant> {
 export interface EntitySchema<
   Model = {},
   Descriptor extends ObjectDescriptor = ObjectDescriptor,
-  Label extends string = keyof Descriptor & string,
+  Domain extends string = string,
 > {
-  label: Label
+  domain: Domain
   Object: Descriptor
   variables: SchemaVariables
 
@@ -1116,12 +1058,14 @@ export interface EntitySchema<
   (terms?: InferTypeTerms<Model>): RuleApplicationView<Model>
   match(terms?: InferTypeTerms<Model>): RuleApplicationView<Model>
 
-  new: (model: Model & { this: Entity }) => EntityView<Model>
+  not(terms: InferTypeTerms<Model>): Negation
 
   view(match: Bindings, variables: SchemaVariables): EntityView<Model>
 
+  new: (model: Model & { this: Entity }) => EntityView<Model>
+
   when(
-    derive: (variables: InferTypeVariables<Model>) => Iterable<Constraint>
+    derive: (variables: InferTypeVariables<Model>) => Iterable<Conjunct>
   ): EntitySchema<Model, Descriptor, Label>
 }
 
@@ -1144,3 +1088,41 @@ export type TermTree = {
 }
 
 export type EntityMember = ScalarSchema | EntitySchema
+
+export type The = `${string}/${string}`
+
+export interface AttributeDescriptor<T extends The = The> {
+  the?: T
+}
+
+/**
+ * Schema descriptor is similar to Entity descriptor except it does so across
+ * several namespaces.
+ */
+export type SchemaDescriptor = {
+  /**
+   * Object descriptor must have a top level property that denotes the type
+   * name it is kind of like tag in the tagged unions.
+   */
+  [Domain: string]: {
+    [Key: string]: TypeDescriptor
+  }
+}
+
+export type InferSchema<Descriptor extends SchemaDescriptor> = {
+  [Domain in keyof Descriptor]: {
+    [Key in keyof Descriptor[Domain]]: InferSchemaMember<
+      Descriptor[Domain][Key],
+      `${Domain & string}/${Key & string}`
+    >
+  }
+}
+
+export type InferSchemaMember<
+  Descriptor extends TypeDescriptor,
+  Name extends The,
+> = Descriptor extends ScalarDescriptor ?
+  ScalarSchema<InferSchemaType<Descriptor>, Name>
+: Descriptor extends ObjectDescriptor ?
+  EntitySchema<InferSchemaType<Descriptor>, Descriptor, Name>
+: never

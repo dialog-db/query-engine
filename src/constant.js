@@ -8,7 +8,7 @@ export { Link, Bytes }
 
 /**
  * @param {unknown} value
- * @returns {value is API.Constant}
+ * @returns {value is API.Scalar}
  */
 export const is = (value) => {
   switch (typeof value) {
@@ -25,8 +25,8 @@ export const is = (value) => {
 }
 
 /**
- * @param {API.Constant} self
- * @param {API.Constant} other
+ * @param {API.Scalar} self
+ * @param {API.Scalar} other
  */
 export const equal = (self, other) => {
   if (self === other) {
@@ -42,7 +42,7 @@ export const equal = (self, other) => {
 
 /**
  *
- * @param {API.Constant} self
+ * @param {API.Scalar} self
  */
 export const toJSON = (self) => {
   if (self instanceof Uint8Array) {
@@ -55,7 +55,7 @@ export const toJSON = (self) => {
 }
 
 /**
- * @param {API.Constant} value
+ * @param {API.Scalar} value
  */
 export const entropy = (value) => {
   switch (typeof value) {
@@ -88,7 +88,7 @@ export const entropy = (value) => {
 }
 
 /**
- * @param {API.Constant} self
+ * @param {API.Scalar} self
  */
 export const toString = (self) => {
   if (self === null) {
@@ -103,7 +103,7 @@ export const toString = (self) => {
 }
 
 /**
- * @param {API.Constant} self
+ * @param {API.Scalar} self
  */
 export const toDebugString = (self) => {
   if (self === null) {
@@ -118,7 +118,7 @@ export const toDebugString = (self) => {
 }
 
 /**
- * @param {API.Constant} value
+ * @param {API.Scalar} value
  */
 const toTypeOrder = (value) => {
   switch (typeof value) {
@@ -158,8 +158,8 @@ const RECORD = 7
 const REFERENCE = 9
 
 /**
- * @param {API.Constant} self
- * @param {API.Constant} to
+ * @param {API.Scalar} self
+ * @param {API.Scalar} to
  * @returns {0|-1|1}
  */
 export const compare = (self, to) => {
@@ -179,8 +179,8 @@ export const compare = (self, to) => {
   // Doing this so that TS will not complain about them possibly being null
   // if the both were first if would have returned already. If one of them
   // was than type comparison would have returned already.
-  self = /** @type {API.Constant&{}} */ (self)
-  to = /** @type {API.Constant&{}} */ (to)
+  self = /** @type {API.Scalar&{}} */ (self)
+  to = /** @type {API.Scalar&{}} */ (to)
 
   // If we got this far we have constants of the same type that are not
   // equal.
@@ -214,8 +214,8 @@ export const compare = (self, to) => {
 }
 
 /**
- * @param {API.Constant} actual
- * @param {API.Constant} expected
+ * @param {API.Scalar} actual
+ * @param {API.Scalar} expected
  * @param {API.Bindings} scope
  */
 export const unify = (actual, expected, scope) =>

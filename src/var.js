@@ -11,7 +11,7 @@ export const is = (term) =>
   typeof (/** @type {{['?']?: {id?:unknown}}} */ (term)?.['?']?.id) === 'number'
 
 /**
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @param {API.Variable<T>} variable
  * @returns {API.Type<T>|undefined}
  */
@@ -30,7 +30,7 @@ export const id = (variable) => variable['?'].id
 export const toKey = (variable) => `$${id(variable)}`
 
 /**
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @param {API.Variable<T>} variable
  * @returns {API.Variable<T>}
  */
@@ -50,7 +50,7 @@ export const toJSON = (variable) => {
 export { toJSON as inspect }
 
 /**
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @param {API.Type<T>} [type]
  * @returns {API.Variable<T>}
  */
@@ -66,7 +66,7 @@ export const link = () => variable(Type.Link)
 export { int32 as integer, float32 as float }
 
 /**
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @implements {API.Variable<T>}
  */
 class Variable {

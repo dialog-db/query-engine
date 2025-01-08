@@ -26,11 +26,11 @@ export const merge = (selector, bindings, base) => {
     for (const [key, term] of Object.entries(selector)) {
       const id = /** @type {keyof API.InferBindings<Selector>} */ (key)
       if (Term.is(term)) {
-        const value = /** @type {API.Constant} */ (Bindings.get(bindings, term))
+        const value = /** @type {API.Scalar} */ (Bindings.get(bindings, term))
         if (value === undefined) {
           return null
         } else {
-          if (Constant.equal(/** @type {API.Constant} */ (base[id]), value)) {
+          if (Constant.equal(/** @type {API.Scalar} */ (base[id]), value)) {
             entries.push([key, value])
           } else {
             return null

@@ -369,7 +369,7 @@ class FormulaApplication {
         if (terms.length === 0) {
           matches.push(frame)
         } else {
-          const extension = /** @type {Record<string, API.Constant>} */ (out)
+          const extension = /** @type {Record<string, API.Scalar>} */ (out)
           let bindings = frame
           for (const [key, term] of terms) {
             const match = Term.unify(extension[key], term, frame)
@@ -1728,12 +1728,12 @@ class Trace {
   constructor(size = 1) {
     this.size = size
     /**
-     * @type {Array<API.Constant>}
+     * @type {Array<API.Scalar>}
      */
     this.frames = []
   }
   /**
-   * @param {API.Constant|Trace} frame
+   * @param {API.Scalar|Trace} frame
    */
   add(frame) {
     if (frame instanceof Trace) {
@@ -1762,7 +1762,7 @@ class Trace {
   }
 
   /**
-   * @returns {IterableIterator<API.Constant>}
+   * @returns {IterableIterator<API.Scalar>}
    */
   *tokens() {
     for (const frame of this.frames) {
@@ -1832,313 +1832,6 @@ export const indent = (message, indent = '  ') =>
  * @param {string} message
  */
 export const li = (message) => indent(`- ${message}`)
-
-export const text = () => new Text({})
-export const integer = () => new Integer()
-export const decimal = () => new Decimal()
-
-export const entity = () => new Entity()
-
-class Entity {
-  constructor() {
-    this.Reference = {}
-  }
-}
-
-/**
- * @template {Record<string, API.SchemaDescriptor>} Schema
- * @param {Schema} schema
- */
-export const record = (schema) => new Product(schema)
-
-/**
- *
- * @param {API.SchemaDescriptor} of
- */
-export const array = (of) => new ArrayOf(of)
-
-class Text {
-  /**
-   * @param {API.SchemaDescriptor['String'] & {}} schema
-   */
-  constructor(schema) {
-    this.String = schema
-  }
-
-  /**
-   * @param {string} value
-   */
-  implicit(value) {
-    return new Text({ implicit: value })
-  }
-
-  /**
-   * @param {API.SchemaDescriptor['String'] & {}} schema
-   * @param {unknown} data
-   */
-  static assert(schema, data) {
-    if (typeof data === 'string') {
-      return data
-    } else {
-      throw new TypeError(`Expected string but got ${typeof data}`)
-    }
-  }
-}
-
-class Integer {
-  constructor() {
-    this.Int32 = {}
-  }
-  /**
-   *
-   * @param {(API.SchemaDescriptor['Int32'] | API.SchemaDescriptor['Int64']) & {}} schema
-   * @param {unknown} data
-   */
-  static assert(schema, data) {
-    if (Number.isInteger(data)) {
-      return data
-    } else {
-      throw new TypeError(`Expected integer but got ${typeof data}`)
-    }
-  }
-}
-
-class Decimal {
-  constructor() {
-    this.Float64 = {}
-  }
-  /**
-   * @param {API.SchemaDescriptor['Float32'] & {}} schema
-   * @param {unknown} data
-   */
-  static assert(schema, data) {
-    if (Number.isFinite(data)) {
-      return data
-    } else {
-      throw new TypeError(`Expected number but got ${typeof data}`)
-    }
-  }
-}
-
-class Bool {
-  constructor() {
-    this.Boolean = {}
-  }
-  /**
-   * @param {API.SchemaDescriptor['Boolean'] & {}} schema
-   * @param {unknown} data
-   */
-  static assert(schema, data) {
-    if (typeof data === 'boolean') {
-      return data
-    } else {
-      throw new TypeError(`Expected boolean but got ${typeof data}`)
-    }
-  }
-}
-
-class Null {
-  constructor() {
-    this.Null = {}
-  }
-  /**
-   * @param {API.SchemaDescriptor['Null'] & {}} schema
-   * @param {unknown} data
-   */
-  static assert(schema, data) {
-    if (data === null) {
-      return null
-    } else {
-      throw new TypeError(`Expected null but got ${typeof data}`)
-    }
-  }
-}
-
-class Bytes {
-  constructor() {
-    this.Bytes = {}
-  }
-  /**
-   * @param {API.SchemaDescriptor['Bytes'] & {}} schema
-   * @param {unknown} data
-   */
-  static assert(schema, data) {
-    if (data instanceof Uint8Array) {
-      return data
-    } else {
-      throw new TypeError(`Expected bytes but got ${typeof data}`)
-    }
-  }
-}
-
-class Reference {
-  constructor() {
-    this.Reference = {}
-  }
-  /**
-   * @param {API.SchemaDescriptor['Reference'] & {}} schema
-   * @param {unknown} data
-   * @returns {API.Entity}
-   */
-  static assert(schema, data) {
-    if (Link.is(data)) {
-      return data
-    } else {
-      throw new TypeError(`Expected reference but got ${typeof data}`)
-    }
-  }
-}
-
-/**
- * @template {Record<string, API.SchemaDescriptor>} Model
- */
-class Product {
-  /**
-   * @param {Model} members
-   */
-
-  constructor(members) {
-    this.Object = { members }
-    this.$ = Object.assign(
-      Variable.variable(),
-      Object.fromEntries(
-        Object.entries(members).map(([name, schema]) => [
-          name,
-          Variable.variable(),
-        ])
-      )
-    )
-  }
-
-  /**
-   * @template {Record<string, API.SchemaDescriptor>} Extension
-   * @param {Extension} extension
-   */
-  extend(extension) {
-    return new Product({ ...this.Object.members, ...extension })
-  }
-
-  /**
-   * @template {Record<string, API.SchemaDescriptor>} Model
-   * @param {API.SchemaDescriptor['Object'] & { members: Model }} schema
-   * @param {unknown} data
-   * @returns {Required<API.InferObjectAssert<Model>>}
-   */
-  static assert(schema, data) {
-    if (typeof data !== 'object' || data === null) {
-      throw new TypeError(`Expected object but got ${typeof data}`)
-    }
-
-    const source = /** @type {Record<string, any>} */ (data)
-    /** @type {Record<string, any>} */
-    const assertion = { this: source.this ?? Link.of(data) }
-    for (const [name, member] of Object.entries(schema.members)) {
-      assertion[name] = assert(member, source[name])
-    }
-
-    return /** @type {Required<API.InferObjectAssert<Model>>} */ (assertion)
-  }
-
-  /**
-   * @param {API.InferObjectAssert<Model> & { this?: API.Entity } } data
-   */
-  assert(data) {
-    return Product.assert(this.Object, data)
-  }
-
-  /**
-   * @param {API.When} when
-   */
-  when(when) {
-    return DeductiveRule.new(Circuit.new(), {
-      match: this.$,
-      when,
-    })
-  }
-
-  /**
-   * @param {(input: API.InferObjectVariables<Model>) => API.When} body
-   */
-  derive(body) {
-    return this.when(body(/** @type {any} */ (this.$)))
-  }
-
-  /**
-   *
-   * @param {Iterable<API.Bindings>} selection
-   */
-  select(selection) {
-    return Selector.select(this.$, selection)
-  }
-
-  /**
-   * @param {API.InferObjectTerms<Model> & { this?: API.Term<API.Entity> }} terms
-   * @returns {API.Conjunct}
-   */
-  where(terms) {
-    throw 0
-  }
-}
-
-/**
- * @template {API.SchemaDescriptor} Schema
- * @param {Schema} schema
- * @param {API.InferSchemaAssert<Schema>} data
- */
-const assert = (schema, data) => {
-  if (schema.Null) {
-    return Null.assert(schema.Null, data)
-  }
-
-  if (schema.Boolean) {
-    return Bool.assert(schema.Boolean, data)
-  }
-
-  if (schema.String) {
-    return Text.assert(schema.String, data)
-  }
-
-  if (schema.Int32) {
-    return Integer.assert(schema.Int32, data)
-  }
-
-  if (schema.Float32) {
-    return Decimal.assert(schema.Float32, data)
-  }
-
-  if (schema.Bytes) {
-    return Bytes.assert(schema.Bytes, data)
-  }
-
-  if (schema.Reference) {
-    return Reference.assert(schema.Reference, data)
-  }
-
-  if (schema.Array) {
-    return ArrayOf.assert(schema.Array, data)
-  }
-
-  if (schema.Object) {
-    return Product.assert(schema.Object, data)
-  }
-}
-
-class ArrayOf {
-  /**
-   * @param {API.SchemaDescriptor} of
-   */
-  constructor(of) {
-    this.Array = { of }
-  }
-
-  /**
-   * @param {API.SchemaDescriptor['Array'] & { of: API.SchemaDescriptor }} schema
-   * @param {unknown} data
-   */
-  static assert(schema, data) {
-    return []
-  }
-}
 
 /**
  *

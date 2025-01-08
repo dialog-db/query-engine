@@ -11,6 +11,13 @@ export class Variable {
     this['?'] = { id }
     this.#name = name
   }
+
+  /**
+   * @param {string|symbol} name
+   */
+  static new(name = Symbol()) {
+    return new Variable(++Variable.id, name)
+  }
   get id() {
     return this['?'].id
   }

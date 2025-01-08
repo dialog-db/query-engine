@@ -19,7 +19,7 @@ export const set = (bindings, variable, value) => ({
 
 /**
  * @template {API.Bindings} Bindings
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @param {Bindings} bindings
  * @param {API.Term<T>} term
  * @returns {API.Term<T>|undefined}

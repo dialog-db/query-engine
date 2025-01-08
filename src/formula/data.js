@@ -2,13 +2,13 @@ import * as API from '../api.js'
 import { Link } from '../constant.js'
 
 /**
- * @param {API.Constant} operand
+ * @param {API.Scalar} operand
  */
 export const is = (operand) => [operand]
 
 export const type =
   /**
-   * @param {API.Constant} of
+   * @param {API.Scalar} of
    * @returns {API.TypeName[]}
    */
   (of) => {
@@ -40,7 +40,7 @@ export const type =
   }
 
 /**
- * @template {API.Constant|Record<string, API.Constant>} T
+ * @template {API.Scalar|Record<string, API.Scalar>} T
  * @param {T} data
  */
 export const refer = (data) => [Link.of(data)]

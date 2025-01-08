@@ -30,12 +30,13 @@ const db = DB.Memory.create([
  */
 export const testSchema = {
   'test schema': async (assert) => {
-    const Point = Schema.schema({
-      Point: {
+    const Point = Schema.entity(
+      {
         x: Number,
         y: Number,
       },
-    })
+      'Point'
+    )
 
     const result = await Point({ x: 0 }).select({
       from: db,
@@ -51,19 +52,21 @@ export const testSchema = {
   },
 
   'nested entities with namespace': async (assert) => {
-    const Point = Schema.schema({
-      Point: {
+    const Point = Schema.entity(
+      {
         x: Number,
         y: Number,
       },
-    })
+      'Point'
+    )
 
-    const Line = Schema.schema({
-      Line: {
+    const Line = Schema.entity(
+      {
         a: Point,
         b: Point,
       },
-    })
+      'Line'
+    )
 
     const result = await Line().select({
       from: db,
@@ -106,19 +109,21 @@ export const testSchema = {
   },
 
   'can do a nested selection': async (assert) => {
-    const Point = Schema.schema({
-      Point: {
+    const Point = Schema.entity(
+      {
         x: Number,
         y: Number,
       },
-    })
+      'Point'
+    )
 
-    const Line = Schema.schema({
-      Line: {
+    const Line = Schema.entity(
+      {
         a: Point,
         b: Point,
       },
-    })
+      'Line'
+    )
 
     const result = await Line({ b: { y: 2 } }).select({ from: db })
 
@@ -143,12 +148,13 @@ export const testSchema = {
   },
 
   'define rule from schema': async (assert) => {
-    const Cursor = Schema.schema({
-      Cursor: {
+    const Cursor = Schema.entity(
+      {
         top: Number,
         left: Number,
       },
-    }).when(($) => [
+      'Cursor'
+    ).when(($) => [
       { match: { the: 'Point/x', of: $.this, is: $.top } },
       { match: { the: 'Point/y', of: $.this, is: $.left } },
     ])
@@ -163,4 +169,163 @@ export const testSchema = {
       }),
     ])
   },
+
+  'test negation': async (assert) => {
+    const Point = Schema.entity(
+      {
+        x: Number,
+        y: Number,
+      },
+      'Point'
+    )
+
+    const NonZeroPoint = Point.when((point) => [
+      Point(point),
+      Point.not({ this: point.this, x: 0, y: 0 }),
+    ])
+
+    const result = await NonZeroPoint({ y: 0 }).select({ from: db })
+
+    assert.deepEqual(result, [
+      NonZeroPoint.new({
+        this: Link.of({ 'Point/x': 1, 'Point/y': 0 }),
+        x: 1,
+        y: 0,
+      }),
+    ])
+  },
+
+  'test managers relation': async (assert) => {
+    const Person = Schema.entity(
+      {
+        name: String,
+      },
+      'Person'
+    )
+
+    const Manages = Schema.entity(
+      {
+        employee: Person,
+      },
+      'Manages'
+    )
+
+    const Manager = Schema.entity(
+      {
+        name: String,
+        of: Person,
+      },
+      'Manager'
+    ).when((manager) => [
+      Person({ this: manager.this, name: manager.name }),
+      Person(manager.of),
+      Manages({ this: manager.this, employee: manager.of }),
+    ])
+
+    const db = DB.Memory.create([
+      {
+        'Person/name': 'Alice',
+        'Manages/employee': {
+          'Person/name': 'Bob',
+          'Manages/employee': { 'Person/name': 'Mallory' },
+        },
+      },
+    ])
+
+    const result = await Manager.match({ of: { name: 'Bob' } }).select({
+      from: db,
+    })
+
+    assert.deepEqual(result, [
+      Manager.new({
+        name: 'Alice',
+        this: Link.of({
+          'Person/name': 'Alice',
+          'Manages/employee': {
+            'Person/name': 'Bob',
+            'Manages/employee': { 'Person/name': 'Mallory' },
+          },
+        }),
+        of: Person.new({
+          this: Link.of({
+            'Person/name': 'Bob',
+            'Manages/employee': { 'Person/name': 'Mallory' },
+          }),
+          name: 'Bob',
+        }),
+      }),
+    ])
+  },
+
+  'schemas and rules are callable': async (assert) => {
+    const Text = Schema.string()
+    const Point = Schema.entity(
+      {
+        x: {},
+        y: {},
+      },
+      'Point'
+    )
+
+    const Invalid = Point.when((point) => [Point(point), Text(point.y)])
+
+    const result = await Invalid().select({ from: db })
+
+    assert.deepEqual(result, [
+      Point.new({
+        this: Link.of({ 'Point/x': 0, 'Point/y': '1', v: 2 }),
+        x: 0,
+        y: '1',
+      }),
+    ])
+  },
+
+  // 'skip entity maps hypothetical': async (assert) => {
+  //   const email = Schema.attribute({ Email: { address: String } }).when(
+  //     (email) => [
+  //       {
+  //         match: { text: email, pattern: '*@*.*' },
+  //         operator: 'text/like',
+  //       },
+  //     ]
+  //   )
+
+  //   const Email = Schema.value().when(email => [
+  //     Schema.string
+  //     {
+  //       match: { text: email, pattern: '*@*.*' },
+  //       operator: 'text/like'
+  //     }
+  //   ])
+
+  //   const Person = Schema.entity({
+  //     name: Schema.string().from("person"),
+  //     emain: Schema
+
+  //     Person: { name: String },
+  //     Email: {}
+  //   })
+
+  //   const AccountID = Schema.for({ domain: {},  })
+
+  //   Schema.string().for({ the: `account/id`, type: Number })
+
+  //   const FirstName = Schema.person.firstName({ type: String })
+  //   const LastName = Schema.person.lastName({ type: String })
+
+  //   attribute({ Account: { id: Number } })
+  //   const firstName = Schema.attribute({ Person: { firstName: String } })
+  //   const lastName = Schema.attribute({ Person: { lastName: String } })
+
+  //   const Account = Schema.entity({
+  //     id: Schema.account.id({ type: Number }),
+  //     firstName: Schema.person.firstName({ type: String }),
+  //     lastName: Schema.person.lastName({ type: String }),
+  //     email: Schema.email
+  //       .address({ type: String })
+  //       .when((email) => [
+  //         { match: { text: email, pattern: '*@*.*' }, operator: 'text/like' },
+  //       ]),
+  //   })
+  // },
 }

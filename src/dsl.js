@@ -126,7 +126,7 @@ class Entity {
 }
 
 /**
- * @template {API.Constant} [T=API.Constant]
+ * @template {API.Scalar} [T=API.Scalar]
  * @implements {API.Variable<T>}
  */
 class Attribute {

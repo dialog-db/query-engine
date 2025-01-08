@@ -33,7 +33,7 @@ export const isBlank = (term) => Variable.is(term) && Variable.isBlank(term)
  * an error.
  *
  * @param {API.Term} term
- * @param {API.Constant} value
+ * @param {API.Scalar} value
  * @param {API.Bindings} bindings
  * @returns {API.Result<API.Bindings, Error>}
  */
@@ -51,7 +51,7 @@ export const match = (term, value, bindings) =>
 /**
  *
  * @param {API.Variable} variable
- * @param {API.Constant} value
+ * @param {API.Scalar} value
  * @param {API.Bindings} bindings
  * @returns {API.Result<API.Bindings, Error>}
  */
@@ -109,9 +109,9 @@ export const unify = (actual, expected, bindings) => {
  * returns the unmodified frame; if not, it returns an error describing the
  * inconsistency.
  *
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @param {API.Variable<T>} variable
- * @param {API.Constant} value
+ * @param {API.Scalar} value
  * @param {API.Bindings} bindings
  * @returns {API.Result<API.Bindings, Error>}
  */
@@ -128,7 +128,7 @@ export const extend = (variable, value, bindings) => {
  * Amend is similar to {@link extend} except it allows for the passed term to
  * be a variable itself.
  *
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @param {API.Variable<T>} variable
  * @param {API.Term<T>} term
  * @param {API.Bindings} bindings

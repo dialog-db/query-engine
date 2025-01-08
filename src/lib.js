@@ -98,7 +98,7 @@ function* evaluateQuery(db, { select, where }) {
   const selection = []
   for (const frame of frames) {
     if (selection.length === 0) {
-      selection.push(Selector.select(select, frame))
+      selection.push(Selector.match(select, frame))
     } else {
       let joined = false
       for (const [offset, match] of selection.entries()) {
@@ -110,7 +110,7 @@ function* evaluateQuery(db, { select, where }) {
       }
 
       if (!joined) {
-        selection.push(Selector.select(select, frame))
+        selection.push(Selector.match(select, frame))
       }
     }
   }
