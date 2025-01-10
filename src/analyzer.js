@@ -32,10 +32,8 @@ export const loop = (source) => InductiveRule.new(Circuit.new(), source)
  * @template {API.Conclusion} Match
  * @param {API.RuleApplication<Match>} application
  */
-export const plan = (application) => {
-  const operation = RuleApplication.new(Circuit.new(), application)
-  return operation.plan(new Set())
-}
+export const plan = (application) =>
+  RuleApplication.new(Circuit.new(), application).plan()
 
 /**
  * @typedef {object} Scope
@@ -185,7 +183,7 @@ class Select {
       parts.push(`is: ${Term.toDebugString(is)}`)
     }
 
-    return `{ match: {${parts.join(' ')}} }`
+    return `{ match: { ${parts.join(', ')} } }`
   }
 
   refer() {
@@ -425,10 +423,8 @@ class RuleApplication {
    * @param {API.RuleBindings<Match>} terms
    */
   static apply(rule, terms) {
-    const cells = new Map()
-    // Map between rule's variables and application variables
-    const mapping = new Map()
-    const application = new this(terms, rule, mapping, cells)
+    const application = new this(terms, rule, new Map(), new Map())
+    const { mapping, cells } = application
 
     for (const [at, inner] of Object.entries(rule.match)) {
       const term = terms[at]
@@ -445,7 +441,9 @@ class RuleApplication {
       // mapping between rules inner variable and the term - application
       // variable.
       if (Variable.is(term)) {
-        cells.set(term, cost)
+        // We combine costs as we may have same outer variable set to different
+        // inner variables.
+        cells.set(term, combineCosts(cells.get(term) ?? 0, cost))
         rule.circuit.open(term, application)
       }
 
@@ -475,7 +473,7 @@ class RuleApplication {
   /**
    * @param {API.RuleBindings<Match>} match
    * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
-   * @param {Map<API.Variable, API.Variable>} mapping
+   * @param {Map<API.Variable, API.Term>} mapping
    * @param {Map<API.Variable, number>} cells
    */
   constructor(match, rule, mapping, cells) {
@@ -489,20 +487,25 @@ class RuleApplication {
   }
 
   /**
-   * @param {Set<API.Variable>} bindings
+   * @param {Context} context
    */
-  plan(bindings = EMPTY_SET) {
+  plan(context = ContextView.new()) {
     // Convert outer bindings to rule's internal variables
-    const scope = new Set()
+    const local = scope(context)
     for (const [inner, outer] of this.mapping) {
-      if (!Variable.is(outer) || bindings.has(outer)) {
-        scope.add(inner)
+      // If provided term is not a variable we bind value in local context. If
+      // it is a variable we create a reference from local variable to the outer
+      // variable.
+      if (!Variable.is(outer)) {
+        bind(local, inner, outer)
+      } else {
+        createReference(local, inner, outer)
       }
     }
 
     return new RuleApplicationPlan(
       this.match,
-      this.rule.plan(scope),
+      this.rule.plan(local),
       this.mapping
     )
   }
@@ -520,7 +523,7 @@ class RuleApplication {
    * @param {API.Querier} input.source
    */
   query(input) {
-    return this.plan(new Set()).query(input)
+    return this.plan().query(input)
   }
 
   toDebugString() {
@@ -621,15 +624,15 @@ class DeductiveRule {
   }
 
   /**
-   * @param {Set<API.Variable>} bindings
+   * @param {Context} context
    */
-  plan(bindings) {
+  plan(context) {
     /** @type {Record<string, ReturnType<typeof Join.prototype.plan>>} */
     const when = {}
     let cost = 0
     const disjuncts = Object.entries(this.disjuncts)
     for (const [name, disjunct] of disjuncts) {
-      const plan = disjunct.plan(bindings)
+      const plan = disjunct.plan(context)
       when[name] = plan
       cost += plan.cost
     }
@@ -640,7 +643,7 @@ class DeductiveRule {
     // Which is why we need to perform validation here in such a case.
     if (disjuncts.length === 0) {
       for (const [variable, cost] of this.cells) {
-        if (cost >= Infinity && !bindings.has(variable)) {
+        if (cost >= Infinity && !isBound(context, variable)) {
           throw new Error(
             `Rule application omits required binding for "${variable}" variable`
           )
@@ -651,23 +654,19 @@ class DeductiveRule {
     return new DeductivePlan(this.match, when, cost)
   }
 
-  /**
-   * @param {object} input
-   * @param {API.Querier} input.source
-   */
-  query(input) {
-    return this.plan(new Set()).query(input)
-  }
-
   toDebugString() {
     const disjuncts = Object.entries(this.disjuncts)
     const when = []
     for (const [name, disjunct] of disjuncts) {
       when.push(`${name}: ${toDebugString(disjunct)}`)
     }
-    const body = when.length === 1 ? when[0] : `when: { ${when.join(',\n  ')} }`
+    const body =
+      when.length === 1 ? when[0] : `when: { ${indent(when.join(',\n'))} }`
 
-    return `{ match: ${Terms.toDebugString(this.match)}, ${body}} }`
+    return `{
+  match: ${Terms.toDebugString(this.match)},
+  ${body}}
+}`
   }
 }
 
@@ -809,15 +808,15 @@ class InductiveRule {
   }
 
   /**
-   * @param {Set<API.Variable>} bindings
+   * @param {Context} context
    */
-  plan(bindings) {
-    const when = this.base.plan(bindings)
+  plan(context) {
+    const when = this.base.plan(context)
     let cost = when.cost
     /** @type {Record<string, ReturnType<typeof Join.prototype.plan>>} */
     const loop = {}
     for (const [name, deduction] of Object.entries(this.loop)) {
-      const plan = deduction.plan(bindings)
+      const plan = deduction.plan(context)
       loop[name] = plan
       cost += plan.cost ** 2
     }
@@ -827,6 +826,8 @@ class InductiveRule {
 }
 
 const EMPTY_SET = Object.freeze(new Set())
+
+const nothing = Link.of(null)
 
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
@@ -952,11 +953,11 @@ class Join {
   }
 
   /**
-   * @param {Set<API.Variable>} scope
+   * @param {Context} outer
    * @returns {API.EvaluationPlan}
    */
-  plan(scope) {
-    const bindings = new Set(scope)
+  plan(outer) {
+    const context = scope(outer)
     /** @type {Map<API.Variable, Set<typeof this.assertion[0]>>} */
     const blocked = new Map()
     /** @type {Set<typeof this.assertion[0]>} */
@@ -967,7 +968,9 @@ class Join {
     for (const assertion of this.assertion) {
       let requires = 0
       for (const [variable, cost] of assertion.cells) {
-        if (cost >= Infinity && !bindings.has(variable)) {
+        // We resolve the target of the cell as we may have multiple different
+        // references to the same variable.
+        if (cost >= Infinity && !isBound(context, variable)) {
           requires++
           const waiting = blocked.get(variable)
           if (waiting) {
@@ -989,7 +992,7 @@ class Join {
 
       // Find lowest cost operation among ready ones
       for (const current of ready) {
-        const cost = estimate(current, bindings)
+        const cost = estimate(current, context)
 
         if (cost < (top?.cost ?? Infinity)) {
           top = { cost, current }
@@ -1002,7 +1005,7 @@ class Join {
         )
       }
 
-      ordered.push(top.current.plan(bindings))
+      ordered.push(top.current.plan(context))
       ready.delete(top.current)
       cost += top.cost
 
@@ -1018,7 +1021,7 @@ class Join {
               // unblock it yet.
               if (
                 cost >= Infinity &&
-                !bindings.has(variable) &&
+                !isBound(context, variable) &&
                 !unblocked.has(variable)
               ) {
                 unblock = false
@@ -1032,7 +1035,8 @@ class Join {
           }
           blocked.delete(variable)
         }
-        bindings.add(variable)
+
+        bind(context, variable, nothing)
       }
     }
 
@@ -1047,7 +1051,7 @@ class Join {
 
     return new JoinPlan(
       ordered,
-      this.negation.map((negation) => negation.plan(bindings)),
+      this.negation.map((negation) => negation.plan(context)),
       cost
     )
   }
@@ -1108,11 +1112,11 @@ class Not {
   }
 
   /**
-   * @param {Set<API.Variable>} bindings
+   * @param {Context} context
    * @returns {Negate}
    */
-  plan(bindings) {
-    return new Negate(this.constraint.plan(bindings))
+  plan(context) {
+    return new Negate(this.constraint.plan(context))
   }
 }
 
@@ -1154,6 +1158,14 @@ class JoinPlan {
       ...this.assertion.map(($) => debug($)),
       ...this.negation.map(($) => debug($)),
     ].join('\n')
+  }
+
+  toDebugString() {
+    const body = [
+      ...this.assertion.map(($) => toDebugString($)),
+      ...this.negation.map(($) => toDebugString($)),
+    ]
+    return `[${indent(`\n${body.join(',\n')}`)}\n]`
   }
 }
 
@@ -1222,6 +1234,26 @@ class DeductivePlan extends DisjoinPlan {
     }
 
     return `(rule (${head})${indent(body.join('\n'))})`
+  }
+
+  toDebugString() {
+    const disjuncts = Object.entries(this.disjuncts)
+    const when = []
+    if (disjuncts.length === 1) {
+      const [[name, plan]] = disjuncts
+      when.push(indent(toDebugString(plan)))
+    } else {
+      when.push('{\n')
+      for (const [name, disjunct] of disjuncts) {
+        when.push(`  ${name}: ${toDebugString(disjunct)},\n`)
+      }
+      when.push('}')
+    }
+
+    return `{
+  match: ${indent(Terms.toDebugString(this.match))},
+  when: ${indent(when.join(''))}
+}`
   }
 
   /**
@@ -1304,7 +1336,7 @@ class RuleApplicationPlan {
   /**
    * @param {API.RuleBindings<Match>} match
    * @param {API.EvaluationPlan} plan
-   * @param {Map<API.Variable, API.Variable>} mapping - inner -> outer variable mapping
+   * @param {Map<API.Variable, API.Term>} mapping - inner -> outer variable mapping
    */
   constructor(match, plan, mapping) {
     this.match = match
@@ -1323,15 +1355,15 @@ class RuleApplicationPlan {
     const matches = []
     next: for (const bindings of selection) {
       /** @type {API.Bindings} */
-      let scope = {}
+      let match = {}
       for (const [inner, outer] of this.mapping) {
         const value = Bindings.get(bindings, outer)
         if (value !== undefined) {
-          const result = Term.unify(inner, value, scope)
+          const result = Term.unify(inner, value, match)
           if (result.error) {
             continue next
           } else {
-            scope = result.ok
+            match = result.ok
           }
         }
       }
@@ -1339,7 +1371,7 @@ class RuleApplicationPlan {
       // Execute rule with isolated bindings
       const results = yield* this.plan.evaluate({
         source,
-        selection: [scope],
+        selection: [match],
       })
 
       // For each result, create new outer bindings with mapped values
@@ -1382,9 +1414,11 @@ class RuleApplicationPlan {
 
   toDebugString() {
     const { match, plan } = this
-    return `{ match: ${Terms.toDebugString(match)}, rule: ${toDebugString(
-      plan
-    )} }`
+
+    return indent(`{
+  match: ${indent(Terms.toDebugString(match))},
+  rule: ${indent(toDebugString(plan))}
+}`)
   }
 }
 /**
@@ -1393,12 +1427,12 @@ class RuleApplicationPlan {
  * @param {object} operation
  * @param {number} [operation.cost]
  * @param {Map<API.Variable, number>} operation.cells
- * @param {Set<API.Variable>} [scope]
+ * @param {Context} [context]
  */
-const estimate = ({ cells, cost = 0 }, scope) => {
+const estimate = ({ cells, cost = 0 }, context) => {
   let total = cost
   for (const [variable, cost] of cells) {
-    if (scope && !scope.has(variable)) {
+    if (context && !isBound(context, variable)) {
       total += cost
     }
   }
@@ -1841,4 +1875,116 @@ export const li = (message) => indent(`- ${message}`)
 
 export const debug = (source) => {
   return source.debug ? source.debug() : JSON.stringify(source, null, 2)
+}
+
+/**
+ * Represents a local variable references to a remote variables. This is n:1
+ * relation meaning multiple local variables may point to the same remote one
+ * but local variable can point to at most one remote variable.
+ *
+ * @typedef {Map<API.Variable, API.Variable>} References
+ */
+
+/**
+ * Represents set of bound variables.
+ * @typedef {Map<API.Variable, API.Scalar>} Frame
+ */
+
+/**
+ * @typedef {object} Context
+ * @property {References} references
+ * @property {Frame} frame
+ */
+
+/**
+ * Returns true if the variable is bound in this context.
+ *
+ * @param {Context} context
+ * @param {API.Variable} variable
+ */
+const isBound = (context, variable) => {
+  return context.frame.has(resolve(context, variable))
+}
+
+/**
+ *
+ * @param {Context} context
+ * @param {API.Variable} variable
+ * @param {API.Scalar} value
+ */
+const bind = (context, variable, value) => {
+  context.frame.set(resolve(context, variable), value)
+}
+
+/**
+ * Attempts to resolve the variable in this context. If variable is a reference
+ * it will return the variable it refers to, otherwise it will return this
+ * variable essentially treating it as local.
+ *
+ * @param {Context} context
+ * @param {API.Variable} variable
+ */
+const resolve = (context, variable) =>
+  context.references.get(variable) ?? variable
+
+/**
+ * Returns the value of the variable in this context.
+ * @param {Context} context
+ * @param {API.Variable} variable
+ * @returns {API.Scalar|undefined}
+ */
+const get = (context, variable) => context.frame.get(resolve(context, variable))
+
+/**
+ *
+ * @param {Context} context
+ * @param {API.Variable} local
+ * @param {API.Variable} remote
+ */
+const createReference = (context, local, remote) => {
+  context.references.set(local, remote)
+}
+/**
+ *
+ * @param {Context} context
+ */
+const scope = (context) => {
+  return new ContextView(context.references, new Map(context.frame))
+}
+
+class ContextView {
+  static new() {
+    return new this(new Map(), new Map())
+  }
+  /**
+   * @param {References} references
+   * @param {Frame} frame
+   */
+  constructor(references, frame) {
+    this.references = references
+    this.frame = frame
+  }
+
+  /**
+   * @param {API.Variable} variable
+   */
+  resolve(variable) {
+    return resolve(this, variable)
+  }
+
+  /**
+   * @param {API.Variable} variable
+   * @returns {API.Scalar|undefined}
+   */
+  get(variable) {
+    return get(this, variable)
+  }
+
+  /**
+   * @param {API.Variable} variable
+   * @returns {boolean}
+   */
+  has(variable) {
+    return isBound(this, variable)
+  }
 }

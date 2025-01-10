@@ -400,7 +400,7 @@ export const testAnalyzer = {
           ],
         },
       })
-    }, /Unbound \?user variable referenced from { match: { of: \?user, is: "admin" }, operator: "==" }/)
+    }, /Unbound \?user variable referenced from { match: { of: \$.user, is: "admin" }, operator: "==" }/)
   },
 
   'terms in match affect planning': async (assert) => {
@@ -448,7 +448,7 @@ export const testAnalyzer = {
           },
         },
       })
-    }, /Unbound \?count variable referenced from { match: { of: \?count, is: 100 }, operator: "==" }/)
+    }, /Unbound \?count variable referenced from { match: { of: \$.count, is: 100 }, operator: "==" }/)
   },
 
   'correctly maps variables across scopes': async (assert) => {
@@ -661,7 +661,7 @@ export const testAnalyzer = {
 
     assert.throws(
       () => plan($.q),
-      /Unbound \?result variable referenced from { match: { of: \?result, is: "reference" }, operator: "data\/type" }/
+      /Unbound \?result variable referenced from { match: { of: \$.result, is: "reference" }, operator: "data\/type" }/
     )
   },
 
@@ -690,10 +690,10 @@ export const testAnalyzer = {
 
     assert.throws(() => {
       application.plan()
-    }, /Unbound \?x variable referenced from { match: { of: \?x, by: 1, is: \?y }, operator: "-" }/)
+    }, /Unbound \?x variable referenced from { match: { of: \$.x, by: 1, is: \$.y }, operator: "-" }/)
 
-    assert.ok(application.plan(new Set([$.outX])).toJSON())
-    assert.ok(application.plan(new Set([$.outX, $.outY])).toJSON())
+    assert.ok(rule.apply({ x: null, y: $.unbound }).plan().toJSON())
+    assert.ok(rule.apply({ x: 1, y: 2 }).plan().toJSON())
   },
 
   'rule maps multi-variable input terms correctly': async (assert) => {
@@ -707,13 +707,8 @@ export const testAnalyzer = {
       ],
     })
 
-    const match = rule.apply({
-      x: $.x,
-      y: $.y,
-    })
-
-    assert.deepEqual(match.plan(new Set([$.x, $.y])).toJSON(), {
-      match: { x: $.x, y: $.y },
+    assert.deepEqual(rule.apply({ x: 1, y: 2 }).plan().toJSON(), {
+      match: { x: 1, y: 2 },
       rule: {
         match: { x: $.a, y: $.b },
         when: [
@@ -726,12 +721,12 @@ export const testAnalyzer = {
     })
 
     assert.throws(
-      () => match.plan(new Set([$.x])),
+      () => rule.apply({ x: 1, y: $.unbound }).plan(),
       /Unbound \?b variable referenced/
     )
 
     assert.throws(
-      () => match.plan(new Set([$.y])),
+      () => rule.apply({ y: 1, x: $.unbound }).plan(),
       /Unbound \?a variable referenced/
     )
   },
@@ -747,16 +742,14 @@ export const testAnalyzer = {
   },
 
   'unification + input': async (assert) => {
-    const RequireAB = Analyzer.rule({
+    const rule = Analyzer.rule({
       match: { a: $.a, b: $.a, c: $.c }, // Same variable $.a in both positions
       when: [{ match: { of: $.a, is: $.c }, operator: '==' }],
     })
 
-    const requireAB = RequireAB.apply({ a: $.x, b: $.y, c: $.z })
-
     assert.ok(
-      requireAB.plan(new Set([$.x, $.y])).cost >=
-        requireAB.plan(new Set([$.x, $.y, $.z])).cost,
+      rule.apply({ a: 1, b: 1, c: $.unbound }).plan().cost >=
+        rule.apply({ a: 1, b: 1, c: 1 }).plan().cost,
       'output cell can be omitted'
     )
   },
@@ -774,7 +767,7 @@ export const testAnalyzer = {
     const match = rule.apply({ x: $.a, y: $.b })
 
     assert.throws(
-      () => match.plan(new Set([$.a, $.b])),
+      () => rule.apply({ x: 'a', y: 'b' }).plan(),
       /Unbound \?z variable referenced from/
     )
   },
@@ -805,7 +798,7 @@ export const testAnalyzer = {
           repeat: { head: $.head },
           while: [{ match: { the: 'next', of: $.head, is: $.tail } }],
         }),
-      /Rule has inconsistent bindings across repeat: { head: \?head } and match: { head: \?head, tail: \?tail }\n  - "tail" is missing in repeat/
+      /Rule has inconsistent bindings across repeat: { head: \$.head } and match: { head: \$.head, tail: \$.tail }\n  - "tail" is missing in repeat/
     )
   },
   'throws on unknown references': async (assert) => {
@@ -983,8 +976,7 @@ export const testAnalyzer = {
             ],
           },
         }),
-      /Unbound \?y variable referenced from { match: { of: \?y, with: 1, is: \?x }, operator: "\+" }/,
-      'Should fail when required inputs not bound'
+      /Unbound \?y variable referenced from { match: { of: \$.y, with: 1, is: \$.x }, operator: "\+" }/
     )
   },
 
@@ -999,10 +991,13 @@ export const testAnalyzer = {
 
     const match = rule.apply({ x: $.in, y: $.out })
 
-    assert.ok(match.plan(new Set([$.in])), 'Plans when input is bound')
+    assert.ok(
+      rule.apply({ x: 'in', y: 'out' }).plan(),
+      'Plans when input is bound'
+    )
     assert.throws(
-      () => match.plan(),
-      /Unbound \?x variable referenced from { match: { of: \?x, with: 1, is: \?y }, operator: "\+" }/
+      () => rule.apply({ x: $.x, y: 'out' }).plan(),
+      /Unbound \?x variable referenced from { match: { of: \$.x, with: 1, is: \$.y }, operator: "\+" }/
     )
   },
 
@@ -1065,7 +1060,7 @@ export const testAnalyzer = {
 
     assert.ok(rule.apply({ x: 1 }).plan(), 'Should plan with mapped variables')
     assert.ok(
-      rule.apply({ x: $.thing }).plan(new Set([$.thing])),
+      rule.apply({ x: 'thing' }).plan(),
       'Should plan with bound variables'
     )
   },
@@ -1075,16 +1070,20 @@ export const testAnalyzer = {
       match: { this: $, as: $ },
     })
 
-    const same = Same.apply({ this: $.x, as: $.x })
-
-    const plan = same.plan(new Set([$.x]))
+    const plan = Same.apply({ this: $.x, as: $.x }).plan({
+      frame: new Map([[$.x, 1]]),
+      references: new Map(),
+    })
 
     assert.ok(
       plan.cost < 1,
       'Empty rule should have very low cost as it just unifies variables'
     )
 
-    assert.throws(() => same.plan(), /Rule application omits required binding/)
+    assert.throws(
+      () => Same.apply({ this: $.x, as: $.x }).plan(),
+      /Rule application omits required binding/
+    )
   },
   'compares iteration rule cost to against scan cost': async (assert) => {
     const Between = Analyzer.loop({
@@ -1115,18 +1114,23 @@ export const testAnalyzer = {
   'estimates costs correctly for Case patterns': async (assert) => {
     // Helper to create a test case
 
+    const select = Analyzer.rule({
+      match: { the: $.attribute, of: $.entity, is: $.value },
+      when: [{ match: { the: $.attribute, of: $.entity, is: $.value } }],
+    })
+
     /**
-     * @param {API.Select} match
-     * @param {API.Conclusion} [terms]
-     * @param {Set<API.Variable>} bindings
+     * @param {Omit<Required<API.Select>, 'this'>} terms
+     * @param {Partial<Analyzer.Context>} context
      */
-    const testCost = (match, terms = {}, bindings = new Set()) =>
-      /** @type {number} */ (
-        Analyzer.rule({
-          match: terms,
-          when: [{ match }],
-        }).plan(bindings).cost
-      )
+    const testCost = (
+      terms,
+      { frame = new Map(), references = new Map() } = {}
+    ) =>
+      select.apply(terms).plan({
+        frame,
+        references,
+      }).cost
 
     // Test EAV index cases
     const entityId = Link.of('test-entity')
@@ -1175,8 +1179,9 @@ export const testAnalyzer = {
       testCost({ the: 'type', of: entityId, is: $.value }) ==
         testCost(
           { the: 'type', of: $.entity, is: $.value },
-          { entity: $.entity, value: $.value },
-          new Set([$.entity])
+          {
+            frame: new Map([[$.entity, entityId]]),
+          }
         ),
       'Known entity should cost same as bound entity variable'
     )
@@ -1185,8 +1190,9 @@ export const testAnalyzer = {
       testCost({ the: 'type', of: $.entity, is: entityId }) ==
         testCost(
           { the: 'type', of: $.entity, is: $.value },
-          { entity: $.entity, value: $.value },
-          new Set([$.value])
+          {
+            frame: new Map([[$.value, 2]]),
+          }
         ),
       'Known value should cost same as bound value variable'
     )
