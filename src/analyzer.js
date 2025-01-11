@@ -953,11 +953,11 @@ class Join {
   }
 
   /**
-   * @param {Context} outer
+   * @param {Context} context
    * @returns {API.EvaluationPlan}
    */
-  plan(outer) {
-    const context = scope(outer)
+  plan(context) {
+    const local = scope(context)
     /** @type {Map<API.Variable, Set<typeof this.assertion[0]>>} */
     const blocked = new Map()
     /** @type {Set<typeof this.assertion[0]>} */
@@ -967,10 +967,11 @@ class Join {
     // Initial setup - check which operations are ready vs blocked
     for (const assertion of this.assertion) {
       let requires = 0
-      for (const [variable, cost] of assertion.cells) {
+      for (const [cell, cost] of assertion.cells) {
         // We resolve the target of the cell as we may have multiple different
         // references to the same variable.
-        if (cost >= Infinity && !isBound(context, variable)) {
+        const variable = resolve(local, cell)
+        if (cost >= Infinity && !isBound(local, variable)) {
           requires++
           const waiting = blocked.get(variable)
           if (waiting) {
@@ -992,7 +993,7 @@ class Join {
 
       // Find lowest cost operation among ready ones
       for (const current of ready) {
-        const cost = estimate(current, context)
+        const cost = estimate(current, local)
 
         if (cost < (top?.cost ?? Infinity)) {
           top = { cost, current }
@@ -1005,25 +1006,35 @@ class Join {
         )
       }
 
-      ordered.push(top.current.plan(context))
+      ordered.push(top.current.plan(local))
       ready.delete(top.current)
       cost += top.cost
 
-      // Update blocked operations based on new outputs
       const unblocked = top.current.cells
-      for (const [variable, cost] of unblocked) {
+      // Update local context so all the cells of the planned assertion will
+      // be bound.
+      for (const [cell] of unblocked) {
+        bind(local, cell, nothing)
+      }
+
+      // No we attempt to figure out which of the blocked assertions are ready
+      // for planning
+      for (const [cell] of unblocked) {
+        // We resolve a cell to a variable as all blocked operations are tracked
+        // by resolved variables because multiple local variable may be bound to
+        // same target variable.
+        const variable = resolve(local, cell)
         const waiting = blocked.get(variable)
         if (waiting) {
           for (const assertion of waiting) {
             let unblock = true
-            for (const [variable, cost] of assertion.cells) {
+            // Go over all the cells in thi assertion that was blocked on this
+            // variable and check it can be planned now.
+            for (const [cell, cost] of assertion.cells) {
+              const variable = resolve(local, cell)
               // If cell is required and is still not available, we can't
               // unblock it yet.
-              if (
-                cost >= Infinity &&
-                !isBound(context, variable) &&
-                !unblocked.has(variable)
-              ) {
+              if (cost >= Infinity && !isBound(local, variable)) {
                 unblock = false
                 break
               }
@@ -1035,23 +1046,25 @@ class Join {
           }
           blocked.delete(variable)
         }
-
-        bind(context, variable, nothing)
       }
     }
 
     if (blocked.size > 0) {
-      const [[variable, [conjunct]]] = blocked.entries()
-      throw new ReferenceError(
-        `Unbound ${variable} variable referenced from ${toDebugString(
-          conjunct
-        )}`
-      )
+      const [[constraint]] = blocked.values()
+      for (const [cell, cost] of constraint.cells) {
+        if (cost >= Infinity && !isBound(local, cell)) {
+          throw new ReferenceError(
+            `Unbound ${cell} variable referenced from ${toDebugString(
+              constraint
+            )}`
+          )
+        }
+      }
     }
 
     return new JoinPlan(
       ordered,
-      this.negation.map((negation) => negation.plan(context)),
+      this.negation.map((negation) => negation.plan(local)),
       cost
     )
   }

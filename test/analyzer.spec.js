@@ -1233,4 +1233,30 @@ export const testAnalyzer = {
 
     assert.ok(application.cost < Infinity)
   },
+
+  'unblocks when referenced remote variable is unblocked': (assert) => {
+    const plan = Analyzer.plan({
+      match: { actual: $.same, expect: $.same },
+      rule: {
+        match: { actual: $.actual, expect: $.expect },
+        when: [
+          // Here we `$.expect` to be bound by the second conjunct.
+          { match: { of: $.expect, is: 'actual' }, operator: '==' },
+          // This sets a binding of the $.actual
+          { match: { of: 'actual', is: $.actual }, operator: '==' },
+        ],
+      },
+    })
+
+    assert.deepEqual(plan.toJSON(), {
+      match: { actual: $.same, expect: $.same },
+      rule: {
+        match: { actual: $.actual, expect: $.expect },
+        when: [
+          { match: { of: 'actual', is: $.actual }, operator: '==' },
+          { match: { of: $.expect, is: 'actual' }, operator: '==' },
+        ],
+      },
+    })
+  },
 }
