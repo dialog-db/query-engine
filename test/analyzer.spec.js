@@ -738,7 +738,10 @@ export const testAnalyzer = {
 
     const same = Same.apply({ this: $.x, as: $.y })
 
-    assert.throws(() => same.plan(), /Rule application omits required binding/)
+    assert.throws(
+      () => same.plan(),
+      /Rule application requires binding for \? referring to \?y variable/
+    )
   },
 
   'unification + input': async (assert) => {
@@ -873,10 +876,38 @@ export const testAnalyzer = {
 
     assert.ok(plan, 'Should allow omitting output variables')
   },
-  'detects unresolvable cycles between branches': async (assert) => {
+  'detects cycles between branches': async (assert) => {
+    const rule = Analyzer.rule({
+      match: { x: $.x, y: $.y },
+      when: [
+        { match: { of: $.y, is: $.x }, operator: 'math/absolute' },
+        { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+      ],
+    })
+
     assert.throws(() => {
-      Analyzer.plan({
-        match: { x: $.x, y: $.y },
+      rule.apply({ x: $.in, y: $.out }).plan()
+    }, /Unbound \?y variable referenced from { match: { of: \$.y, is: \$.x }, operator: "math\/absolute" }/)
+
+    assert.deepEqual(
+      rule.apply({ x: 1, y: $.out }).plan().toJSON(),
+      {
+        match: { x: 1, y: $.out },
+        rule: {
+          match: { x: $.x, y: $.y },
+          when: [
+            { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+            { match: { of: $.y, is: $.x }, operator: 'math/absolute' },
+          ],
+        },
+      },
+      'resolves cycle through x'
+    )
+
+    assert.deepEqual(
+      rule.apply({ x: $.q, y: 1 }).plan().toJSON(),
+      {
+        match: { x: $.q, y: 1 },
         rule: {
           match: { x: $.x, y: $.y },
           when: [
@@ -884,24 +915,84 @@ export const testAnalyzer = {
             { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
           ],
         },
-      })
-    }, /circular dependency/)
+      },
+      'resolves cycle through y'
+    )
   },
-  'detects cycles even with initial output': async (assert) => {
+  'resoles cycles from application': async (assert) => {
+    const rule = Analyzer.rule({
+      match: { x: $.x, y: $.y },
+      when: [
+        { match: { the: 'type', of: $.x, is: 'person' } }, // Outputs $.x
+        { match: { of: $.x, with: 1, is: $.y }, operator: '+' }, // Uses $.x to produce $.y
+        { match: { of: $.y, by: 1, is: $.x }, operator: '-' }, // Creates cycle by producing $.x again
+      ],
+    })
+
+    assert.deepEqual(rule.apply({ x: $.outX, y: $.outY }).plan().toJSON(), {
+      match: { x: $.outX, y: $.outY },
+      rule: {
+        match: { x: $.x, y: $.y },
+        when: [
+          { match: { the: 'type', of: $.x, is: 'person' } },
+          { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+          { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
+        ],
+      },
+    })
+  },
+
+  'unresolvable cycles': async (assert) => {
+    const rule = Analyzer.rule({
+      match: { is: $.is },
+      when: [
+        { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+        { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
+        { match: { of: $.x, is: $.is }, operator: '==' },
+      ],
+    })
+
     assert.throws(
-      () =>
-        Analyzer.plan({
-          match: { x: $.x, y: $.y },
-          rule: {
-            match: { x: $.x, y: $.y },
-            when: [
-              { match: { the: 'type', of: $.x, is: 'person' } }, // Outputs $.x
-              { match: { of: $.x, with: 1, is: $.y }, operator: '+' }, // Uses $.x to produce $.y
-              { match: { of: $.y, by: 1, is: $.x }, operator: '-' }, // Creates cycle by producing $.x again
-            ],
-          },
-        }),
-      /Unresolvable circular dependency/
+      () => rule.apply({ is: $.q }).plan(),
+      /Unbound \?x variable referenced from \{ match: { of: \$.x, with: 1, is: \$.y }, operator: "\+"/
+    )
+  },
+
+  'resolvable through unification': async (assert) => {
+    const rule = Analyzer.rule({
+      match: { is: $.is },
+      when: [
+        { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+        { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
+        {
+          match: { this: $.x, as: $.is },
+          rule: { match: { this: $.as, as: $.as } },
+        },
+      ],
+    })
+
+    assert.deepEqual(
+      rule.apply({ is: 5 }).plan().toJSON(),
+      {
+        match: { is: 5 },
+        rule: {
+          match: { is: $.is },
+          when: [
+            {
+              match: { this: $.x, as: $.is },
+              rule: { match: { this: $.as, as: $.as }, when: {} },
+            },
+            { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+            { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
+          ],
+        },
+      },
+      'resolves cycle'
+    )
+
+    assert.throws(
+      () => rule.apply({ is: $.q }).plan(),
+      /Rule application requires binding for \?as referring to \?is variable/
     )
   },
 
@@ -1082,7 +1173,7 @@ export const testAnalyzer = {
 
     assert.throws(
       () => Same.apply({ this: $.x, as: $.x }).plan(),
-      /Rule application omits required binding/
+      /Rule application requires binding for \? referring to \?x variable/
     )
   },
   'compares iteration rule cost to against scan cost': async (assert) => {

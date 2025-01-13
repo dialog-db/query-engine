@@ -3,9 +3,10 @@ import * as Variable from './variable.js'
 import * as Terms from './terms.js'
 import * as Bindings from './bindings.js'
 import * as Term from './term.js'
-import { Constant, Link, matchFact, Var, $ } from './lib.js'
+import { Constant, Link, matchFact, Var, $, _ } from './lib.js'
 import * as Formula from './formula.js'
 import * as Selector from './selector.js'
+import { indent, li } from './format.js'
 
 export { $ }
 
@@ -34,12 +35,6 @@ export const loop = (source) => InductiveRule.new(Circuit.new(), source)
  */
 export const plan = (application) =>
   RuleApplication.new(Circuit.new(), application).plan()
-
-/**
- * @typedef {object} Scope
- * @property {Map<API.Variable, string>} provided
- * @property {Map<API.Variable, Select[]>} dependencies
- */
 
 class Select {
   /**
@@ -84,6 +79,7 @@ class Select {
 
   *tokens() {
     const { the, of, is } = this.selector
+    yield 'select'
     if (the != null) {
       yield the
     }
@@ -423,6 +419,7 @@ class RuleApplication {
    * @param {API.RuleBindings<Match>} terms
    */
   static apply(rule, terms) {
+    const scope = new Scope()
     const application = new this(terms, rule, new Map(), new Map())
     const { mapping, cells } = application
 
@@ -445,6 +442,15 @@ class RuleApplication {
         // inner variables.
         cells.set(term, combineCosts(cells.get(term) ?? 0, cost))
         rule.circuit.open(term, application)
+        scope.createReference(inner, term)
+      }
+      // If value for the term is provided we create a binding.
+      else if (term !== undefined) {
+        scope.set(inner, term)
+      }
+      // Otherwise we create a reference to the `_` discarding variable.
+      else {
+        scope.createReference(inner, _)
       }
 
       if (term !== undefined) {
@@ -516,6 +522,7 @@ class RuleApplication {
       yield `:${key}`
       yield term
     }
+    yield* this.rule.tokens()
   }
 
   /**
@@ -561,7 +568,6 @@ class DeductiveRule {
     const disjuncts =
       Array.isArray(source.when) ? { when: source.when } : source.when ?? {}
 
-    // Create rule instance first
     let cells = new Map()
     let total = 0
     /** @type {Record<string, Join>} */
@@ -642,10 +648,13 @@ class DeductiveRule {
     // rule({ match: { this: $, as: $ } })
     // Which is why we need to perform validation here in such a case.
     if (disjuncts.length === 0) {
-      for (const [variable, cost] of this.cells) {
+      for (const [cell, cost] of this.cells) {
+        const variable = resolve(context, cell)
         if (cost >= Infinity && !isBound(context, variable)) {
-          throw new Error(
-            `Rule application omits required binding for "${variable}" variable`
+          const reference =
+            cell !== variable ? `${cell} referring to ${variable}` : cell
+          throw new ReferenceError(
+            `Rule application requires binding for ${reference} variable`
           )
         }
       }
@@ -667,6 +676,24 @@ class DeductiveRule {
   match: ${Terms.toDebugString(this.match)},
   ${body}}
 }`
+  }
+
+  /**
+   * @returns {Iterable<API.Term>}
+   */
+  *tokens() {
+    yield 'rule'
+    yield 'case'
+    for (const [name, variable] of Object.entries(this.match)) {
+      yield `${name}:`
+      yield variable
+    }
+
+    yield 'when'
+    for (const [name, disjunct] of Object.entries(this.disjuncts)) {
+      yield name
+      yield* disjunct.tokens()
+    }
   }
 }
 
@@ -823,9 +850,34 @@ class InductiveRule {
 
     return new InductionPlan(when, loop, cost)
   }
-}
 
-const EMPTY_SET = Object.freeze(new Set())
+  /**
+   * @returns {Iterable<API.Term>}
+   */
+  *tokens() {
+    yield 'rule'
+    yield 'case'
+    for (const [name, variable] of Object.entries(this.match)) {
+      yield `${name}:`
+      yield variable
+    }
+
+    yield 'when'
+    yield* this.base.tokens()
+
+    yield 'repeat'
+    for (const [name, variable] of Object.entries(this.repeat)) {
+      yield `${name}:`
+      yield variable
+    }
+
+    yield 'while'
+    for (const [name, disjunct] of Object.entries(this.loop)) {
+      yield `${name}:`
+      yield* disjunct.tokens()
+    }
+  }
+}
 
 const nothing = Link.of(null)
 
@@ -844,17 +896,25 @@ class Join {
    * @param {API.Every} source.conjuncts
    */
   static from({ name, conjuncts, bindings }) {
+    /** @type {Map<API.Variable, number>} */
     const cells = new Map()
-    const internal = new Map()
-    const dependencies = new Map()
+    /** @type {Map<API.Variable, number>} */
+    const local = new Map()
     let total = 0
 
-    let inputs = new Set()
-    let outputs = new Set()
     const assertion = []
     const negation = []
     const circuit = new Circuit(bindings)
 
+    // Here we asses each conjunct of the join one by one and identify:
+    // 1. Cost associated with each binding. If cost is Infinity it implies
+    //    that the variable is required input that must be bound by the rule
+    //    application.
+    // 2. Cost associated with each local variable. Local variables are the ones
+    //    that are not exposed in the rule match and are used by the join.
+    // 3. Which bindings are inputs and which are outputs.
+    // 4. Which conjuncts are negations as those need to be planned after all
+    //    other conjuncts.
     for (const source of conjuncts) {
       const conjunct = circuit.create(source)
       if (conjunct instanceof Not) {
@@ -866,6 +926,7 @@ class Join {
       total += conjunct.cost ?? 0
 
       for (const [variable, cost] of conjunct.cells) {
+        circuit.open(variable, conjunct)
         // Only track costs for variables exposed in rule match
         if (bindings.has(variable)) {
           const base = cells.get(variable)
@@ -876,44 +937,17 @@ class Join {
         }
         // Local variables contribute to base cost
         else {
-          const base = internal.get(variable)
-          internal.set(
+          const base = local.get(variable)
+          local.set(
             variable,
             base === undefined ? cost : combineCosts(base, cost)
           )
         }
-
-        if (cost < Infinity) {
-          outputs.add(variable)
-        } else {
-          inputs.add(variable)
-        }
       }
-
-      // Capture dependencies so we can check for cycles
-      for (const variable of outputs) {
-        const requirements = dependencies.get(variable)
-        if (requirements == null) {
-          dependencies.set(variable, new Set(inputs))
-        } else {
-          for (const input of inputs) {
-            requirements.add(input)
-          }
-        }
-      }
-      outputs.clear()
-      inputs.clear()
     }
 
-    for (const cost of Object.values(internal)) {
+    for (const cost of Object.values(local)) {
       total += cost
-    }
-
-    // Check for unresolvable cycles
-    for (const cycle of findUnresolvableCycle(dependencies)) {
-      throw new ReferenceError(
-        `Unresolvable circular dependency in clause: ${cycle.join(' -> ')}`
-      )
     }
 
     circuit.connect()
@@ -922,6 +956,16 @@ class Join {
   }
 
   /**
+   * Ensures that given bindings are referenced from inside this join. Throws
+   * a `ReferenceError` if there is a binding that is not referenced. The reason
+   * if rule contains binding that is not used is in it's body it will either
+   * not get bound or will not contribute to the rule in both cases rule is
+   * likely not captures intended logic. Note that it theory rule may use some
+   * variables only in some logic branches in which case those variables could
+   * be considered as required input, but even then it is indicative of bad rule
+   * design which could be broken apart into multiple rules which is why we
+   * choose to error on side of caution. It is also always possible to consume
+   * variable in cases where it really isn't needed.
    *
    * @param {Map<API.Variable, string>} bindings
    */
@@ -1081,6 +1125,18 @@ class Join {
 
     return `[${content}]`
   }
+
+  *tokens() {
+    yield '['
+    for (const assertion of this.assertion) {
+      yield* assertion.tokens()
+    }
+
+    for (const negation of this.negation) {
+      yield* negation.tokens()
+    }
+    yield ']'
+  }
 }
 
 /**
@@ -1130,6 +1186,11 @@ class Not {
    */
   plan(context) {
     return new Negate(this.constraint.plan(context))
+  }
+
+  *tokens() {
+    yield 'not'
+    yield* this.constraint.tokens()
   }
 }
 
@@ -1502,147 +1563,78 @@ class Negate {
   }
 }
 
-/**
- * Find cycles in the variable dependency graph using an iterative approach
- *
- * @param {Map<API.VariableID, Set<API.VariableID>>} graph
- * @returns {Generator<API.VariableID[], void>}
- */
-function* findCycles(graph) {
-  /** @type {Set<API.VariableID>} */
-  const visited = new Set()
-  /** @type {Set<API.VariableID>} */
-  const path = new Set()
-
-  /**
-   * @typedef {{
-   *   node: API.VariableID,
-   *   path: API.VariableID[],
-   *   requires: Iterator<API.VariableID>
-   * }} StackFrame
-   */
-
-  for (const start of graph.keys()) {
-    if (visited.has(start)) {
-      continue
-    }
-
-    /** @type {StackFrame[]} */
-    const stack = [
-      {
-        node: start,
-        path: [start],
-        requires: (graph.get(start) ?? new Set()).values(),
-      },
-    ]
-
-    path.add(start)
-
-    while (stack.length > 0) {
-      const frame = stack[stack.length - 1]
-      const next = frame.requires.next()
-      if (next.done) {
-        path.delete(frame.node)
-        stack.pop()
-        continue
-      }
-
-      const dependency = next.value
-      if (path.has(dependency)) {
-        const cycleStart = frame.path.indexOf(dependency)
-        if (cycleStart !== -1) {
-          yield frame.path.slice(cycleStart)
-        }
-        continue
-      }
-
-      if (!visited.has(dependency)) {
-        path.add(dependency)
-        stack.push({
-          node: dependency,
-          path: [...frame.path, dependency],
-          requires: (graph.get(dependency) ?? new Set()).values(),
-        })
-      }
-    }
-
-    for (const node of path) {
-      visited.add(node)
-    }
-    path.clear()
-  }
-}
-
-/**
- * Finds unresolvable cycles in the dependency graph.
- * A cycle is unresolvable if every variable in it depends on another variable in the cycle.
- *
- * @param {Map<API.VariableID, Set<API.VariableID>>} dependencies
- * @returns {Iterable<API.VariableID[]>}
- */
-function* findUnresolvableCycle(dependencies) {
-  for (const cycle of findCycles(dependencies)) {
-    let hasIndependentVar = false
-
-    for (const id of cycle) {
-      const path = dependencies.get(id)
-      if (!path) {
-        hasIndependentVar = true
-        break
-      }
-
-      // Check if this variable depends on any cycle variable
-      let dependsOnCycle = false
-      for (const entry of path) {
-        if (cycle.includes(entry)) {
-          dependsOnCycle = true
-          break
-        }
-      }
-
-      if (!dependsOnCycle) {
-        hasIndependentVar = true
-        break
-      }
-    }
-
-    if (!hasIndependentVar) {
-      yield cycle
-    }
-  }
-}
-
 const THIS = '@'
 
 /**
+ * Connections represent some query expression containing a variable by which we
+ * track a dependency. However, from the circuit perspective don't really care
+ * about the expression itself, we just need a way to tokenize it in a way that
+ * will allow us to derive a deterministic identifier. For this reason
+ * connection simply needs to provide a method for iterating it's tokens. When
+ * token is a variable it will be resolved to a trace to port in the circuit
+ * allowing us to derive unique identifier for it.
+ *
  * @typedef {object} Connection
  * @property {() => Iterable<API.Term>} tokens
  */
 
+/**
+ * Representation of the query as circuit of connections between logic variables
+ * that underlying expressions use. It for dependency tracking and cycle
+ * analysis. It is also used for assigning deterministic identifiers to the the
+ * local variables which are in some ways derived from the ports of the circuit.
+ */
 class Circuit {
   static new() {
     return new this(new Map())
   }
   /**
+   * Set of ports that this circuit can be connected to the outside world.
+   * Keys of the map are variables / cells representing ports while values are
+   * names assigned to them which usually correspond to the names in the rule's
+   * match clause.
+   *
    * @param {Map<API.Variable, string>} ports
    */
   constructor(ports) {
-    /** @type {Map<API.Variable, [Connection, ...Connection[]]>} */
+    /**
+     * Map is used to collect list of trace candidates for the cells. When we
+     * call connect we will try to resolve the shortest trace for each cell and
+     * migrate cell from `open` to `ready`.
+     *
+     * @type {Map<API.Variable, [Connection, ...Connection[]]>}
+     */
     this.opened = new Map()
 
-    /** @type {Map<API.Variable, Trace>} */
+    /**
+     * Map of cell traces, representing a shortest serializable path to the
+     * circuit port.
+     *
+     * @type {Map<API.Variable, Trace>}
+     */
     this.ready = new Map()
+
+    /**
+     * We create a traces for each port circuit port, so that we don't have to
+     * differentiate between circuit ports and cells that are connected.
+     */
     for (const [port, id] of ports) {
       this.ready.set(port, new Trace().add(id))
     }
   }
 
   /**
+   * This is used to simply capture a connection between a cell and expression
+   * it appears in. This is used to add connection to possible trace candidates
+   * for the cell.
+   *
    * @param {API.Variable} port
    * @param {Connection} connection
    */
   open(port, connection) {
-    // Skip if variable is provided in scope
+    // If port is already connected we skip this connection as we already have
+    // an established trace for it. Otherwise we add connection to the list of
+    // trace candidates.
     if (!this.ready.has(port)) {
       const connections = this.opened.get(port)
       if (connections) {
@@ -1653,28 +1645,39 @@ class Circuit {
     }
   }
 
+  /**
+   * Connect method is used to resolve every cell traces in the circuit. If some
+   * cell trace can not be resolved it means that underlying expression is not
+   * connected to the circuit which indicates potential error in the query as
+   * some variable in it is either redundant or some expression connecting it to
+   * the circuit is missing.
+   */
   connect() {
     const { ready, opened } = this
     let size = -1
 
-    // Keep resolving until we reach a fixed point and are unable to compile any
-    // more connections
+    // Keep attempting to resolving traces until we reach a fixed point and are
+    // unable to make any more progress.
     while (size !== ready.size) {
       size = ready.size
-      for (const [port, connections] of opened) {
-        if (!ready.has(port)) {
-          const connection = connect(port, connections, ready)
+      for (const [cell, connections] of opened) {
+        // We should not encounter a port in the ready list if it appears in the
+        // opened list, however we still check just in case.
+        if (!ready.has(cell)) {
+          const connection = connect(cell, connections, ready)
 
-          // If we managed to compile a connection remove it from the open list
-          // and add it to the ready list.
+          // If we managed to resolve a trace for this cell we add it to the
+          // ready set and remove it from the open set.
           if (connection != null) {
-            opened.delete(port)
-            ready.set(port, connection)
+            opened.delete(cell)
+            ready.set(cell, connection)
           }
         }
       }
     }
 
+    // If we have reached a fixed point but still have cells that are not
+    // connected we have a bad circuit and we need to raise an error.
     if (opened.size > 0) {
       const reasons = []
       for (const [port, connections] of opened) {
@@ -1682,13 +1685,16 @@ class Circuit {
         for (const connection of connections) {
           unresolved.push(toDebugString(connection))
         }
-        reasons.push(`${port} with connections: ${unresolved.join('\n  - ')}`)
+
+        reasons.push(
+          `${port} with connections: ${unresolved.map(li).join('\n')}`
+        )
       }
 
       throw new ReferenceError(
         reasons.length === 1 ?
           `Unable to resolve ${reasons[0]}`
-        : `Unable to resolve:\n  ${reasons.join('\n')}`
+        : `Unable to resolve:\n  ${reasons.map(li).join('\n')}`
       )
     }
 
@@ -1724,25 +1730,37 @@ class Circuit {
 }
 
 /**
+ * Attempts to establish a trace from a given cell to one of the `ready`
+ * connections by considering each of the candidate connections. When multiple
+ * traces can be resolved they are compared to pick the winner. The winner is
+ * usually the shortest trace, but sometimes there could be traces with the same
+ * frame count in which case frames are compared to determine the winner.
+ *
  * @param {API.Variable} cell
  * @param {[Connection, ...Connection[]]} connections
- * @param {Map<API.Variable, Trace>} build
+ * @param {Map<API.Variable, Trace>} ready
  */
-const connect = (cell, connections, build) => {
+const connect = (cell, connections, ready) => {
   /** @type {Trace|null} */
   let trace = null
-  // For each connection, check if all its dependencies are ready
+  // Consider each candidate connection, to see if all of their dependency cells
+  // are already resolved. Note that if dependency can not be resolved it
+  // implies that corresponding trace will be longer than the one for which
+  // all dependencies can be resolved so we can pick the winner without having
+  // to resolve such a trace.
   for (const connection of connections) {
     const candidate = new Trace()
     for (const token of connection.tokens()) {
-      // If this the variable that we are trying to compile we denote
-      // it with `THIS`.
+      // If this the variable that we are trying to resolve a connection of
+      // we substitute it with the `THIS` token in the context of this trace.
       if (cell === token) {
         candidate.add(THIS)
-      } else if (Variable.is(token)) {
-        // If we already have a resolved id for this cell we use it
-        // otherwise we continue to the next connection.
-        const frame = build.get(token)
+      }
+      // If token is another variable we attempt to find a trace for it and
+      // substitute token with it. But if we don't have a trace for this
+      // variable we skip this candidate and consider a next one
+      else if (Variable.is(token)) {
+        const frame = ready.get(token)
         if (frame !== undefined) {
           candidate.add(frame)
         }
@@ -1759,12 +1777,14 @@ const connect = (cell, connections, build) => {
       }
     }
 
-    // Choose between the current and the candidate traces based on which is
-    // shorter
+    // We choose between previously found trace and this candidate trace based
+    // on which sorts lower.
     trace =
       trace == null || Trace.compare(trace, candidate) > 0 ? candidate : trace
   }
 
+  // We return a trace if we were able to resolve one, otherwise we return null
+  // to indicate that trace can not be resolved yet.
   return trace
 }
 
@@ -1868,17 +1888,6 @@ class Trace {
     }
   }
 }
-
-/**
- * @param {string} message
- */
-export const indent = (message, indent = '  ') =>
-  `${message.split('\n').join(`\n${indent}`)}`
-
-/**
- * @param {string} message
- */
-export const li = (message) => indent(`- ${message}`)
 
 /**
  *
@@ -1999,5 +2008,56 @@ class ContextView {
    */
   has(variable) {
     return isBound(this, variable)
+  }
+}
+
+class Scope {
+  /**
+   * @param {References} references
+   * @param {Frame} remote
+   */
+  constructor(references = new Map(), remote = new Map(), local = new Map()) {
+    this.references = references
+    this.frame = remote
+    this.local = local
+  }
+
+  /**
+   * Creates a local cell to external cell reference.
+   *
+   * @param {API.Variable} cell
+   * @param {API.Variable} port
+   */
+  createReference(cell, port) {
+    this.references.set(cell, port)
+  }
+
+  /**
+   *
+   * @param {API.Variable} variable
+   * @param {API.Scalar} value
+   */
+  set(variable, value) {
+    // If it is a discard variable we simply discard the value.
+    if (variable !== _) {
+      // Otherwise we determine whether this is a local variable or a reference.
+      // If later we set a remote binding, if former we set local binding.
+      const port = this.references.get(variable)
+      const [cell, bindings] =
+        port ? [port, this.frame] : [variable, this.local]
+
+      const current = bindings.get(variable)
+      if (current === undefined) {
+        bindings.set(cell, value)
+      } else if (!Constant.equal(current, value)) {
+        throw new RangeError(
+          `Variable ${Variable.toDebugString(
+            cell
+          )} is set to ${Constant.toDebugString(
+            current
+          )} and can not be unified with ${Constant.toDebugString(value)}`
+        )
+      }
+    }
   }
 }
