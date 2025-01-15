@@ -70,11 +70,13 @@ class Select {
    * @param {Circuit} circuit
    * @param {API.Select} selector
    * @param {Map<API.Variable, number>} cells
+   * @param {API.Select} resolvedSelector
    */
-  constructor(circuit, selector, cells) {
+  constructor(circuit, selector, cells, resolvedSelector = selector) {
     this.circuit = circuit
     this.cells = cells
     this.selector = selector
+    this.resolvedSelector = resolvedSelector
   }
 
   *tokens() {
@@ -99,8 +101,41 @@ class Select {
     return 100
   }
 
-  plan() {
-    return this
+  /**
+   * @template {API.Scalar} T
+   * @param {Context} context
+   * @param {API.Term<T>} term
+   * @returns {API.Term<T>}
+   */
+  static resolve(context, term) {
+    if (Variable.is(term)) {
+      return /** @type {API.Term<T>} */ (context.references.get(term)) ?? term
+    } else {
+      return term
+    }
+  }
+  /**
+   *
+   * @param {Context} context
+   * @returns
+   */
+  plan(context) {
+    const { the, of, is } = this.selector
+
+    const selector = {}
+    if (the) {
+      selector.the = Select.resolve(context, the)
+    }
+
+    if (of) {
+      selector.of = Select.resolve(context, of)
+    }
+
+    if (is) {
+      selector.is = Select.resolve(context, is)
+    }
+
+    return new Select(this.circuit, this.selector, this.cells, selector)
   }
 
   /**
@@ -153,13 +188,13 @@ class Select {
 
     return matches
   }
+
   /**
-   *
    * @param {API.EvaluationContext} context
    */
   *evaluate({ source, selection }) {
     const matches = []
-    const { selector } = this
+    const { resolvedSelector: selector } = this
     for (const bindings of selection) {
       const the =
         selector.the ?
@@ -545,7 +580,7 @@ class RuleApplication {
    */
   static apply(rule, terms) {
     const application = new this(terms, rule)
-    const { mapping, cells, scope } = application
+    const { references, cells, constants } = application
 
     for (const [at, inner] of Object.entries(rule.match)) {
       const term = terms[at]
@@ -566,19 +601,15 @@ class RuleApplication {
         // inner variables.
         cells.set(term, combineCosts(cells.get(term) ?? 0, cost))
         rule.circuit.open(term, application)
-        scope.createReference(inner, term)
+        references.set(inner, term)
       }
       // If value for the term is provided we create a binding.
       else if (term !== undefined) {
-        scope.set(inner, term)
+        constants.set(inner, term)
       }
       // Otherwise we create a reference to the `_` discarding variable.
       else {
-        scope.createReference(inner, _)
-      }
-
-      if (term !== undefined) {
-        mapping.set(inner, term)
+        // references.set(inner, _)
       }
     }
 
@@ -603,22 +634,22 @@ class RuleApplication {
   /**
    * @param {API.RuleBindings<Match>} match
    * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
-   * @param {Map<API.Variable, API.Term>} mapping
+   * @param {Map<API.Variable, API.Variable>} references
+   * @param {Map<API.Variable, API.Scalar>} constants
    * @param {Map<API.Variable, number>} cells
-   * @param {Scope} scope
    */
   constructor(
     match,
     rule,
-    mapping = new Map(),
-    cells = new Map(),
-    scope = new Scope()
+    references = new Map(),
+    constants = new Map(),
+    cells = new Map()
   ) {
     this.match = match
     this.rule = rule
-    this.mapping = mapping
+    this.references = references
+    this.constants = constants
     this.cells = cells
-    this.scope = scope
   }
   get cost() {
     return this.rule.cost
@@ -628,24 +659,20 @@ class RuleApplication {
    * @param {Context} context
    */
   plan(context = ContextView.new()) {
-    // Convert outer bindings to rule's internal variables
-    const local = scope(context)
-
-    for (const [inner, outer] of this.mapping) {
-      // If provided term is not a variable we bind value in local context. If
-      // it is a variable we create a reference from local variable to the outer
-      // variable.
-      if (!Variable.is(outer)) {
-        bind(local, inner, outer)
-      } else {
-        createReference(local, inner, outer)
+    const { references, constants } = this
+    const frame = new Map(constants)
+    // And copy bindings for the references into it.
+    for (const [variable, reference] of this.references) {
+      const value = get(context, reference)
+      if (value !== undefined) {
+        frame.set(reference, value)
       }
     }
 
     return new RuleApplicationPlan(
       this.match,
-      this.rule.plan(local),
-      this.mapping
+      this.rule.plan(ContextView.new(references, frame)),
+      this.references
     )
   }
 
@@ -1144,17 +1171,17 @@ class Join {
     // Initial setup - check which operations are ready vs blocked
     for (const assertion of this.assertion) {
       let requires = 0
-      for (const [cell, cost] of assertion.cells) {
+      for (const [variable, cost] of assertion.cells) {
         // We resolve the target of the cell as we may have multiple different
         // references to the same variable.
-        const variable = resolve(local, cell)
-        if (cost >= Infinity && !isBound(local, variable)) {
+        const reference = resolve(local, variable)
+        if (cost >= Infinity && !isBound(local, reference)) {
           requires++
-          const waiting = blocked.get(variable)
+          const waiting = blocked.get(reference)
           if (waiting) {
             waiting.add(assertion)
           } else {
-            blocked.set(variable, new Set([assertion]))
+            blocked.set(reference, new Set([assertion]))
           }
         }
       }
@@ -1242,6 +1269,7 @@ class Join {
     return new JoinPlan(
       ordered,
       this.negation.map((negation) => negation.plan(local)),
+      context.references,
       cost
     )
   }
@@ -1331,11 +1359,13 @@ class JoinPlan {
   /**
    * @param {API.EvaluationPlan[]} assertion - Ordered binding operations
    * @param {API.EvaluationPlan[]} negation - Negation operations to run after
+   * @param {References} references - Variable references
    * @param {number} cost - Total cost of the plan
    */
-  constructor(assertion, negation, cost) {
+  constructor(assertion, negation, references, cost) {
     this.assertion = assertion
     this.negation = negation
+    this.references = references
     this.cost = cost
   }
 
@@ -1364,6 +1394,14 @@ class JoinPlan {
     // Execute binding steps in planned order
     for (const plan of this.assertion) {
       selection = yield* plan.evaluate({ source, selection })
+      // for (const match of selection) {
+      //   for (const [variable, reference] of this.references) {
+      //     const value = Bindings.get(match, reference)
+      //     if (value !== undefined) {
+      //       Bindings.assign(match, variable, value)
+      //     }
+      //   }
+      // }
     }
 
     // Then execute negation steps
@@ -1599,12 +1637,12 @@ class RuleApplicationPlan {
   /**
    * @param {API.RuleBindings<Match>} match
    * @param {API.EvaluationPlan} plan
-   * @param {Map<API.Variable, API.Term>} mapping - inner -> outer variable mapping
+   * @param {Map<API.Variable, API.Variable>} references - inner -> outer variable mapping
    */
-  constructor(match, plan, mapping) {
+  constructor(match, plan, references) {
     this.match = match
     this.plan = plan
-    this.mapping = mapping
+    this.references = references
   }
 
   get cost() {
@@ -1642,10 +1680,10 @@ class RuleApplicationPlan {
     next: for (const bindings of selection) {
       /** @type {API.Bindings} */
       let match = {}
-      for (const [inner, outer] of this.mapping) {
+      for (const [inner, outer] of this.references) {
         const value = Bindings.get(bindings, outer)
         if (value !== undefined) {
-          const result = Term.unify(inner, value, match)
+          const result = Term.unify(outer, value, match)
           if (result.error) {
             continue next
           } else {
@@ -1663,8 +1701,8 @@ class RuleApplicationPlan {
       // For each result, create new outer bindings with mapped values
       for (const result of results) {
         let output = { ...bindings }
-        for (const [inner, outer] of this.mapping) {
-          const value = Bindings.get(result, inner)
+        for (const [inner, outer] of this.references) {
+          const value = Bindings.get(result, outer)
           if (Variable.is(outer) && value !== undefined) {
             output = Bindings.set(output, outer, value)
           }
@@ -2242,8 +2280,12 @@ const scope = (context) => {
 }
 
 class ContextView {
-  static new() {
-    return new this(new Map(), new Map())
+  /**
+   * @param {References} references
+   * @param {Frame} frame
+   */
+  static new(references = new Map(), frame = new Map()) {
+    return new this(references, frame)
   }
   /**
    * @param {References} references

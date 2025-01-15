@@ -18,6 +18,15 @@ export const set = (bindings, variable, value) => ({
 })
 
 /**
+ * @param {API.Bindings} bindings
+ * @param {API.Variable} variable
+ * @param {API.Term} value
+ */
+export const assign = (bindings, variable, value) => {
+  bindings[Variable.toKey(variable)] = value
+}
+
+/**
  * @template {API.Bindings} Bindings
  * @template {API.Scalar} T
  * @param {Bindings} bindings

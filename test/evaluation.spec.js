@@ -107,38 +107,39 @@ export const testEvaluation = {
       },
     ])
 
-    const plan = Analyzer.plan({
+    const rule = Analyzer.rule({
       match: {
+        a: $.a,
+        actual: $.aa,
+        b: $.b,
+        expect: $.bb,
+      },
+      when: [
+        {
+          match: {
+            the: 'person/name',
+            of: $.a,
+            is: $.aa,
+          },
+        },
+        {
+          match: {
+            the: 'person/name',
+            of: $.b,
+            is: $.bb,
+          },
+        },
+      ],
+    })
+
+    const plan = rule
+      .apply({
         a: $.subject,
         actual: $.actual,
         b: $.subject,
         expect: $.expect,
-      },
-      rule: {
-        match: {
-          a: $.a,
-          actual: $.aa,
-          b: $.b,
-          expect: $.bb,
-        },
-        when: [
-          {
-            match: {
-              the: 'person/name',
-              of: $.a,
-              is: $.aa,
-            },
-          },
-          {
-            match: {
-              the: 'person/name',
-              of: $.b,
-              is: $.bb,
-            },
-          },
-        ],
-      },
-    })
+      })
+      .plan()
 
     const result = await Task.perform(plan.query({ source: db }))
 
