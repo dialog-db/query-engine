@@ -102,14 +102,32 @@ const compareRecord = (terms, to) => {
  */
 export const toDebugString = (terms) => {
   if (Variable.is(terms)) {
-    return `${terms}`
+    return Variable.toDebugString(terms)
   } else if (Constant.is(terms)) {
     return Constant.toDebugString(terms)
   } else if (Array.isArray(terms)) {
-    return `[${terms.map(toDebugString).join(', ')}]`
+    const chunks = terms.map(toDebugString)
+    const line = `[${chunks.join(', ')}]`
+    if (line.length < 80) {
+      return line
+    } else {
+      return `[\n  ${chunks.join(',\n  ')}\n]`
+    }
   } else {
-    return `{ ${Object.entries(terms)
-      .map(([key, value]) => `${key}: ${toDebugString(value)}`)
-      .join(', ')} }`
+    const chunks = Object.entries(terms).map(
+      ([key, value]) => `${toKey(key)}: ${toDebugString(value)}`
+    )
+
+    const line = `{ ${chunks.join(', ')} }`
+    if (line.length < 80) {
+      return line
+    } else {
+      return `{\n  ${chunks.join(',\n  ')}\n}`
+    }
   }
 }
+
+/**
+ * @param {string} key
+ */
+const toKey = (key) => (/^[a-zA-Z_]\w*$/.test(key) ? key : JSON.stringify(key))

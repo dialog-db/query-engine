@@ -9,7 +9,7 @@ import * as Selector from './selector.js'
 import * as Task from './task.js'
 import * as Formula from './formula.js'
 import * as Constant from './constant.js'
-import $ from './scope.js'
+import $ from './$.js'
 
 export * as Var from './variable.js'
 export * from './api.js'

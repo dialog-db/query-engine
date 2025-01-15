@@ -196,4 +196,6 @@ export const compare = (term, to) => {
  * @param {API.Term} term
  */
 export const toDebugString = (term) =>
-  Variable.is(term) ? `${term}` : Constant.toDebugString(term)
+  Variable.is(term) ?
+    Variable.toDebugString(term)
+  : Constant.toDebugString(term)

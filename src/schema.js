@@ -1,7 +1,8 @@
 import * as API from './api.js'
-import { default as $ } from './scope.js'
+import { default as $ } from './$.js'
 import { scalar, unknown } from './schema/scalar.js'
 import { entity } from './schema/entity.js'
+export * from './schema/fact.js'
 
 export { scalar, unknown, entity }
 /**
@@ -60,8 +61,17 @@ export const bytes = ({ the } = {}) => scalar({ type: { Bytes: {} }, the })
 /**
  * @template {API.SchemaDescriptor} Descriptor
  * @param {Descriptor} descriptor
+ * @returns {API.InferSchema<Descriptor>}
  */
-export const schema = (descriptor) => {}
+export const schema = (descriptor) =>
+  /** @type {Record<keyof Descriptor, any>} */ (
+    Object.fromEntries(
+      Object.entries(descriptor).map(([domain, descriptor]) => [
+        domain,
+        entity(descriptor, domain),
+      ])
+    )
+  )
 
 /**
  * Rule that checks that given entity has a value of a given type under a given

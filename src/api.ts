@@ -363,6 +363,7 @@ import * as DataOperators from './formula/data.js'
 import * as TextOperators from './formula/text.js'
 import * as UTF8Operators from './formula/utf8.js'
 import * as MathOperators from './formula/math.js'
+import { variable } from './$.js'
 
 export type Formula =
   | InferFormula<'==', typeof DataOperators.is>
@@ -763,6 +764,7 @@ export type InferRuleMatch<Case extends Conclusion> = {
 }
 
 export interface Variables extends Record<PropertyKey, Variable> {}
+
 export interface Bindings extends Record<PropertyKey, Term> {}
 
 /**
@@ -857,6 +859,9 @@ export interface Unplannable extends Error {
 export interface EvaluationPlan {
   cost: number
   evaluate(context: EvaluationContext): Task<Bindings[], EvaluationError>
+  eval(
+    context: import('./analyzer.js').EvalContext
+  ): Task<import('./analyzer.js').Selection, EvaluationError>
 }
 
 export type Plan = Unplannable | EvaluationPlan
@@ -910,24 +915,27 @@ export interface QueryEffect {
 
 export type ScalarDescriptor =
   | null
-  | { Null: {} }
-  | BooleanConstructor
-  | { Boolean: {} }
-  | StringConstructor
-  | { String: {} }
-  | NumberConstructor
-  | { Int32: {} }
-  | { Float32: {} }
-  | BigIntConstructor
-  | { Int64: {} }
-  | Uint8ArrayConstructor
-  | { Bytes: {} }
+  | { Null: {}; Object?: undefined; Rule?: undefined }
+  | (BooleanConstructor & { Object?: undefined; Rule?: undefined })
+  | { Boolean: {}; Object?: undefined; Rule?: undefined }
+  | (StringConstructor & { Object?: undefined; Rule?: undefined })
+  | { String: {}; Object?: undefined; Rule?: undefined }
+  | (NumberConstructor & { Object?: undefined; Rule?: undefined })
+  | { Int32: {}; Object?: undefined; Rule?: undefined }
+  | { Float32: {}; Object?: undefined; Rule?: undefined }
+  | (BigIntConstructor & { Object?: undefined; Rule?: undefined })
+  | { Int64: {}; Object?: undefined; Rule?: undefined }
+  | (Uint8ArrayConstructor & { Object?: undefined; Rule?: undefined })
+  | { Bytes: {}; Object?: undefined; Rule?: undefined }
 
 export type ObjectDescriptor = {
   [Key: string]: TypeDescriptor
 }
 
-export type ArrayDescriptor = [TypeDescriptor]
+export type ArrayDescriptor = [TypeDescriptor] & {
+  Object?: undefined
+  Rule?: undefined
+}
 
 export type UnknownDescriptor = Record<PropertyKey, never>
 
@@ -936,7 +944,8 @@ export type TypeDescriptor =
   | ObjectDescriptor
   | ArrayDescriptor
   | EntitySchema<any>
-  | ScalarSchema
+  | ScalarSchema<any>
+  | FactSchema<any>
   | UnknownDescriptor
 
 export type ModelDescriptor<
@@ -944,9 +953,6 @@ export type ModelDescriptor<
 > = {
   Object: Descriptor
 }
-
-export type InferArraySchema<T> =
-  T extends TypeDescriptor ? InferTypeSchema<T>[] : never
 
 export type InferSchemaType<T extends TypeDescriptor> =
   T extends null ? null
@@ -962,26 +968,15 @@ export type InferSchemaType<T extends TypeDescriptor> =
   : T extends { Int64: {} } ? Int64
   : T extends Uint8ArrayConstructor ? Bytes
   : T extends { Bytes: {} } ? Bytes
+  : T extends ScalarSchema<infer Scalar> ? Scalar
   : T extends ModelDescriptor<infer Descriptor> ? InferSchemaType<Descriptor>
   : T extends [infer Element] ? Element[]
-  : T extends UnknownDescriptor ? unknown
+  : T extends UnknownDescriptor ? Scalar
+  : T extends FactSchema<infer Fact> ? Required<Fact>['is']
   : T extends ObjectDescriptor ?
     {
       [Key in keyof T]: InferSchemaType<T[Key]>
     }
-  : never
-
-export type InferTypeSchema<T extends TypeDescriptor> =
-  T extends null ? ScalarSchema<null>
-  : T extends BooleanConstructor ? ScalarSchema<boolean>
-  : T extends StringConstructor ? ScalarSchema<string>
-  : T extends NumberConstructor ? ScalarSchema<Int32>
-  : T extends BigIntConstructor ? ScalarSchema<Int64>
-  : T extends Uint8ArrayConstructor ? ScalarSchema<Bytes>
-  : T extends [infer Element] ? InferArraySchema<Element>
-  : T extends ObjectDescriptor ?
-    ObjectSchema<string & keyof T, InferSchemaType<T>, T>
-  : T extends ModelDescriptor<infer D> ? InferTypeSchema<D>
   : never
 
 export type InferTypeTerms<T> =
@@ -1007,29 +1002,6 @@ export type ArraySchema<Of> = {
   }): Constraint
 }
 
-export type ObjectSchema<
-  Domain extends string,
-  T,
-  Descriptor extends ObjectDescriptor,
-> = {
-  $: Variable<Entity>
-  domain: Domain
-  match(terms: Partial<InferTypeTerms<T>>): Constraint
-  select(
-    terms: Partial<InferTypeTerms<T>> & { from: Querier }
-  ): Invocation<T[], EvaluationError>
-
-  Object: Descriptor
-
-  when(
-    derive: (variables: InferTypeVariables<T>) => Iterable<Constraint>
-  ): ObjectSchema<Domain, T, Descriptor>
-}
-
-export interface SchemaDSL {
-  variables: Variables
-}
-
 export interface ScalarSchema<
   T extends Scalar = Scalar,
   Name extends The = The,
@@ -1041,6 +1013,58 @@ export interface ScalarSchema<
   match(term: Term<T>): Conjunct
 
   Object?: undefined
+  Fact?: undefined
+  Scalar: {}
+}
+
+export type FactDescriptor = {
+  the?: The
+  of?: TypeDescriptor
+  is?: TypeDescriptor
+}
+
+export type InferFact<T> =
+  T extends FactDescriptor ?
+    {
+      [Key in keyof T]: T[Key] extends TypeDescriptor ? InferSchemaType<T[Key]>
+      : Key extends 'the' ? T[Key]
+      : never
+    }
+  : never
+
+export type FactModel = {
+  the?: The
+  of?: unknown
+  is?: unknown
+}
+
+export type InferFactTerms<Model extends FactModel> = Partial<
+  {
+    [Key in Exclude<keyof Model, 'the'>]: InferTypeTerms<Model[Key]>
+  } & {
+    the: Term<string>
+  }
+>
+
+export interface FactSchema<Model extends FactModel = FactModel> {
+  Fact: this
+  Object?: undefined
+  Scalar?: undefined
+
+  the?: Model['the']
+  members: FactMembers
+  variables: FactVariables
+  rule: Deduction
+
+  extend<The extends Model['the'] & {}>(extension: {
+    the: The
+  }): FactSchema<Model>
+
+  match(terms?: InferFactTerms<Model>): RuleApplicationView<Model>
+
+  (terms?: InferFactTerms<Model>): RuleApplicationView<Model>
+
+  view(match: Bindings, variables: EntityVariables): Model
 }
 
 export interface EntitySchema<
@@ -1050,27 +1074,30 @@ export interface EntitySchema<
 > {
   domain: Domain
   Object: Descriptor
-  variables: SchemaVariables
+  Fact?: undefined
+  Scalar?: undefined
+
+  variables: EntityVariables
 
   members: Record<string, EntityMember>
   rule: Deduction
 
-  (terms?: InferTypeTerms<Model>): RuleApplicationView<Model>
-  match(terms?: InferTypeTerms<Model>): RuleApplicationView<Model>
+  (terms?: InferTypeTerms<Model>): RuleApplicationView<EntityView<Model>>
+  match(terms?: InferTypeTerms<Model>): RuleApplicationView<EntityView<Model>>
 
   not(terms: InferTypeTerms<Model>): Negation
 
-  view(match: Bindings, variables: SchemaVariables): EntityView<Model>
+  view(match: Bindings, variables: EntityVariables): EntityView<Model>
 
   new: (model: Model & { this: Entity }) => EntityView<Model>
 
   when(
     derive: (variables: InferTypeVariables<Model>) => Iterable<Conjunct>
-  ): EntitySchema<Model, Descriptor, Label>
+  ): EntitySchema<Model, Descriptor, Domain>
 }
 
 export interface RuleApplicationView<Model> extends RuleApplication {
-  select(source: { from: Querier }): Invocation<EntityView<Model>[], Error>
+  select(source: { from: Querier }): Invocation<Model[], Error>
 }
 
 export type EntityView<Model> = Model & {
@@ -1079,7 +1106,9 @@ export type EntityView<Model> = Model & {
 
 export type SchemaVariables = {
   [key: string]: Variable | SchemaVariables
-} & {
+}
+
+export type EntityVariables = SchemaVariables & {
   this: Variable<Entity>
 }
 
@@ -1087,7 +1116,7 @@ export type TermTree = {
   [Key: string]: Term | TermTree
 }
 
-export type EntityMember = ScalarSchema | EntitySchema
+export type EntityMember = ScalarSchema | EntitySchema | FactSchema
 
 export type The = `${string}/${string}`
 
@@ -1104,25 +1133,34 @@ export type SchemaDescriptor = {
    * Object descriptor must have a top level property that denotes the type
    * name it is kind of like tag in the tagged unions.
    */
-  [Domain: string]: {
-    [Key: string]: TypeDescriptor
-  }
+  [Domain: string]: ObjectDescriptor
 }
 
 export type InferSchema<Descriptor extends SchemaDescriptor> = {
-  [Domain in keyof Descriptor]: {
-    [Key in keyof Descriptor[Domain]]: InferSchemaMember<
-      Descriptor[Domain][Key],
-      `${Domain & string}/${Key & string}`
-    >
-  }
+  [Domain in keyof Descriptor]: EntitySchema<
+    InferSchemaType<Descriptor[Domain]>,
+    Descriptor[Domain],
+    Domain & string
+  >
 }
 
-export type InferSchemaMember<
-  Descriptor extends TypeDescriptor,
-  Name extends The,
-> = Descriptor extends ScalarDescriptor ?
-  ScalarSchema<InferSchemaType<Descriptor>, Name>
-: Descriptor extends ObjectDescriptor ?
-  EntitySchema<InferSchemaType<Descriptor>, Descriptor, Name>
-: never
+export type InferTypeSchema<T, Name extends The = The> = T extends Scalar ?
+  ScalarSchema<T, Name>
+: unknown extends T ? ScalarSchema<Scalar, Name>
+: EntitySchema<T, {}, Name>
+
+export type FactVariables = SchemaVariables & {
+  the: Variable<string>
+}
+
+export interface FactCells {
+  the: Variable<string>
+  of: Variable<Entity>
+  is: Variable<Scalar>
+}
+
+export interface FactMembers {
+  the?: ScalarSchema<string>
+  of?: EntityMember
+  is?: EntityMember
+}

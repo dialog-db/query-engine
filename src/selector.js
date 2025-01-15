@@ -135,7 +135,7 @@ const membersOf = (group) => {
  * @param {T[]} group
  * @param {T} member
  */
-const add = (group, member) => {
+export const add = (group, member) => {
   const members = membersOf(group)
   if (member !== undefined) {
     const key = Link.of(member).toString()

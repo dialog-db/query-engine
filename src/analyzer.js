@@ -104,6 +104,56 @@ class Select {
   }
 
   /**
+   * @param {object} context
+   * @param {Scope[]} context.selection
+   * @param {API.Querier} context.from
+   */
+  *eval({ selection, from }) {
+    const { selector } = this
+    const matches = []
+    for (const match of selection) {
+      const the =
+        selector.the ? match.get(selector.the) ?? selector.the : undefined
+
+      const of = selector.of ? match.get(selector.of) ?? selector.of : undefined
+
+      const is = selector.is ? match.get(selector.is) ?? selector.is : undefined
+
+      // Note: We expect that there will be LRUCache wrapping the db
+      // so calling scan over and over again will not actually cause new scans.
+      const facts = yield* from.scan({
+        entity: Variable.is(of) ? undefined : of,
+        attribute: Variable.is(the) ? undefined : the,
+        value: Variable.is(is) ? undefined : is,
+      })
+
+      for (const [entity, attribute, value] of facts) {
+        /** @type {API.Result<API.Bindings, Error>} */
+        if (Variable.is(of)) {
+          match.set(of, entity)
+        } else if (Constant.is(of) && !Constant.equal(of, entity)) {
+          continue
+        }
+
+        if (Variable.is(the)) {
+          match.set(the, attribute)
+        } else if (Constant.is(the) && !Constant.equal(the, attribute)) {
+          continue
+        }
+
+        if (Variable.is(is)) {
+          match.set(is, value)
+        } else if (Constant.is(is) && !Constant.equal(is, value)) {
+          continue
+        }
+
+        matches.push(match)
+      }
+    }
+
+    return matches
+  }
+  /**
    *
    * @param {API.EvaluationContext} context
    */
@@ -344,6 +394,72 @@ class FormulaApplication {
   }
 
   /**
+   *
+   * @param {Scope} scope
+   * @returns {API.Operand}
+   */
+  resolve(scope) {
+    const terms = this.from
+    if (Term.is(terms)) {
+      return (
+        scope.get(terms) ??
+        fail(new ReferenceError(`Required variable ${terms} is not bound`))
+      )
+    } else if (Array.isArray(terms)) {
+      const operand = /** @type {API.Term[]} */ (terms).map(
+        (term) =>
+          scope.get(term) ??
+          fail(new ReferenceError(`Required variable ${terms} is not bound`))
+      )
+      return /** @type {[API.Scalar, ...API.Scalar[]]} */ (operand)
+    } else {
+      return Object.fromEntries(
+        Object.entries(terms).map(([key, term]) => [
+          key,
+          scope.get(term) ??
+            fail(new ReferenceError(`Required variable ${terms} is not bound`)),
+        ])
+      )
+    }
+  }
+
+  /**
+   * @param {object} context
+   * @param {Scope[]} context.selection
+   */
+  *eval({ selection }) {
+    const operator =
+      /** @type {(input: API.Operand) => Iterable<API.Operand>} */
+      (this.source.formula ?? Formula.operators[this.source.operator])
+
+    const matches = []
+    next: for (const match of selection) {
+      const input = this.resolve(match)
+      for (const output of operator(input)) {
+        // If function returns single output we treat it as { is: output }
+        // because is will be a cell in the formula application.
+        const out = Constant.is(output) ? { is: output } : output
+        const terms = Object.entries(this.to)
+        if (terms.length === 0) {
+          matches.push(match)
+        } else {
+          const extension = /** @type {Record<string, API.Scalar>} */ (out)
+          for (const [key, term] of terms) {
+            try {
+              match.set(term, extension[key])
+            } catch {
+              continue next
+            }
+          }
+          matches.push(match)
+        }
+      }
+    }
+
+    return matches
+  }
+
+  /**
    * @param {API.EvaluationContext} context
    */
   *evaluate(context) {
@@ -409,6 +525,15 @@ class FormulaApplication {
 }
 
 /**
+ *
+ * @param {Error} reason
+ * @returns {never}
+ */
+const fail = (reason) => {
+  throw reason
+}
+
+/**
  * @template {API.Conclusion} [Match=API.Conclusion]
  * @implements {API.MatchRule<Match>}
  */
@@ -419,9 +544,8 @@ class RuleApplication {
    * @param {API.RuleBindings<Match>} terms
    */
   static apply(rule, terms) {
-    const scope = new Scope()
-    const application = new this(terms, rule, new Map(), new Map())
-    const { mapping, cells } = application
+    const application = new this(terms, rule)
+    const { mapping, cells, scope } = application
 
     for (const [at, inner] of Object.entries(rule.match)) {
       const term = terms[at]
@@ -481,12 +605,20 @@ class RuleApplication {
    * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
    * @param {Map<API.Variable, API.Term>} mapping
    * @param {Map<API.Variable, number>} cells
+   * @param {Scope} scope
    */
-  constructor(match, rule, mapping, cells) {
+  constructor(
+    match,
+    rule,
+    mapping = new Map(),
+    cells = new Map(),
+    scope = new Scope()
+  ) {
     this.match = match
     this.rule = rule
     this.mapping = mapping
     this.cells = cells
+    this.scope = scope
   }
   get cost() {
     return this.rule.cost
@@ -498,6 +630,7 @@ class RuleApplication {
   plan(context = ContextView.new()) {
     // Convert outer bindings to rule's internal variables
     const local = scope(context)
+
     for (const [inner, outer] of this.mapping) {
       // If provided term is not a variable we bind value in local context. If
       // it is a variable we create a reference from local variable to the outer
@@ -1207,6 +1340,24 @@ class JoinPlan {
   }
 
   /**
+   * @param {object} context
+   * @param {Scope[]} context.selection
+   * @param {API.Querier} context.from
+   */
+  *eval({ selection, from }) {
+    // Execute binding steps in planned order
+    for (const plan of this.assertion) {
+      selection = yield* plan.eval({ selection, from })
+    }
+
+    // Then execute negation steps
+    for (const plan of this.negation) {
+      selection = yield* plan.eval({ selection, from })
+    }
+
+    return selection
+  }
+  /**
    * @param {API.EvaluationContext} context
    */
   *evaluate({ source, selection }) {
@@ -1253,6 +1404,20 @@ class DisjoinPlan {
     this.cost = cost
   }
 
+  /**
+   * @param {object} context
+   * @param {Scope[]} context.selection
+   * @param {API.Querier} context.from
+   */
+  *eval(context) {
+    const selection = []
+    // Run each branch and combine results
+    for (const plan of Object.values(this.disjuncts)) {
+      const matches = yield* plan.eval(context)
+      selection.push(...matches)
+    }
+    return selection
+  }
   /**
    *
    * @param {API.EvaluationContext} context
@@ -1379,6 +1544,30 @@ class InductionPlan {
   }
 
   /**
+   *
+   * @param {EvalContext} context
+   */
+  *eval(context) {
+    // First run initial conditions
+    let selection = yield* this.base.eval(context)
+
+    // Then run recursive branches until no new results
+    let prevSize = 0
+    while (selection.length > prevSize) {
+      prevSize = selection.length
+      for (const plan of Object.values(this.disjuncts)) {
+        const matches = yield* plan.eval({
+          ...context,
+          selection,
+        })
+        selection.push(...matches)
+      }
+    }
+
+    return selection
+  }
+
+  /**
    * @param {API.EvaluationContext} context
    * @returns
    */
@@ -1422,6 +1611,29 @@ class RuleApplicationPlan {
     return this.plan.cost
   }
 
+  /**
+   *
+   * @param {object} context
+   * @param {Scope[]} context.selection
+   * @param {API.Querier} context.from
+   */
+  *eval({ selection, from }) {
+    const matches = []
+    next: for (const match of selection) {
+      // Execute rule with isolated bindings
+      const results = yield* this.plan.eval({
+        selection: [match],
+        from,
+      })
+
+      // For each result, copy outer variables only
+      for (const result of results) {
+        matches.push(result.withoutLocal())
+      }
+    }
+
+    return matches
+  }
   /**
    * @param {API.EvaluationContext} context
    */
@@ -1486,6 +1698,42 @@ class RuleApplicationPlan {
     return Selector.select(selector, frames)
   }
 
+  /**
+   * @param {object} source
+   * @param {API.Querier} source.from
+   */
+  *select({ from }) {
+    const { match: selector } = this
+
+    const selection = yield* this.eval({
+      selection: [new Scope()],
+      from,
+    })
+
+    /** @type {API.InferBindings<typeof this.match>[]} */
+    const matches = []
+    for (const frame of selection) {
+      if (matches.length === 0) {
+        matches.push(frame.match(selector))
+      } else {
+        let joined = false
+        for (const [offset, result] of matches.entries()) {
+          const merged = frame.merge(result, selector)
+          if (merged) {
+            matches[offset] = merged
+            joined = true
+          }
+        }
+
+        if (!joined) {
+          matches.push(frame.match(selector))
+        }
+      }
+    }
+
+    return matches
+  }
+
   toDebugString() {
     const { match, plan } = this
 
@@ -1539,6 +1787,25 @@ class Negate {
     return this.operand.cost
   }
 
+  /**
+   *
+   * @param {EvalContext} context
+   */
+  *eval({ selection, from }) {
+    const matches = []
+    for (const match of selection) {
+      const matched = yield* this.operand.eval({
+        selection: [match],
+        from,
+      })
+
+      if (matched.length === 0) {
+        matches.push(match)
+      }
+    }
+
+    return matches
+  }
   /**
    * @param {API.EvaluationContext} context
    */
@@ -2011,15 +2278,23 @@ class ContextView {
   }
 }
 
-class Scope {
+/**
+ * @typedef {Scope[]} Selection
+ * @typedef {object} EvalContext
+ * @property {Selection} selection
+ * @property {API.Querier} from
+ */
+
+export class Scope {
   /**
    * @param {References} references
    * @param {Frame} remote
+   * @param {Frame} local
    */
-  constructor(references = new Map(), remote = new Map(), local = new Map()) {
-    this.references = references
-    this.frame = remote
+  constructor(remote = new Map(), local = new Map(), references = new Map()) {
+    this.remote = remote
     this.local = local
+    this.references = references
   }
 
   /**
@@ -2034,17 +2309,17 @@ class Scope {
 
   /**
    *
-   * @param {API.Variable} variable
+   * @param {API.Term} variable
    * @param {API.Scalar} value
    */
   set(variable, value) {
     // If it is a discard variable we simply discard the value.
-    if (variable !== _) {
+    if (Variable.is(variable) && variable !== _) {
       // Otherwise we determine whether this is a local variable or a reference.
       // If later we set a remote binding, if former we set local binding.
       const port = this.references.get(variable)
       const [cell, bindings] =
-        port ? [port, this.frame] : [variable, this.local]
+        port ? [port, this.remote] : [variable, this.local]
 
       const current = bindings.get(variable)
       if (current === undefined) {
@@ -2058,6 +2333,86 @@ class Scope {
           )} and can not be unified with ${Constant.toDebugString(value)}`
         )
       }
+    }
+  }
+
+  /**
+   * @template {API.Scalar} T
+   * @param {API.Term<T>} term
+   * @returns {T|undefined}
+   */
+  get(term) {
+    if (!Variable.is(term)) {
+      return term
+    } else {
+      const port = this.references.get(term)
+      const bindings = port ? this.remote : this.local
+      return /** @type {T|undefined} */ (bindings.get(term))
+    }
+  }
+
+  withoutLocal() {
+    return new Scope(this.remote)
+  }
+
+  /**
+   *
+   * @template {API.Selector} Selector
+   * @param {Selector} selector
+   * @returns {API.InferBindings<Selector>}
+   */
+  match(selector) {
+    return Array.isArray(selector) ?
+        [Term.is(selector[0]) ? this.get(selector[0]) : this.match(selector[0])]
+      : Object.fromEntries(
+          Object.entries(selector).map(([key, term]) => {
+            if (Term.is(term)) {
+              return [key, this.get(term)]
+            } else {
+              return [key, this.match(term)]
+            }
+          })
+        )
+  }
+
+  /**
+   * @template {API.Selector} Selector
+   * @param {API.InferBindings<Selector>} result
+   * @param {Selector} selector
+   * @returns {API.InferBindings<Selector>|null}
+   */
+  merge(result, selector) {
+    if (Array.isArray(selector)) {
+      const [term] = selector
+      const extension = Term.is(term) ? this.get(term) : this.match(term)
+      return /** @type {API.InferBindings<Selector>} */ (
+        Selector.add(/** @type {unknown[]} */ (result), extension)
+      )
+    } else {
+      const entries = []
+      for (const [key, term] of Object.entries(selector)) {
+        const id = /** @type {keyof API.InferBindings<Selector>} */ (key)
+        if (Term.is(term)) {
+          const value = /** @type {API.Scalar} */ (this.get(term))
+          if (value === undefined) {
+            return null
+          } else {
+            if (Constant.equal(/** @type {API.Scalar} */ (result[id]), value)) {
+              entries.push([key, value])
+            } else {
+              return null
+            }
+          }
+        } else {
+          const value = this.merge(/** @type {any} */ (result[id]), term)
+          if (value === null) {
+            return null
+          } else {
+            entries.push([key, value])
+          }
+        }
+      }
+      return Object.fromEntries(entries)
     }
   }
 }

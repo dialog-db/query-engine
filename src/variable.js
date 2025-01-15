@@ -1,6 +1,6 @@
 import * as API from './api.js'
 import * as Type from './type.js'
-import { Variable, _ } from './scope.js'
+import { Variable, _ } from './$.js'
 import * as Constant from './constant.js'
 
 /**
@@ -186,4 +186,14 @@ export const compare = ({ ['?']: { id: left } }, { ['?']: { id: right } }) => {
     : left > right ? 1
     : 0
   )
+}
+
+/**
+ * @param {API.Variable} variable
+ */
+export const toDebugString = (variable) => {
+  const name = `${variable}`.slice(1)
+  return /^[a-zA-Z_]\w*$/.test(name) ?
+      `$.${name}`
+    : `$[${JSON.stringify(name)}]`
 }
