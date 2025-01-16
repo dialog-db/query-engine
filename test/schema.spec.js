@@ -22,6 +22,17 @@ const db = DB.Memory.create([
         'Line/b': { 'Point/x': 10, 'Point/y': 2 },
       },
     ],
+    people: {
+      alice: {
+        'Person/name': 'Alice',
+      },
+      bob: {
+        'Person/name': 'Bob',
+      },
+      mallory: {
+        'Person/name': 'Mallory',
+      },
+    },
   },
 ])
 
@@ -30,13 +41,12 @@ const db = DB.Memory.create([
  */
 export const testSchema = {
   'test schema': async (assert) => {
-    const Point = Schema.entity(
-      {
+    const { Point } = Schema.schema({
+      Point: {
         x: Number,
         y: Number,
       },
-      'Point'
-    )
+    })
 
     const result = await Point({ x: 0 }).select({
       from: db,
@@ -52,21 +62,19 @@ export const testSchema = {
   },
 
   'nested entities with namespace': async (assert) => {
-    const Point = Schema.entity(
-      {
+    const { Point } = Schema.schema({
+      Point: {
         x: Number,
         y: Number,
       },
-      'Point'
-    )
+    })
 
-    const Line = Schema.entity(
-      {
+    const { Line } = Schema.schema({
+      Line: {
         a: Point,
         b: Point,
       },
-      'Line'
-    )
+    })
 
     const result = await Line().select({
       from: db,
@@ -109,21 +117,19 @@ export const testSchema = {
   },
 
   'can do a nested selection': async (assert) => {
-    const Point = Schema.entity(
-      {
+    const { Point } = Schema.schema({
+      Point: {
         x: Number,
         y: Number,
       },
-      'Point'
-    )
+    })
 
-    const Line = Schema.entity(
-      {
+    const { Line } = Schema.schema({
+      Line: {
         a: Point,
         b: Point,
       },
-      'Line'
-    )
+    })
 
     const result = await Line({ b: { y: 2 } }).select({ from: db })
 
@@ -148,13 +154,12 @@ export const testSchema = {
   },
 
   'define rule from schema': async (assert) => {
-    const Cursor = Schema.entity(
-      {
+    const Cursor = Schema.schema({
+      Cursor: {
         top: Number,
         left: Number,
       },
-      'Cursor'
-    ).when(($) => [
+    }).Cursor.when(($) => [
       { match: { the: 'Point/x', of: $.this, is: $.top } },
       { match: { the: 'Point/y', of: $.this, is: $.left } },
     ])
@@ -171,13 +176,12 @@ export const testSchema = {
   },
 
   'test negation': async (assert) => {
-    const Point = Schema.entity(
-      {
+    const { Point } = Schema.schema({
+      Point: {
         x: Number,
         y: Number,
       },
-      'Point'
-    )
+    })
 
     const NonZeroPoint = Point.when((point) => [
       Point(point),
@@ -196,27 +200,24 @@ export const testSchema = {
   },
 
   'test managers relation': async (assert) => {
-    const Person = Schema.entity(
-      {
+    const { Person } = Schema.schema({
+      Person: {
         name: String,
       },
-      'Person'
-    )
+    })
 
-    const Manages = Schema.entity(
-      {
+    const { Manages } = Schema.schema({
+      Manages: {
         employee: Person,
       },
-      'Manages'
-    )
+    })
 
-    const Manager = Schema.entity(
-      {
+    const Manager = Schema.schema({
+      Manager: {
         name: String,
         of: Person,
       },
-      'Manager'
-    ).when((manager) => [
+    }).Manager.when((manager) => [
       Person({ this: manager.this, name: manager.name }),
       Person(manager.of),
       Manages({ this: manager.this, employee: manager.of }),
@@ -259,13 +260,12 @@ export const testSchema = {
 
   'schemas and rules are callable': async (assert) => {
     const Text = Schema.string()
-    const Point = Schema.entity(
-      {
+    const { Point } = Schema.schema({
+      Point: {
         x: {},
         y: {},
       },
-      'Point'
-    )
+    })
 
     const Invalid = Point.when((point) => [Point(point), Text(point.y)])
 
@@ -277,6 +277,118 @@ export const testSchema = {
         x: 0,
         y: '1',
       }),
+    ])
+  },
+
+  'test fact schema': async (assert) => {
+    const name = Schema.fact({ the: 'Person/name', is: String })
+
+    assert.deepEqual(await name.match().select({ from: db }), [
+      {
+        the: 'Person/name',
+        of: Link.of({ 'Person/name': 'Alice' }),
+        is: 'Alice',
+      },
+      { the: 'Person/name', of: Link.of({ 'Person/name': 'Bob' }), is: 'Bob' },
+      {
+        the: 'Person/name',
+        of: Link.of({ 'Person/name': 'Mallory' }),
+        is: 'Mallory',
+      },
+    ])
+
+    assert.deepEqual(await name.match({ is: 'Alice' }).select({ from: db }), [
+      {
+        the: 'Person/name',
+        of: Link.of({ 'Person/name': 'Alice' }),
+        is: 'Alice',
+      },
+    ])
+  },
+  'compose entities from facts': async (assert) => {
+    const name = Schema.fact({ the: 'Person/name', is: String })
+    const Person = Schema.entity({
+      name,
+    })
+
+    const result = await Person().select({ from: db })
+
+    assert.deepEqual(result, [
+      {
+        name: 'Alice',
+        this: Link.of({ 'Person/name': 'Alice' }),
+      },
+      {
+        name: 'Bob',
+        this: Link.of({ 'Person/name': 'Bob' }),
+      },
+      {
+        name: 'Mallory',
+        this: Link.of({ 'Person/name': 'Mallory' }),
+      },
+    ])
+  },
+
+  'skip joins with facts': async (assert) => {
+    const db = DB.Memory.create([
+      {
+        'Person/name': 'Alice',
+        'Manages/employee': {
+          'Person/name': 'Bob',
+          // 'Manages/employee': { 'Person/name': 'Mallory' },
+        },
+      },
+    ])
+
+    const name = Schema.fact({ the: 'Person/name', is: String })
+    const Person = Schema.entity({
+      name,
+    })
+    const manages = Schema.fact({ the: 'Manages/employee', is: Person })
+
+    // const people = await Person().select({ from: db })
+
+    // console.log(people, people)
+
+    // const employees = await manages().select({ from: db })
+    // console.log('employees', employees)
+
+    const Manager = Schema.entity({
+      name,
+      manages,
+    })
+
+    const managers = await Manager().select({ from: db })
+
+    assert.deepEqual(managers, [
+      {
+        name: 'Alice',
+        manages: {
+          name: 'Bob',
+          this: Link.of({
+            'Person/name': 'Bob',
+            'Manages/employee': { 'Person/name': 'Mallory' },
+          }),
+        },
+        this: Link.of({
+          'Person/name': 'Alice',
+          'Manages/employee': {
+            'Person/name': 'Bob',
+            'Manages/employee': { 'Person/name': 'Mallory' },
+          },
+        }),
+      },
+      {
+        name: 'Bob',
+        this: Link.of({
+          'Person/name': 'Bob',
+          'Manages/employee': { 'Person/name': 'Mallory' },
+        }),
+        manages: {
+          name: 'Mallory',
+          this: Link.of({ 'Person/name': 'Mallory' }),
+        },
+      },
     ])
   },
 

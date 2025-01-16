@@ -18,8 +18,8 @@ export class Unknown extends Callable {
    */
   match(term) {
     return /** @type {API.SystemOperator} */ ({
-      match: { of: term },
-      operator: 'data/type',
+      match: { of: 0, is: 0 },
+      operator: '==',
     })
   }
 }
@@ -52,6 +52,10 @@ export class Scalar extends Callable {
       match: { of: term, is: this.type },
       operator: 'data/type',
     })
+  }
+
+  get Scalar() {
+    return this
   }
 }
 

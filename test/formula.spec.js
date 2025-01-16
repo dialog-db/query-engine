@@ -601,7 +601,7 @@ export const testRelation = {
           where: [
             { Match: [2, '==', a] },
             { Match: [3, '==', b] },
-            { Match: [{ base: 2, exponent: b }, '**', c] },
+            { Match: [{ of: 2, by: b }, '**', c] },
           ],
         }),
         [{ c: 8 }]

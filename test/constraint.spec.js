@@ -1,6 +1,5 @@
 import * as DB from 'datalogia'
 import * as Link from '../src/link.js'
-import { assert } from 'entail'
 
 const db = DB.Memory.create([
   {

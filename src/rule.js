@@ -1,7 +1,7 @@
 import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Constant from './constant.js'
-import $ from './scope.js'
+import $ from './$.js'
 
 /**
  *
@@ -146,7 +146,7 @@ export const setup = (rule) => {
   /** @type {Record<string, API.Variable>} */
   const table = {}
   const match = rename(rule.match, table)
-  const when = rule.when.map((clause) =>
+  const when = rule.base.map((clause) =>
     renameClauseVariables(clause, table, rule)
   )
   return { match, when }
