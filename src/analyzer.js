@@ -5,8 +5,9 @@ import * as Bindings from './bindings.js'
 import * as Term from './term.js'
 import { Constant, Link, matchFact, Var, $, _ } from './lib.js'
 import * as Formula from './formula.js'
-import * as Selector from './selector.js'
+import { add } from './selector.js'
 import { indent, li } from './format.js'
+import * as Cursor from './scope.js'
 
 export { $ }
 
@@ -20,14 +21,25 @@ export const select = (selector) =>
  * @template {API.Conclusion} Match
  * @param {API.Deduction<Match>} source
  */
-export const rule = (source) => DeductiveRule.new(Circuit.new(), source)
+export const rule = (source) => DeductiveRule.new(source)
+
+/**
+ * @template {API.SystemOperator} Source
+ * @param {Source['operator']} operator
+ * @param {Source['match']} match
+ */
+export const apply = (operator, match) =>
+  FormulaApplication.new(
+    Circuit.new(),
+    /** @type {Source} */ ({ operator, match })
+  )
 
 /**
  * @template {API.Conclusion} Match
  * @template {Match} Repeat
  * @param {API.Induction<Match, Repeat>} source
  */
-export const loop = (source) => InductiveRule.new(Circuit.new(), source)
+export const loop = (source) => InductiveRule.new(source)
 
 /**
  * @template {API.Conclusion} Match
@@ -36,6 +48,9 @@ export const loop = (source) => InductiveRule.new(Circuit.new(), source)
 export const plan = (application) =>
   RuleApplication.new(Circuit.new(), application).plan()
 
+/**
+ * @implements {API.MatchFact}
+ */
 class Select {
   /**
    * @param {Circuit} circuit
@@ -70,28 +85,17 @@ class Select {
    * @param {Circuit} circuit
    * @param {API.Select} selector
    * @param {Map<API.Variable, number>} cells
-   * @param {API.Select} resolvedSelector
+   * @param {API.Cursor} references
    */
-  constructor(circuit, selector, cells, resolvedSelector = selector) {
+  constructor(circuit, selector, cells, references = Cursor.create()) {
     this.circuit = circuit
     this.cells = cells
     this.selector = selector
-    this.resolvedSelector = resolvedSelector
+    this.references = references
   }
 
-  *tokens() {
-    const { the, of, is } = this.selector
-    yield 'select'
-    if (the != null) {
-      yield the
-    }
-    if (of != null) {
-      yield of
-    }
-
-    if (is != null) {
-      yield is
-    }
+  get match() {
+    return this.selector
   }
 
   /**
@@ -99,6 +103,35 @@ class Select {
    */
   get cost() {
     return 100
+  }
+
+  /**
+   * @param {API.Variable} by
+   * @returns {SelectRoute|null}
+   */
+  address(by) {
+    /** @type {SelectRoute['match']} */
+    const match = {}
+    let distance = 0
+    let found = false
+    for (const [key, term] of Object.entries(this.selector)) {
+      if (term == by) {
+        found = true
+        match[key] = ROUTE_TARGET
+      } else if (Variable.is(term)) {
+        const route = this.circuit.address(term)
+        if (route) {
+          match[key] = route
+          distance += route.distance
+        } else {
+          return null
+        }
+      } else {
+        match[key] = term
+      }
+    }
+
+    return found ? { match, fact: {}, distance } : null
   }
 
   /**
@@ -117,76 +150,14 @@ class Select {
   /**
    *
    * @param {Context} context
-   * @returns
    */
   plan(context) {
-    const { the, of, is } = this.selector
-
-    const selector = {}
-    if (the) {
-      selector.the = Select.resolve(context, the)
-    }
-
-    if (of) {
-      selector.of = Select.resolve(context, of)
-    }
-
-    if (is) {
-      selector.is = Select.resolve(context, is)
-    }
-
-    return new Select(this.circuit, this.selector, this.cells, selector)
-  }
-
-  /**
-   * @param {object} context
-   * @param {Scope[]} context.selection
-   * @param {API.Querier} context.from
-   */
-  *eval({ selection, from }) {
-    const { selector } = this
-    const matches = []
-    for (const match of selection) {
-      const the =
-        selector.the ? match.get(selector.the) ?? selector.the : undefined
-
-      const of = selector.of ? match.get(selector.of) ?? selector.of : undefined
-
-      const is = selector.is ? match.get(selector.is) ?? selector.is : undefined
-
-      // Note: We expect that there will be LRUCache wrapping the db
-      // so calling scan over and over again will not actually cause new scans.
-      const facts = yield* from.scan({
-        entity: Variable.is(of) ? undefined : of,
-        attribute: Variable.is(the) ? undefined : the,
-        value: Variable.is(is) ? undefined : is,
-      })
-
-      for (const [entity, attribute, value] of facts) {
-        /** @type {API.Result<API.Bindings, Error>} */
-        if (Variable.is(of)) {
-          match.set(of, entity)
-        } else if (Constant.is(of) && !Constant.equal(of, entity)) {
-          continue
-        }
-
-        if (Variable.is(the)) {
-          match.set(the, attribute)
-        } else if (Constant.is(the) && !Constant.equal(the, attribute)) {
-          continue
-        }
-
-        if (Variable.is(is)) {
-          match.set(is, value)
-        } else if (Constant.is(is) && !Constant.equal(is, value)) {
-          continue
-        }
-
-        matches.push(match)
-      }
-    }
-
-    return matches
+    return new Select(
+      this.circuit,
+      this.selector,
+      this.cells,
+      context.references
+    )
   }
 
   /**
@@ -194,21 +165,21 @@ class Select {
    */
   *evaluate({ source, selection }) {
     const matches = []
-    const { resolvedSelector: selector } = this
+    const { selector, references } = this
     for (const bindings of selection) {
       const the =
         selector.the ?
-          Bindings.get(bindings, selector.the) ?? selector.the
+          Cursor.get(references, selector.the, bindings) ?? selector.the
         : undefined
 
       const of =
         selector.of ?
-          Bindings.get(bindings, selector.of) ?? selector.of
+          Cursor.get(references, selector.of, bindings) ?? selector.of
         : undefined
 
       const is =
         selector.is ?
-          Bindings.get(bindings, selector.is) ?? selector.is
+          Cursor.get(references, selector.is, bindings) ?? selector.is
         : undefined
 
       // Note: We expect that there will be LRUCache wrapping the db
@@ -220,23 +191,22 @@ class Select {
       })
 
       for (const [entity, attribute, value] of facts) {
-        /** @type {API.Result<API.Bindings, Error>} */
-        let result = { ok: bindings }
-        if (result.ok && of !== undefined) {
-          result = Term.match(of, entity, bindings)
-        }
+        try {
+          const match = Cursor.fork(bindings)
+          if (of) {
+            Cursor.set(references, of, entity, match)
+          }
 
-        if (result.ok && the !== undefined) {
-          result = Term.match(the, attribute, result.ok)
-        }
+          if (the) {
+            Cursor.set(references, the, attribute, match)
+          }
 
-        if (result.ok && is !== undefined) {
-          result = Term.match(is, value, result.ok)
-        }
+          if (is) {
+            Cursor.set(references, is, value, match)
+          }
 
-        if (result.ok) {
-          matches.push(result.ok)
-        }
+          matches.push(match)
+        } catch {}
       }
     }
 
@@ -265,6 +235,29 @@ class Select {
     }
 
     return `{ match: { ${parts.join(', ')} } }`
+  }
+
+  /**
+   *
+   * @returns
+   */
+  form() {
+    const { circuit, selector } = this
+    const { the, of, is } = selector
+    const match = {}
+    if (the) {
+      match.the = address(the, circuit)
+    }
+
+    if (of !== undefined) {
+      match.of = address(of, circuit)
+    }
+
+    if (is !== undefined) {
+      match.is = address(is, circuit)
+    }
+
+    return { match, fact: {} }
   }
 
   refer() {
@@ -328,6 +321,27 @@ class Select {
   }
 }
 
+/**
+ * @typedef {object} Address
+ * @property {API.Variable} the
+ * @property {Branch} as
+ *
+ * @param {API.Term} term
+ * @param {Circuit} circuit
+ * @returns {Address|API.Scalar}
+ */
+const address = (term, circuit) => {
+  if (Variable.is(term)) {
+    const address = circuit.resolve(term)
+    return {
+      the: term,
+      as: toJSON(/** @type {{}} */ (address)),
+    }
+  } else {
+    return term
+  }
+}
+
 class FormulaApplication {
   /**
    * @param {Circuit} circuit
@@ -375,47 +389,20 @@ class FormulaApplication {
   }
 
   /**
-   * @returns {Iterable<API.Term>}
-   */
-  *tokens() {
-    yield 'match'
-
-    if (Term.is(this.from)) {
-      yield 'of'
-      yield this.from
-    } else {
-      for (const [key, term] of Object.entries(this.from)) {
-        yield key
-        yield term
-      }
-    }
-
-    if (Term.is(this.to)) {
-      yield 'is'
-      yield this.to
-    } else {
-      for (const [key, term] of Object.entries(this.to)) {
-        yield key
-        yield term
-      }
-    }
-
-    yield 'operator'
-    yield this.source.operator
-  }
-  /**
    * @param {Circuit} circuit
    * @param {API.SystemOperator} source
    * @param {Map<API.Variable, number>} cells
    * @param {Record<string, API.Term>|API.Term} from
    * @param {Record<string, API.Term>} to
+   * @param {API.Cursor} references
    */
-  constructor(circuit, source, cells, from, to) {
+  constructor(circuit, source, cells, from, to, references = Cursor.create()) {
     this.circuit = circuit
     this.cells = cells
     this.source = source
     this.from = from
     this.to = to
+    this.references = references
   }
   /**
    * Base execution cost of the formula application operation.
@@ -424,74 +411,38 @@ class FormulaApplication {
     return 5
   }
 
-  plan() {
-    return this
+  /**
+   * @param {Context} context
+   */
+  plan(context) {
+    return new FormulaApplication(
+      this.circuit,
+      this.source,
+      this.cells,
+      this.from,
+      this.to,
+      context.references
+    )
   }
 
   /**
-   *
-   * @param {Scope} scope
-   * @returns {API.Operand}
+   * @template {API.Terms} Terms
+   * @param {Terms} terms
+   * @param {API.MatchFrame} bindings
+   * @returns {API.InferTerms<Terms>}
    */
-  resolve(scope) {
-    const terms = this.from
-    if (Term.is(terms)) {
-      return (
-        scope.get(terms) ??
-        fail(new ReferenceError(`Required variable ${terms} is not bound`))
-      )
-    } else if (Array.isArray(terms)) {
-      const operand = /** @type {API.Term[]} */ (terms).map(
-        (term) =>
-          scope.get(term) ??
-          fail(new ReferenceError(`Required variable ${terms} is not bound`))
-      )
-      return /** @type {[API.Scalar, ...API.Scalar[]]} */ (operand)
-    } else {
-      return Object.fromEntries(
-        Object.entries(terms).map(([key, term]) => [
-          key,
-          scope.get(term) ??
-            fail(new ReferenceError(`Required variable ${terms} is not bound`)),
-        ])
-      )
-    }
-  }
-
-  /**
-   * @param {object} context
-   * @param {Scope[]} context.selection
-   */
-  *eval({ selection }) {
-    const operator =
-      /** @type {(input: API.Operand) => Iterable<API.Operand>} */
-      (this.source.formula ?? Formula.operators[this.source.operator])
-
-    const matches = []
-    next: for (const match of selection) {
-      const input = this.resolve(match)
-      for (const output of operator(input)) {
-        // If function returns single output we treat it as { is: output }
-        // because is will be a cell in the formula application.
-        const out = Constant.is(output) ? { is: output } : output
-        const terms = Object.entries(this.to)
-        if (terms.length === 0) {
-          matches.push(match)
-        } else {
-          const extension = /** @type {Record<string, API.Scalar>} */ (out)
-          for (const [key, term] of terms) {
-            try {
-              match.set(term, extension[key])
-            } catch {
-              continue next
-            }
-          }
-          matches.push(match)
-        }
-      }
-    }
-
-    return matches
+  resolve(terms, bindings) {
+    return /** @type {API.InferTerms<Terms>} */ (
+      Term.is(terms) ? Cursor.get(this.references, terms, bindings)
+      : Array.isArray(terms) ?
+        terms.map((term) => Cursor.get(this.references, term, bindings))
+      : Object.fromEntries(
+          Object.entries(terms).map(([key, term]) => [
+            key,
+            Cursor.get(this.references, term, bindings),
+          ])
+        )
+    )
   }
 
   /**
@@ -504,27 +455,23 @@ class FormulaApplication {
       (source.formula ?? Formula.operators[this.source.operator])
 
     const matches = []
-    next: for (const frame of context.selection) {
-      const input = Formula.resolve(from, frame)
+    for (const frame of context.selection) {
+      const input = this.resolve(from, frame)
       for (const output of operator(input)) {
         // If function returns single output we treat it as { is: output }
         // because is will be a cell in the formula application.
         const out = Constant.is(output) ? { is: output } : output
-        const terms = Object.entries(to)
-        if (terms.length === 0) {
+        const cells = Object.entries(to)
+        if (cells.length === 0) {
           matches.push(frame)
         } else {
           const extension = /** @type {Record<string, API.Scalar>} */ (out)
-          let bindings = frame
-          for (const [key, term] of terms) {
-            const match = Term.unify(extension[key], term, frame)
-            if (match.ok) {
-              bindings = match.ok
-            } else {
-              continue next
+          try {
+            for (const [key, cell] of cells) {
+              Cursor.set(this.references, cell, extension[key], frame)
             }
-          }
-          matches.push(bindings)
+            matches.push(frame)
+          } catch {}
         }
       }
     }
@@ -535,6 +482,47 @@ class FormulaApplication {
   toJSON() {
     return {
       match: this.source.match,
+      operator: this.source.operator,
+    }
+  }
+
+  /**
+   * @param {API.Variable} by
+   * @returns {FormulaRoute|null}
+   */
+  address(by) {
+    /** @type {FormulaRoute['match']} */
+    const match = {}
+    let found = false
+    let distance = 0
+    for (const [key, term] of Object.entries(this.source.match)) {
+      if (term === by) {
+        found = true
+        match[key] = ROUTE_TARGET
+      } else if (Variable.is(term)) {
+        const route = this.circuit.address(term)
+        if (route) {
+          match[key] = route
+          distance += route.distance
+        } else {
+          return null
+        }
+      } else {
+        match[key] = term
+      }
+    }
+
+    return found ? { match, operator: this.source.operator, distance } : null
+  }
+  form() {
+    /** @type {Record<string, Address|API.Scalar>} */
+    const match = {}
+    for (const [key, term] of Object.entries(this.source.match)) {
+      match[key] = address(term, this.circuit)
+    }
+
+    return {
+      match,
       operator: this.source.operator,
     }
   }
@@ -560,26 +548,33 @@ class FormulaApplication {
 }
 
 /**
- *
- * @param {Error} reason
- * @returns {never}
- */
-const fail = (reason) => {
-  throw reason
-}
-
-/**
  * @template {API.Conclusion} [Match=API.Conclusion]
  * @implements {API.MatchRule<Match>}
  */
 class RuleApplication {
   /**
+   * @template {API.Conclusion} [Match=API.Conclusion]
+   * @param {Circuit} circuit
+   * @param {API.RuleApplication<Match>} source
+   * @returns {RuleApplication<Match>}
+   */
+  static new(circuit, source) {
+    // Build the underlying rule first
+    const rule =
+      isInductive(source.rule) ?
+        InductiveRule.new(source.rule)
+      : DeductiveRule.new(source.rule)
+
+    return this.apply(rule, source.match, circuit)
+  }
+  /**
    * @template {API.Conclusion} Match
    * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
    * @param {API.RuleBindings<Match>} terms
+   * @param {Circuit} circuit
    */
-  static apply(rule, terms) {
-    const application = new this(terms, rule)
+  static apply(rule, terms, circuit) {
+    const application = new this(circuit, terms, rule)
     const { references, cells, constants } = application
 
     for (const [at, inner] of Object.entries(rule.match)) {
@@ -600,8 +595,9 @@ class RuleApplication {
         // We combine costs as we may have same outer variable set to different
         // inner variables.
         cells.set(term, combineCosts(cells.get(term) ?? 0, cost))
-        rule.circuit.open(term, application)
         references.set(inner, term)
+
+        circuit.open(term, application)
       }
       // If value for the term is provided we create a binding.
       else if (term !== undefined) {
@@ -609,48 +605,77 @@ class RuleApplication {
       }
       // Otherwise we create a reference to the `_` discarding variable.
       else {
-        // references.set(inner, _)
+        references.set(inner, _)
       }
     }
 
     return application
   }
   /**
-   * @template {API.Conclusion} [Match=API.Conclusion]
    * @param {Circuit} circuit
-   * @param {API.RuleApplication<Match>} source
-   * @returns {RuleApplication<Match>}
-   */
-  static new(circuit, source) {
-    // Build the underlying rule first
-    const rule =
-      isInductive(source.rule) ?
-        InductiveRule.new(circuit, source.rule)
-      : DeductiveRule.new(circuit, source.rule)
-
-    return this.apply(rule, source.match)
-  }
-
-  /**
    * @param {API.RuleBindings<Match>} match
    * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
-   * @param {Map<API.Variable, API.Variable>} references
+   * @param {API.Cursor} references
    * @param {Map<API.Variable, API.Scalar>} constants
    * @param {Map<API.Variable, number>} cells
    */
   constructor(
+    circuit,
     match,
     rule,
-    references = new Map(),
+    references = Cursor.create(),
     constants = new Map(),
     cells = new Map()
   ) {
+    this.circuit = circuit
     this.match = match
     this.rule = rule
     this.references = references
     this.constants = constants
     this.cells = cells
   }
+
+  /**
+   * @param {API.Variable} by
+   * @returns {RuleRoute|null}
+   */
+  address(by) {
+    let found = false
+    /** @type {RuleRoute['match']} */
+    const match = {}
+    let distance = 0
+    for (const [name, term] of Object.entries(this.match)) {
+      if (term === by) {
+        match[name] = ROUTE_TARGET
+        found = true
+      } else if (Variable.is(term)) {
+        const route = this.circuit.address(term)
+        if (route) {
+          match[name] = route
+          distance += route.distance
+        } else {
+          return null
+        }
+      } else {
+        match[name] = term
+      }
+    }
+
+    return found ? { match, rule: this.rule.form(), distance } : null
+  }
+  form() {
+    /** @type {Record<string, Address|API.Scalar>} */
+    const match = {}
+    for (const [name, term] of Object.entries(this.match)) {
+      match[name] = address(term, this.circuit)
+    }
+
+    return {
+      match: {},
+      rule: this.rule.form(),
+    }
+  }
+
   get cost() {
     return this.rule.cost
   }
@@ -674,15 +699,6 @@ class RuleApplication {
       this.rule.plan(ContextView.new(references, frame)),
       this.references
     )
-  }
-
-  *tokens() {
-    yield 'match'
-    for (const [key, term] of Object.entries(this.match)) {
-      yield `:${key}`
-      yield term
-    }
-    yield* this.rule.tokens()
   }
 
   /**
@@ -720,11 +736,10 @@ const ruleBindings = (match) => {
  */
 class DeductiveRule {
   /**
-   * @param {Circuit} circuit
    * @template {API.Conclusion} Case
    * @param {API.Deduction<Case>} source
    */
-  static new(circuit, source) {
+  static new(source) {
     const disjuncts =
       Array.isArray(source.when) ? { when: source.when } : source.when ?? {}
 
@@ -758,18 +773,16 @@ class DeductiveRule {
       }
     }
 
-    return new this(circuit, source.match, cells, total, when)
+    return new this(source.match, cells, total, when)
   }
 
   /**
-   * @param {Circuit} circuit
    * @param {Match} match - Pattern to match against
    * @param {Map<API.Variable, number>} cells - Cost per variable when not bound
    * @param {number} cost - Base execution cost
    * @param {Record<string, Join>} when - Named deductive branches that must be evaluated
    */
-  constructor(circuit, match, cells, cost, when) {
-    this.circuit = circuit
+  constructor(match, cells, cost, when) {
     this.match = match
     this.cells = cells
     this.cost = cost
@@ -786,7 +799,7 @@ class DeductiveRule {
    * @returns {RuleApplication<Match>}
    */
   apply(terms) {
-    return RuleApplication.apply(this, terms)
+    return RuleApplication.apply(this, terms, Circuit.new())
   }
 
   /**
@@ -839,21 +852,18 @@ class DeductiveRule {
   }
 
   /**
-   * @returns {Iterable<API.Term>}
+   * @returns {{}}
    */
-  *tokens() {
-    yield 'rule'
-    yield 'case'
-    for (const [name, variable] of Object.entries(this.match)) {
-      yield `${name}:`
-      yield variable
+
+  form() {
+    /** @type {Record<string, object>} */
+    const form = {}
+
+    for (const [name, disjunct] of Object.entries(this.disjuncts)) {
+      form[name] = disjunct.form()
     }
 
-    yield 'when'
-    for (const [name, disjunct] of Object.entries(this.disjuncts)) {
-      yield name
-      yield* disjunct.tokens()
-    }
+    return form
   }
 }
 
@@ -865,11 +875,10 @@ class DeductiveRule {
 class InductiveRule {
   /**
    * @template {API.Conclusion} Match
-   * @param {Circuit} circuit
    * @template {Match} [Repeat=Match]
    * @param {API.Induction<Match, Repeat>} source
    */
-  static new(circuit, source) {
+  static new(source) {
     const bindings = ruleBindings(source.match)
 
     // If `source.when` is not an array we throw an exception as it must be
@@ -947,19 +956,10 @@ class InductiveRule {
       }
     }
 
-    return new this(
-      circuit,
-      source.match,
-      when,
-      source.repeat,
-      induction,
-      cells,
-      total
-    )
+    return new this(source.match, when, source.repeat, induction, cells, total)
   }
 
   /**
-   * @param {Circuit} circuit
    * @param {Match} match - Initial pattern to match
    * @param {Join} when - Initial conditions that must be met
    * @param {Repeat} repeat - Pattern to match in recursive iterations
@@ -967,8 +967,7 @@ class InductiveRule {
    * @param {Map<API.Variable, number>} cells - Cost per variable when not bound
    * @param {number} cost - Base cost including initial conditions and exponentially weighted recursive costs.
    */
-  constructor(circuit, match, when, repeat, loop, cells, cost) {
-    this.circuit = circuit
+  constructor(match, when, repeat, loop, cells, cost) {
     this.match = match
     this.base = when
     this.repeat = repeat
@@ -991,7 +990,7 @@ class InductiveRule {
    * @returns {RuleApplication<Match>}
    */
   apply(terms) {
-    return RuleApplication.apply(this, terms)
+    return RuleApplication.apply(this, terms, Circuit.new())
   }
 
   /**
@@ -1012,29 +1011,18 @@ class InductiveRule {
   }
 
   /**
-   * @returns {Iterable<API.Term>}
+   * @returns {object}
    */
-  *tokens() {
-    yield 'rule'
-    yield 'case'
-    for (const [name, variable] of Object.entries(this.match)) {
-      yield `${name}:`
-      yield variable
-    }
-
-    yield 'when'
-    yield* this.base.tokens()
-
-    yield 'repeat'
-    for (const [name, variable] of Object.entries(this.repeat)) {
-      yield `${name}:`
-      yield variable
-    }
-
-    yield 'while'
+  form() {
+    /** @type {Record<string, object>} */
+    const loop = {}
     for (const [name, disjunct] of Object.entries(this.loop)) {
-      yield `${name}:`
-      yield* disjunct.tokens()
+      loop[name] = disjunct.form()
+    }
+
+    return {
+      when: this.base.form(),
+      while: loop,
     }
   }
 }
@@ -1110,9 +1098,24 @@ class Join {
       total += cost
     }
 
-    circuit.connect()
+    return new this(
+      circuit.connect(),
+      assertion,
+      negation,
+      cells,
+      total,
+      `${name}`
+    )
+  }
 
-    return new this(assertion, negation, cells, total, `${name}`)
+  /**
+   * @returns {{}[]}
+   */
+  form() {
+    return [
+      ...this.assertion.map((conjunct) => conjunct.form()),
+      ...this.negation.map((conjunct) => conjunct.form()),
+    ]
   }
 
   /**
@@ -1142,13 +1145,15 @@ class Join {
   }
 
   /**
+   * @param {Circuit} circuit
    * @param {Constraint[]} assertion
    * @param {Not[]} negation
    * @param {Map<API.Variable, number>} cells
    * @param {number} cost
    * @param {string} name
    */
-  constructor(assertion, negation, cells, cost, name) {
+  constructor(circuit, assertion, negation, cells, cost, name) {
+    this.circuit = circuit
     this.assertion = assertion
     this.negation = negation
     this.cells = cells
@@ -1286,18 +1291,6 @@ class Join {
 
     return `[${content}]`
   }
-
-  *tokens() {
-    yield '['
-    for (const assertion of this.assertion) {
-      yield* assertion.tokens()
-    }
-
-    for (const negation of this.negation) {
-      yield* negation.tokens()
-    }
-    yield ']'
-  }
 }
 
 /**
@@ -1310,9 +1303,7 @@ class Not {
    * @returns {Not}
    */
   static new(circuit, constraint) {
-    const operation = /** @type {Constraint} */ (
-      Circuit.new().create(constraint)
-    )
+    const operation = /** @type {Constraint} */ (circuit.create(constraint))
 
     // Not's cost includes underlying operation
     const cells = new Map()
@@ -1325,6 +1316,15 @@ class Not {
     }
 
     return new this(circuit, operation, cells)
+  }
+
+  /**
+   * @returns {{not: {}}}
+   */
+  form() {
+    return {
+      not: this.constraint.form(),
+    }
   }
   /**
    * @param {Circuit} circuit
@@ -1349,9 +1349,12 @@ class Not {
     return new Negate(this.constraint.plan(context))
   }
 
-  *tokens() {
-    yield 'not'
-    yield* this.constraint.tokens()
+  /**
+   * @param {API.Variable} by
+   */
+  address(by) {
+    // Return null because we don't want to address by the negation.
+    return null
   }
 }
 
@@ -1370,38 +1373,12 @@ class JoinPlan {
   }
 
   /**
-   * @param {object} context
-   * @param {Scope[]} context.selection
-   * @param {API.Querier} context.from
-   */
-  *eval({ selection, from }) {
-    // Execute binding steps in planned order
-    for (const plan of this.assertion) {
-      selection = yield* plan.eval({ selection, from })
-    }
-
-    // Then execute negation steps
-    for (const plan of this.negation) {
-      selection = yield* plan.eval({ selection, from })
-    }
-
-    return selection
-  }
-  /**
    * @param {API.EvaluationContext} context
    */
   *evaluate({ source, selection }) {
     // Execute binding steps in planned order
     for (const plan of this.assertion) {
       selection = yield* plan.evaluate({ source, selection })
-      // for (const match of selection) {
-      //   for (const [variable, reference] of this.references) {
-      //     const value = Bindings.get(match, reference)
-      //     if (value !== undefined) {
-      //       Bindings.assign(match, variable, value)
-      //     }
-      //   }
-      // }
     }
 
     // Then execute negation steps
@@ -1442,20 +1419,6 @@ class DisjoinPlan {
     this.cost = cost
   }
 
-  /**
-   * @param {object} context
-   * @param {Scope[]} context.selection
-   * @param {API.Querier} context.from
-   */
-  *eval(context) {
-    const selection = []
-    // Run each branch and combine results
-    for (const plan of Object.values(this.disjuncts)) {
-      const matches = yield* plan.eval(context)
-      selection.push(...matches)
-    }
-    return selection
-  }
   /**
    *
    * @param {API.EvaluationContext} context
@@ -1542,10 +1505,120 @@ class DeductivePlan extends DisjoinPlan {
 
     const frames = yield* this.evaluate({
       source,
-      selection: [{}],
+      selection: [Cursor.scope()],
     })
 
     return Selector.select(selector, frames)
+  }
+}
+
+class Selector {
+  /**
+   * @template {API.Selector} Selector
+   * @param {Selector} selector
+   * @param {Iterable<API.MatchFrame>} frames
+   */
+  static select(selector, frames) {
+    /** @type {API.InferBindings<Selector>[]} */
+    const selection = []
+    for (const frame of frames) {
+      if (selection.length === 0) {
+        selection.push(this.match(selector, frame))
+      } else {
+        let joined = false
+        for (const [offset, match] of selection.entries()) {
+          const merged = this.merge(selector, frame, match)
+          if (merged) {
+            selection[offset] = merged
+            joined = true
+          }
+        }
+
+        if (!joined) {
+          selection.push(this.match(selector, frame))
+        }
+      }
+    }
+
+    return selection
+  }
+  /**
+   * @template {API.Selector} Selector
+   * @param {Selector} selector
+   * @param {API.MatchFrame} bindings
+   * @returns {API.InferBindings<Selector>}
+   */
+  static match(selector, bindings) {
+    return Array.isArray(selector) ?
+        [
+          Variable.is(selector[0]) ? bindings.get(selector[0])
+          : Constant.is(selector[0]) ? selector[0]
+          : this.match(selector[0], bindings),
+        ]
+      : Object.fromEntries(
+          Object.entries(selector).map(([key, term]) => {
+            if (Variable.is(term)) {
+              const value = bindings.get(term)
+              return [key, value]
+            } else if (Constant.is(term)) {
+              return [key, term]
+            } else {
+              return [key, this.match(term, bindings)]
+            }
+          })
+        )
+  }
+
+  /**
+   * @template {API.Selector} Selector
+   * @param {Selector} selector
+   * @param {API.MatchFrame} bindings
+   * @param {API.InferBindings<Selector>} base
+   * @returns {API.InferBindings<Selector>|null}
+   */
+  static merge(selector, bindings, base) {
+    if (Array.isArray(selector)) {
+      const [term] = selector
+      const extension =
+        Variable.is(term) ? bindings.get(term)
+        : Constant.is(term) ? term
+        : this.match(term, bindings)
+      return /** @type {API.InferBindings<Selector>} */ (
+        add(/** @type {unknown[]} */ (base), extension)
+      )
+    } else {
+      const entries = []
+      for (const [key, term] of Object.entries(selector)) {
+        const id = /** @type {keyof API.InferBindings<Selector>} */ (key)
+        if (Term.is(term)) {
+          const value = /** @type {API.Scalar|undefined} */ (
+            Variable.is(term) ? bindings.get(term) : term
+          )
+
+          if (value === undefined) {
+            return null
+          } else {
+            if (Constant.equal(/** @type {API.Scalar} */ (base[id]), value)) {
+              entries.push([key, value])
+            } else {
+              return null
+            }
+          }
+        } else {
+          const value = this.merge(
+            term,
+            bindings,
+            /** @type {any} */ (base[id])
+          )
+          if (value === null) {
+            return null
+          } else {
+            entries.push([key, value])
+          }
+        }
+      }
+      return Object.fromEntries(entries)
+    }
   }
 }
 
@@ -1579,30 +1652,6 @@ class InductionPlan {
     this.base = base
     this.disjuncts = disjuncts
     this.cost = cost
-  }
-
-  /**
-   *
-   * @param {EvalContext} context
-   */
-  *eval(context) {
-    // First run initial conditions
-    let selection = yield* this.base.eval(context)
-
-    // Then run recursive branches until no new results
-    let prevSize = 0
-    while (selection.length > prevSize) {
-      prevSize = selection.length
-      for (const plan of Object.values(this.disjuncts)) {
-        const matches = yield* plan.eval({
-          ...context,
-          selection,
-        })
-        selection.push(...matches)
-      }
-    }
-
-    return selection
   }
 
   /**
@@ -1650,47 +1699,24 @@ class RuleApplicationPlan {
   }
 
   /**
-   *
-   * @param {object} context
-   * @param {Scope[]} context.selection
-   * @param {API.Querier} context.from
-   */
-  *eval({ selection, from }) {
-    const matches = []
-    next: for (const match of selection) {
-      // Execute rule with isolated bindings
-      const results = yield* this.plan.eval({
-        selection: [match],
-        from,
-      })
-
-      // For each result, copy outer variables only
-      for (const result of results) {
-        matches.push(result.withoutLocal())
-      }
-    }
-
-    return matches
-  }
-  /**
    * @param {API.EvaluationContext} context
    */
   *evaluate({ source, selection }) {
     const matches = []
     next: for (const bindings of selection) {
-      /** @type {API.Bindings} */
-      let match = {}
-      for (const [inner, outer] of this.references) {
-        const value = Bindings.get(bindings, outer)
-        if (value !== undefined) {
-          const result = Term.unify(outer, value, match)
-          if (result.error) {
-            continue next
-          } else {
-            match = result.ok
-          }
-        }
-      }
+      const match = Cursor.nest(bindings)
+      // Copy referenced bindings into match that will be passed to the rule
+      // for (const [inner, outer] of this.references) {
+      //   const value = Bindings.get(bindings, outer)
+      //   if (value !== undefined) {
+      //     const result = Term.unify(outer, value, match)
+      //     if (result.error) {
+      //       continue next
+      //     } else {
+      //       match = result.ok
+      //     }
+      //   }
+      // }
 
       // Execute rule with isolated bindings
       const results = yield* this.plan.evaluate({
@@ -1698,16 +1724,19 @@ class RuleApplicationPlan {
         selection: [match],
       })
 
-      // For each result, create new outer bindings with mapped values
-      for (const result of results) {
-        let output = { ...bindings }
-        for (const [inner, outer] of this.references) {
-          const value = Bindings.get(result, outer)
-          if (Variable.is(outer) && value !== undefined) {
-            output = Bindings.set(output, outer, value)
-          }
-        }
-        matches.push(output)
+      // // For each result, create new outer bindings with mapped values
+      // for (const result of results) {
+      //   let output = { ...bindings }
+      //   for (const [inner, outer] of this.references) {
+      //     const value = Bindings.get(result, outer)
+      //     if (Variable.is(outer) && value !== undefined) {
+      //       output = Bindings.set(output, outer, value)
+      //     }
+      //   }
+      //   matches.push(output)
+      // }
+      for (const { parent } of results) {
+        matches.push(/** @type {API.MatchFrame} */ (parent))
       }
     }
 
@@ -1730,46 +1759,10 @@ class RuleApplicationPlan {
 
     const frames = yield* this.evaluate({
       source,
-      selection: [{}],
+      selection: [Cursor.scope()],
     })
 
     return Selector.select(selector, frames)
-  }
-
-  /**
-   * @param {object} source
-   * @param {API.Querier} source.from
-   */
-  *select({ from }) {
-    const { match: selector } = this
-
-    const selection = yield* this.eval({
-      selection: [new Scope()],
-      from,
-    })
-
-    /** @type {API.InferBindings<typeof this.match>[]} */
-    const matches = []
-    for (const frame of selection) {
-      if (matches.length === 0) {
-        matches.push(frame.match(selector))
-      } else {
-        let joined = false
-        for (const [offset, result] of matches.entries()) {
-          const merged = frame.merge(result, selector)
-          if (merged) {
-            matches[offset] = merged
-            joined = true
-          }
-        }
-
-        if (!joined) {
-          matches.push(frame.match(selector))
-        }
-      }
-    }
-
-    return matches
   }
 
   toDebugString() {
@@ -1826,25 +1819,6 @@ class Negate {
   }
 
   /**
-   *
-   * @param {EvalContext} context
-   */
-  *eval({ selection, from }) {
-    const matches = []
-    for (const match of selection) {
-      const matched = yield* this.operand.eval({
-        selection: [match],
-        from,
-      })
-
-      if (matched.length === 0) {
-        matches.push(match)
-      }
-    }
-
-    return matches
-  }
-  /**
    * @param {API.EvaluationContext} context
    */
   *evaluate({ source, selection }) {
@@ -1868,6 +1842,8 @@ class Negate {
   }
 }
 
+const NOTHING = Link.of({ '/': 'bafkqaaa' })
+const ROUTE_TARGET = Link.of({ '?': NOTHING })
 const THIS = '@'
 
 /**
@@ -1880,7 +1856,7 @@ const THIS = '@'
  * allowing us to derive unique identifier for it.
  *
  * @typedef {object} Connection
- * @property {() => Iterable<API.Term>} tokens
+ * @property {(cell: API.Variable) => Route|null} address
  */
 
 /**
@@ -1907,7 +1883,7 @@ class Circuit {
      * call connect we will try to resolve the shortest trace for each cell and
      * migrate cell from `open` to `ready`.
      *
-     * @type {Map<API.Variable, [Connection, ...Connection[]]>}
+     * @type {Map<API.Variable, Set<Connection>>}
      */
     this.opened = new Map()
 
@@ -1915,7 +1891,7 @@ class Circuit {
      * Map of cell traces, representing a shortest serializable path to the
      * circuit port.
      *
-     * @type {Map<API.Variable, Trace>}
+     * @type {Map<API.Variable, Route|PortRoute>}
      */
     this.ready = new Map()
 
@@ -1924,7 +1900,7 @@ class Circuit {
      * differentiate between circuit ports and cells that are connected.
      */
     for (const [port, id] of ports) {
-      this.ready.set(port, new Trace().add(id))
+      this.ready.set(port, { port: id, distance: 0 })
     }
   }
 
@@ -1943,9 +1919,9 @@ class Circuit {
     if (!this.ready.has(port)) {
       const connections = this.opened.get(port)
       if (connections) {
-        connections.push(connection)
+        connections.add(connection)
       } else {
-        this.opened.set(port, [connection])
+        this.opened.set(port, new Set([connection]))
       }
     }
   }
@@ -1969,13 +1945,13 @@ class Circuit {
         // We should not encounter a port in the ready list if it appears in the
         // opened list, however we still check just in case.
         if (!ready.has(cell)) {
-          const connection = connect(cell, connections, ready)
+          const route = connect(cell, connections)
 
           // If we managed to resolve a trace for this cell we add it to the
           // ready set and remove it from the open set.
-          if (connection != null) {
+          if (route) {
             opened.delete(cell)
-            ready.set(cell, connection)
+            ready.set(cell, route)
           }
         }
       }
@@ -1986,20 +1962,19 @@ class Circuit {
     if (opened.size > 0) {
       const reasons = []
       for (const [port, connections] of opened) {
-        const unresolved = []
         for (const connection of connections) {
-          unresolved.push(toDebugString(connection))
+          reasons.push(
+            `Reference ${Variable.toDebugString(port)} in ${toDebugString(
+              connection
+            )}`
+          )
         }
-
-        reasons.push(
-          `${port} with connections: ${unresolved.map(li).join('\n')}`
-        )
       }
 
       throw new ReferenceError(
         reasons.length === 1 ?
           `Unable to resolve ${reasons[0]}`
-        : `Unable to resolve:\n  ${reasons.map(li).join('\n')}`
+        : `Unable to resolve:${indent(`\n${reasons.map(li).join('\n')}`)}`
       )
     }
 
@@ -2032,6 +2007,14 @@ class Circuit {
       return term
     }
   }
+
+  /**
+   * @param {API.Variable} cell
+   * @returns {Route|null}
+   */
+  address(cell) {
+    return /** @type {any} */ (this.ready.get(cell))
+  }
 }
 
 /**
@@ -2042,56 +2025,140 @@ class Circuit {
  * frame count in which case frames are compared to determine the winner.
  *
  * @param {API.Variable} cell
- * @param {[Connection, ...Connection[]]} connections
- * @param {Map<API.Variable, Trace>} ready
+ * @param {Set<Connection>} connections
  */
-const connect = (cell, connections, ready) => {
-  /** @type {Trace|null} */
-  let trace = null
+const connect = (cell, connections) => {
+  /** @type {Route|null} */
+  let route = null
   // Consider each candidate connection, to see if all of their dependency cells
   // are already resolved. Note that if dependency can not be resolved it
   // implies that corresponding trace will be longer than the one for which
   // all dependencies can be resolved so we can pick the winner without having
   // to resolve such a trace.
   for (const connection of connections) {
-    const candidate = new Trace()
-    for (const token of connection.tokens()) {
-      // If this the variable that we are trying to resolve a connection of
-      // we substitute it with the `THIS` token in the context of this trace.
-      if (cell === token) {
-        candidate.add(THIS)
-      }
-      // If token is another variable we attempt to find a trace for it and
-      // substitute token with it. But if we don't have a trace for this
-      // variable we skip this candidate and consider a next one
-      else if (Variable.is(token)) {
-        const frame = ready.get(token)
-        if (frame !== undefined) {
-          candidate.add(frame)
-        }
-        // If we can do not have a frame for this variable we can't connect
-        // this connection yet, but that means there is a variable that could
-        // not be resolved yet. We will try another connection if some can be
-        // connected they will be shorter traces and that is the one we pick
-        // anyway.
-        else {
-          break
-        }
-      } else {
-        candidate.add(token)
-      }
-    }
+    const candidate = connection.address(cell)
 
     // We choose between previously found trace and this candidate trace based
     // on which sorts lower.
-    trace =
-      trace == null || Trace.compare(trace, candidate) > 0 ? candidate : trace
+    if (candidate) {
+      route =
+        route == null || compareRoutes(route, candidate) > 0 ? candidate : route
+    }
   }
 
   // We return a trace if we were able to resolve one, otherwise we return null
   // to indicate that trace can not be resolved yet.
-  return trace
+  return route
 }
+
+/**
+ * @param {Route} base
+ * @param {Route} candidate
+ * @returns {-1|0|1}
+ */
+const compareRoutes = (base, candidate) => {
+  if (base.distance < candidate.distance) {
+    return -1
+  } else if (candidate.distance < base.distance) {
+    return 1
+  } else if ('port' in base) {
+    if ('port' in candidate) {
+      return /** @type {-1|0|1} */ (base.port.localeCompare(candidate.port))
+    } else {
+      return -1
+    }
+  } else if ('fact' in base) {
+    if ('fact' in candidate) {
+      let delta = compareRouteMember(base.match.the, candidate.match.the)
+      if (delta !== 0) {
+        return delta
+      }
+      delta = compareRouteMember(base.match.of, candidate.match.of)
+      if (delta !== 0) {
+        return delta
+      }
+      return compareRouteMember(base.match.is, candidate.match.is)
+    } else {
+      return 'port' in candidate ? 1 : -1
+    }
+  } else if ('operator' in base) {
+    if ('operator' in candidate) {
+      let delta = compareMatch(base.match, candidate.match)
+      if (delta !== 0) {
+        return delta
+      }
+      return /** @type {-1|0|1} */ (
+        base.operator.localeCompare(candidate.operator)
+      )
+    } else {
+      return (
+        'port' in candidate ? 1
+        : 'fact' in candidate ? 1
+        : -1
+      )
+    }
+  } else if ('rule' in base) {
+    if ('rule' in candidate) {
+      let delta = compareMatch(base.match, candidate.match)
+      if (delta !== 0) {
+        return delta
+      }
+
+      return /** @type {-1|0|1} */ (
+        JSON.stringify(base.rule).localeCompare(JSON.stringify(candidate.rule))
+      )
+    } else {
+      return 1
+    }
+  } else {
+    throw new RangeError('Unknown route type')
+  }
+}
+
+/**
+ *
+ * @param {Record<string, API.Scalar|Route>} base
+ * @param {Record<string, API.Scalar|Route>} candidate
+ * @returns {-1|0|1}
+ */
+const compareMatch = (base, candidate) => {
+  let keys = new Set([...Object.keys(base), ...Object.keys(candidate)])
+  for (const key of keys) {
+    const delta = compareRouteMember(base[key], candidate[key])
+    if (delta !== 0) {
+      return delta
+    }
+  }
+  return 0
+}
+
+/**
+ *
+ * @param {Route|API.Scalar|undefined} base
+ * @param {Route|API.Scalar|undefined} candidate
+ * @returns {-1|0|1}
+ */
+const compareRouteMember = (base = NOTHING, candidate = NOTHING) => {
+  if (Constant.is(base)) {
+    if (Constant.is(candidate)) {
+      return Constant.compare(base, candidate)
+    } else {
+      return -1
+    }
+  } else if (Constant.is(candidate)) {
+    return 1
+  } else {
+    return compareRoutes(base, candidate)
+  }
+}
+
+/**
+ * @typedef {{port: string, distance: 0}} PortRoute
+ * @typedef {{match: Record<string, API.Scalar|Route>, fact:{}, distance: number}} SelectRoute
+ * @typedef {{match: Record<string, API.Scalar|Route>, operator:string, distance: number}} FormulaRoute
+ * @typedef {{match: Record<string, API.Scalar|Route>, rule:{}, distance:number}} RuleRoute
+ * @typedef {SelectRoute|FormulaRoute|RuleRoute|PortRoute} Route
+ */
 
 class Trace {
   /**
@@ -2163,6 +2230,24 @@ class Trace {
   }
 
   /**
+   * @typedef {API.Scalar} Leaf
+   * @typedef {Array<Leaf|Branch>} Branch
+   * @returns {Branch}
+   */
+  toJSON() {
+    const trace = []
+    for (const frame of this.frames) {
+      if (frame instanceof Trace) {
+        trace.push(frame.toJSON())
+      } else {
+        trace.push(frame)
+      }
+    }
+
+    return trace
+  }
+
+  /**
    * @param {Trace} leader
    * @param {Trace} candidate
    */
@@ -2219,7 +2304,7 @@ export const debug = (source) => {
 
 /**
  * @typedef {object} Context
- * @property {References} references
+ * @property {API.Cursor} references
  * @property {Frame} frame
  */
 
@@ -2317,144 +2402,5 @@ class ContextView {
    */
   has(variable) {
     return isBound(this, variable)
-  }
-}
-
-/**
- * @typedef {Scope[]} Selection
- * @typedef {object} EvalContext
- * @property {Selection} selection
- * @property {API.Querier} from
- */
-
-export class Scope {
-  /**
-   * @param {References} references
-   * @param {Frame} remote
-   * @param {Frame} local
-   */
-  constructor(remote = new Map(), local = new Map(), references = new Map()) {
-    this.remote = remote
-    this.local = local
-    this.references = references
-  }
-
-  /**
-   * Creates a local cell to external cell reference.
-   *
-   * @param {API.Variable} cell
-   * @param {API.Variable} port
-   */
-  createReference(cell, port) {
-    this.references.set(cell, port)
-  }
-
-  /**
-   *
-   * @param {API.Term} variable
-   * @param {API.Scalar} value
-   */
-  set(variable, value) {
-    // If it is a discard variable we simply discard the value.
-    if (Variable.is(variable) && variable !== _) {
-      // Otherwise we determine whether this is a local variable or a reference.
-      // If later we set a remote binding, if former we set local binding.
-      const port = this.references.get(variable)
-      const [cell, bindings] =
-        port ? [port, this.remote] : [variable, this.local]
-
-      const current = bindings.get(variable)
-      if (current === undefined) {
-        bindings.set(cell, value)
-      } else if (!Constant.equal(current, value)) {
-        throw new RangeError(
-          `Variable ${Variable.toDebugString(
-            cell
-          )} is set to ${Constant.toDebugString(
-            current
-          )} and can not be unified with ${Constant.toDebugString(value)}`
-        )
-      }
-    }
-  }
-
-  /**
-   * @template {API.Scalar} T
-   * @param {API.Term<T>} term
-   * @returns {T|undefined}
-   */
-  get(term) {
-    if (!Variable.is(term)) {
-      return term
-    } else {
-      const port = this.references.get(term)
-      const bindings = port ? this.remote : this.local
-      return /** @type {T|undefined} */ (bindings.get(term))
-    }
-  }
-
-  withoutLocal() {
-    return new Scope(this.remote)
-  }
-
-  /**
-   *
-   * @template {API.Selector} Selector
-   * @param {Selector} selector
-   * @returns {API.InferBindings<Selector>}
-   */
-  match(selector) {
-    return Array.isArray(selector) ?
-        [Term.is(selector[0]) ? this.get(selector[0]) : this.match(selector[0])]
-      : Object.fromEntries(
-          Object.entries(selector).map(([key, term]) => {
-            if (Term.is(term)) {
-              return [key, this.get(term)]
-            } else {
-              return [key, this.match(term)]
-            }
-          })
-        )
-  }
-
-  /**
-   * @template {API.Selector} Selector
-   * @param {API.InferBindings<Selector>} result
-   * @param {Selector} selector
-   * @returns {API.InferBindings<Selector>|null}
-   */
-  merge(result, selector) {
-    if (Array.isArray(selector)) {
-      const [term] = selector
-      const extension = Term.is(term) ? this.get(term) : this.match(term)
-      return /** @type {API.InferBindings<Selector>} */ (
-        Selector.add(/** @type {unknown[]} */ (result), extension)
-      )
-    } else {
-      const entries = []
-      for (const [key, term] of Object.entries(selector)) {
-        const id = /** @type {keyof API.InferBindings<Selector>} */ (key)
-        if (Term.is(term)) {
-          const value = /** @type {API.Scalar} */ (this.get(term))
-          if (value === undefined) {
-            return null
-          } else {
-            if (Constant.equal(/** @type {API.Scalar} */ (result[id]), value)) {
-              entries.push([key, value])
-            } else {
-              return null
-            }
-          }
-        } else {
-          const value = this.merge(/** @type {any} */ (result[id]), term)
-          if (value === null) {
-            return null
-          } else {
-            entries.push([key, value])
-          }
-        }
-      }
-      return Object.fromEntries(entries)
-    }
   }
 }
