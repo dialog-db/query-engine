@@ -1307,8 +1307,6 @@ export const testAnalyzer = {
         },
       },
     })
-
-    console.log('\n', Analyzer.debug(plan.plan))
   },
 
   'test correctly merges cost estimates': (assert) => {
