@@ -13,6 +13,15 @@ export class Variable {
   }
 
   /**
+   * @template {API.Scalar} T
+   * @param {{name?: string} & API.Variable<T>} origin
+   * @returns {API.Variable<T>}
+   */
+  static fork({ name }) {
+    return new Variable(++Variable.id, name)
+  }
+
+  /**
    * @param {string|symbol} name
    */
   static new(name = Symbol()) {
@@ -20,6 +29,9 @@ export class Variable {
   }
   get id() {
     return this['?'].id
+  }
+  get name() {
+    return this.#name
   }
   toString() {
     return typeof this.#name === 'symbol' ?

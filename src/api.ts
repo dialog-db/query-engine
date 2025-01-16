@@ -858,17 +858,13 @@ export interface Unplannable extends Error {
 
 export interface EvaluationPlan {
   cost: number
-  evaluate(context: EvaluationContext): Task<Bindings[], EvaluationError>
-  eval(
-    context: import('./analyzer.js').EvalContext
-  ): Task<import('./analyzer.js').Selection, EvaluationError>
+  evaluate(context: EvaluationContext): Task<MatchFrame[], EvaluationError>
 }
 
 export type Plan = Unplannable | EvaluationPlan
 
 export interface EvaluationContext {
-  selection: Bindings[]
-
+  selection: MatchFrame[]
   source: Querier
 }
 
@@ -887,6 +883,12 @@ export type Scope = Variable<any> &
     length: Variable<number>
     prototype: Variable
   }
+
+export interface MatchFrame extends Map<Variable, Scalar> {
+  parent?: MatchFrame
+}
+
+export interface Cursor extends Map<Variable, Variable> {}
 
 /**
  * Describes the effects that clause performs when evaluated.
