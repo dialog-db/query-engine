@@ -992,7 +992,7 @@ export const testAnalyzer = {
 
     assert.throws(
       () => rule.apply({ is: $.q }).plan(),
-      /Rule application requires binding for \?as referring to \?is variable/
+      /Rule application requires binding for \?as referring to \?q variable/
     )
   },
 
@@ -1162,7 +1162,7 @@ export const testAnalyzer = {
     })
 
     const plan = Same.apply({ this: $.x, as: $.x }).plan({
-      frame: new Map([[$.x, 1]]),
+      bindings: new Map([[$.x, 1]]),
       references: new Map(),
     })
 
@@ -1216,10 +1216,10 @@ export const testAnalyzer = {
      */
     const testCost = (
       terms,
-      { frame = new Map(), references = new Map() } = {}
+      { bindings = new Map(), references = new Map() } = {}
     ) =>
       select.apply(terms).plan({
-        frame,
+        bindings,
         references,
       }).cost
 
@@ -1271,7 +1271,7 @@ export const testAnalyzer = {
         testCost(
           { the: 'type', of: $.entity, is: $.value },
           {
-            frame: new Map([[$.entity, entityId]]),
+            bindings: new Map([[$.entity, entityId]]),
           }
         ),
       'Known entity should cost same as bound entity variable'
@@ -1282,7 +1282,7 @@ export const testAnalyzer = {
         testCost(
           { the: 'type', of: $.entity, is: $.value },
           {
-            frame: new Map([[$.value, 2]]),
+            bindings: new Map([[$.value, 2]]),
           }
         ),
       'Known value should cost same as bound value variable'

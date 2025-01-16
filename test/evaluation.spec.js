@@ -6,18 +6,8 @@ import { Task, Link, $, Var, API } from 'datalogia'
  * @type {import('entail').Suite}
  */
 export const testEvaluation = {
-  'skip plans negation last': async (assert) => {
-    const db = DB.Memory.create([
-      {
-        'person/name': 'Alice',
-        'work/report': {
-          'person/name': 'Bob',
-          'work/report': {
-            'person/name': 'Mallory',
-          },
-        },
-      },
-    ])
+  'plans negation last': async (assert) => {
+    const db = DB.Memory.create([alice])
 
     const plan = Analyzer.plan({
       match: {
@@ -91,21 +81,24 @@ export const testEvaluation = {
 
     const result = await Task.perform(plan.query({ source: db }))
 
-    console.log(result)
-  },
-
-  'only same variable as different binding': async (assert) => {
-    const db = DB.Memory.create([
+    assert.deepEqual(result, [
       {
-        'person/name': 'Alice',
-        'work/report': {
-          'person/name': 'Bob',
-          'work/report': {
-            'person/name': 'Mallory',
-          },
-        },
+        manager: Link.of(alice),
+        employee: Link.of(bob),
+        managerName: 'Alice',
+        employeeName: 'Bob',
+      },
+      {
+        manager: Link.of(bob),
+        employee: Link.of(mallory),
+        managerName: 'Bob',
+        employeeName: 'Mallory',
       },
     ])
+  },
+
+  'same variable as different binding': async (assert) => {
+    const db = DB.Memory.create([alice])
 
     const rule = Analyzer.rule({
       match: {
@@ -143,7 +136,26 @@ export const testEvaluation = {
 
     const result = await Task.perform(plan.query({ source: db }))
 
-    console.log(result)
+    assert.deepEqual(result, [
+      {
+        a: Link.of(alice),
+        actual: 'Alice',
+        b: Link.of(alice),
+        expect: 'Alice',
+      },
+      {
+        a: Link.of(bob),
+        actual: 'Bob',
+        b: Link.of(bob),
+        expect: 'Bob',
+      },
+      {
+        a: Link.of(mallory),
+        actual: 'Mallory',
+        b: Link.of(mallory),
+        expect: 'Mallory',
+      },
+    ])
   },
 
   'skip test generate query': async (assert) => {
@@ -282,4 +294,18 @@ export const testEvaluation = {
 
     console.log(result)
   },
+}
+
+const mallory = {
+  'person/name': 'Mallory',
+}
+
+const bob = {
+  'person/name': 'Bob',
+  'work/report': mallory,
+}
+
+const alice = {
+  'person/name': 'Alice',
+  'work/report': bob,
 }
