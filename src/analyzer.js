@@ -281,24 +281,6 @@ class Select {
       fact: {},
     })
   }
-  debug() {
-    const { circuit, selector } = this
-    const { the, of, is } = selector
-    const parts = []
-    if (the !== undefined) {
-      parts.push(`the: ${circuit.resolve(the)}`)
-    }
-
-    if (of !== undefined) {
-      parts.push(`of: ${circuit.resolve(of)}`)
-    }
-
-    if (is !== undefined) {
-      parts.push(`is: ${circuit.resolve(is)}`)
-    }
-
-    return `{ match: {${parts.join(' ')}} }`
-  }
 
   /**
    * @param {Select} other
@@ -324,7 +306,7 @@ class Select {
 /**
  * @typedef {object} Address
  * @property {API.Variable} the
- * @property {Branch} as
+ * @property {API.Scalar|Route} as
  *
  * @param {API.Term} term
  * @param {Circuit} circuit
@@ -2159,125 +2141,6 @@ const compareRouteMember = (base = NOTHING, candidate = NOTHING) => {
  * @typedef {{match: Record<string, API.Scalar|Route>, rule:{}, distance:number}} RuleRoute
  * @typedef {SelectRoute|FormulaRoute|RuleRoute|PortRoute} Route
  */
-
-class Trace {
-  /**
-   * @param {number} size
-   */
-  constructor(size = 1) {
-    this.size = size
-    /**
-     * @type {Array<API.Scalar>}
-     */
-    this.frames = []
-  }
-  /**
-   * @param {API.Scalar|Trace} frame
-   */
-  add(frame) {
-    if (frame instanceof Trace) {
-      this.size += frame.size
-      if (frame.frames.length > 1) {
-        this.frames.push('(', ...frame.frames, ')')
-      } else {
-        this.frames.push(...frame.frames)
-      }
-    } else {
-      this.frames.push(frame)
-    }
-    return this
-  }
-
-  get [Symbol.toStringTag]() {
-    const parts = []
-    for (const frame of this.frames) {
-      parts.push(String(frame))
-    }
-    return parts.length === 1 ? parts[0] : `(${parts.join(' ')})`
-  }
-
-  [Symbol.for('nodejs.util.inspect.custom')]() {
-    return this[Symbol.toStringTag]
-  }
-
-  /**
-   * @returns {IterableIterator<API.Scalar>}
-   */
-  *tokens() {
-    for (const frame of this.frames) {
-      if (frame instanceof Trace) {
-        yield* frame.tokens()
-      } else {
-        yield frame
-      }
-    }
-  }
-
-  /**
-   *
-   * @returns {string}
-   */
-  toString() {
-    const parts = []
-    for (const frame of this.frames) {
-      if (frame instanceof Trace) {
-        parts.push(frame.toString())
-      } else {
-        parts.push(String(frame))
-      }
-    }
-    return parts.length > 1 ? `(${parts.join(' ')})` : parts[0]
-  }
-
-  /**
-   * @typedef {API.Scalar} Leaf
-   * @typedef {Array<Leaf|Branch>} Branch
-   * @returns {Branch}
-   */
-  toJSON() {
-    const trace = []
-    for (const frame of this.frames) {
-      if (frame instanceof Trace) {
-        trace.push(frame.toJSON())
-      } else {
-        trace.push(frame)
-      }
-    }
-
-    return trace
-  }
-
-  /**
-   * @param {Trace} leader
-   * @param {Trace} candidate
-   */
-  static compare(leader, candidate) {
-    if (leader.size < candidate.size) {
-      return -1
-    } else if (candidate.size < leader.size) {
-      return 1
-    } else {
-      const leaderTokens = leader.tokens()
-      const candidateTokens = candidate.tokens()
-      while (true) {
-        const { value: leaderToken, done: lead } = leaderTokens.next()
-        const { value: candidateToken, done: exit } = candidateTokens.next()
-        if (lead && exit) {
-          return 0
-        } else if (!lead) {
-          return -1
-        } else if (!exit) {
-          return 1
-        }
-
-        const delta = Constant.compare(leaderToken, candidateToken)
-        if (delta !== 0) {
-          return delta
-        }
-      }
-    }
-  }
-}
 
 /**
  *
