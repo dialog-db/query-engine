@@ -1,7 +1,6 @@
 import * as API from '../api.js'
 import { Callable } from './callable.js'
 import * as Term from '../term.js'
-import * as Bindings from '../bindings.js'
 import * as Task from '../task.js'
 import * as Constant from '../constant.js'
 import { rule, toJSON } from '../analyzer.js'
@@ -187,14 +186,14 @@ export class Entity extends Callable {
   }
 
   /**
-   * @param {API.Bindings} bindings
+   * @param {API.MatchFrame} bindings
    * @param {API.EntityVariables} variables
    * @returns {API.EntityView<Model>}
    */
   view(bindings, variables) {
     /** @type {Record<string, any>} */
     const model = {
-      this: Bindings.get(bindings, variables.this),
+      this: bindings.get(variables.this),
     }
 
     for (const [key, member] of Object.entries(this.members)) {
@@ -209,7 +208,7 @@ export class Entity extends Callable {
             bindings,
             /** @type {API.EntityVariables} */ (variables[key])
           ).is
-        : Bindings.get(bindings, /** @type {API.Variable} */ (variables[key]))
+        : bindings.get(/** @type {API.Variable} */ (variables[key]))
     }
 
     return /** @type {API.EntityView<Model>} */ (model)
@@ -295,18 +294,18 @@ export class Query {
   *query({ from }) {
     // We set up the bindings for the terms that have being provided
     // as part of the query as those will not be set by the rule application.
-    /** @type {API.Bindings} */
-    let bindings = {}
-    for (const [key, term] of Object.entries(this.match)) {
-      const variable = this.rule.match[key]
-      if (Constant.is(term)) {
-        bindings = Bindings.set(bindings, variable, term)
-      }
-    }
+    // /** @type {API.MatchFrame} */
+    // let bindings = new Map()
+    // for (const [key, term] of Object.entries(this.match)) {
+    //   const variable = this.rule.match[key]
+    //   if (Constant.is(term)) {
+    //     bindings = bindings.set(variable, term)
+    //   }
+    // }
 
     const selection = yield* this.plan.evaluate({
       source: from,
-      selection: [bindings],
+      selection: [new Map()],
     })
 
     const results = []
