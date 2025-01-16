@@ -1716,15 +1716,21 @@ class RuleApplicationPlan {
         selection: [bindings],
       })
 
-      // Here we will delete all the local bindings again so that variables
-      // across different scopes do not conflict.
+      // Now we need to merge original `input` and data that is shared from
+      // the `output`.
       for (const out of output) {
         const match = new Map(input)
+        // Copy bindings that were derived by the rule application.
         for (const [inner, outer] of this.context.references) {
           const value = out.get(outer)
           if (value !== undefined) {
             match.set(outer, value)
           }
+        }
+
+        // Copy constant bindings from the application context.
+        for (const [variable, value] of this.context.bindings) {
+          match.set(variable, value)
         }
 
         matches.push(match)
