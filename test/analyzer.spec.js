@@ -1176,6 +1176,17 @@ export const testAnalyzer = {
       /Rule application requires binding for \? referring to \?x variable/
     )
   },
+
+  'plan blank rules': async (assert) => {
+    const Entity = Analyzer.rule({
+      match: { this: $.this },
+    })
+
+    assert.throws(
+      () => Entity.apply({ this: $.q }).plan(),
+      /Rule application requires binding for \?this referring to \?q variable/
+    )
+  },
   'compares iteration rule cost to against scan cost': async (assert) => {
     const Between = Analyzer.loop({
       match: { value: $.value, from: $.from, to: $.to },
