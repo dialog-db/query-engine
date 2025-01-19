@@ -81,50 +81,6 @@ export class Scalar extends Callable {
   }
 }
 
-/**
- * @template {string} The
- * @template {API.Scalar} T
- */
-class Relation {
-  /**
-   * @param {The} the
-   * @param {Scalar<T>} is
-   */
-  constructor(the, is) {
-    this.the = /** @type {API.The} */ (the)
-    this.is = is
-
-    this.select = {
-      /** @type {API.Variable<API.Entity>} */
-      of: $[`${the}.of`],
-      is: $[`${the}.is`],
-    }
-    this.terms = this.select
-  }
-  /**
-   * @param {{of?: API.Term<API.Entity>, is?: API.Term<T>}} source
-   * @returns {API.QueryView<{ of: API.Entity, is: T }>}
-   */
-  match({ of = this.terms.of, is = this.terms.is }) {
-    return new Query(
-      { of, is },
-      {
-        match: this.select,
-        when: [
-          {
-            match: {
-              the: this.the,
-              of,
-              is,
-            },
-          },
-          ...this.is.match(is),
-        ],
-      }
-    )
-  }
-}
-
 const ImplicitRule = /** @type {API.Deduction} */ ({
   match: { the: $.the, of: $.of, is: $.is, implicit: $.implicit },
   when: {
@@ -160,22 +116,22 @@ class ImplicitRelation extends Callable {
     this.implicit = implicit
 
     /** @type {API.SchemaTerms} */
-    this.terms = {
+    this.selector = {
       the,
       of: $.of,
-      is: this.is.terms,
+      is: this.is.selector,
     }
   }
 
   /**
    * @param {API.MatchFrame} match
-   * @param {API.SchemaTerms} terms
+   * @param {API.SchemaTerms} selector
    * @returns {{of: API.Entity, is: Model|Implicit }}
    */
-  view(match, terms) {
+  view(match, selector) {
     return {
       of: /** @type {API.Entity} */ (match.get($.of)),
-      is: this.is.view(match, /** @type {API.SchemaTerms} */ (terms.is)),
+      is: this.is.view(match, /** @type {API.SchemaTerms} */ (selector.is)),
     }
   }
 
@@ -240,55 +196,6 @@ class RuleApplication {
     }
 
     return views
-  }
-}
-
-/**
- * @template {API.Scalar} T
- * @implements {API.QueryView<{ of: API.Entity, is: T }>}
- */
-class Query {
-  /**
-   * @param {{of: API.Term, is: API.Term}} terms
-   * @param {{match: API.Conclusion, when: API.Every}} rule
-   */
-  constructor(terms, rule) {
-    this.terms = terms
-    this.rule = rule
-  }
-  *[Symbol.iterator]() {
-    yield* this.rule.when
-  }
-
-  /**
-   * @param {{ from: API.Querier }} source
-   */
-  select(source) {
-    return Task.perform(this.query(source))
-  }
-
-  /**
-   * @param {{ from: API.Querier }} terms
-   */
-  *query({ from }) {
-    if (!this.plan) {
-      this.plan = rule(this.rule).apply(this.terms).plan()
-    }
-
-    const selection = yield* this.plan.evaluate({
-      source: from,
-      selection: [new Map()],
-    })
-
-    const results = []
-    for (const match of selection) {
-      results.push({
-        of: /** @type {API.Entity} */ (match.get(this.rule.match.of)),
-        is: /** @type {T} */ (match.get(this.rule.match.is)),
-      })
-    }
-
-    return results
   }
 }
 

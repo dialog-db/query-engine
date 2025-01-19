@@ -43,6 +43,20 @@ const db = DB.Memory.create([
   },
 ])
 
+const mallory = {
+  'Person/name': 'Mallory',
+}
+
+const bob = {
+  'Person/name': 'Bob',
+  'Manages/employee': mallory,
+}
+
+const alice = {
+  'Person/name': 'Alice',
+  'Manages/employee': bob,
+}
+
 /**
  * @type {import('entail').Suite}
  */
@@ -359,7 +373,7 @@ export const testSchema = {
     ])
   },
 
-  'only composite facts': async (assert) => {
+  'composite facts': async (assert) => {
     const name = Schema.fact({ the: 'Person/name', is: String })
     const Person = Schema.entity({
       name,
@@ -367,75 +381,80 @@ export const testSchema = {
 
     const manages = Schema.fact({ the: 'Manages/employee', is: Person })
 
-    return console.log(manages().toSource())
+    const every = await manages().select({ from: DB.Memory.create([alice]) })
 
-    const result = await manages().select({ from: db })
-
-    console.log(result)
-  },
-
-  'joins with facts': async (assert) => {
-    const db = DB.Memory.create([
+    assert.deepEqual(every, [
       {
-        'Person/name': 'Alice',
-        'Manages/employee': {
-          'Person/name': 'Bob',
-          'Manages/employee': { 'Person/name': 'Mallory' },
+        the: 'Manages/employee',
+        of: { this: Link.of(bob) },
+        is: {
+          this: Link.of(mallory),
+          name: 'Mallory',
+        },
+      },
+      {
+        the: 'Manages/employee',
+        of: {
+          this: Link.of(alice),
+        },
+        is: {
+          this: Link.of(bob),
+          name: 'Bob',
         },
       },
     ])
 
+    const some = await manages({
+      is: {
+        name: 'Bob',
+      },
+    }).select({ from: DB.Memory.create([alice]) })
+
+    assert.deepEqual(some, [
+      {
+        the: 'Manages/employee',
+        of: {
+          this: Link.of(alice),
+        },
+        is: {
+          this: Link.of(bob),
+          name: 'Bob',
+        },
+      },
+    ])
+  },
+
+  'joins with facts': async (assert) => {
+    const db = DB.Memory.create([alice])
+
     const name = Schema.fact({ the: 'Person/name', is: String })
     const Person = Schema.entity({
       name,
     })
 
     const manages = Schema.fact({ the: 'Manages/employee', is: Person })
-
-    const people = await Person().select({ from: db })
-
-    console.log(people, people)
-
-    const employees = await manages().select({ from: db })
-    console.log('employees', employees)
 
     const Manager = Schema.entity({
       name,
       manages,
     })
 
-    console.log(Manager().toSource())
-
-    // return
     const managers = await Manager().select({ from: db })
-
     assert.deepEqual(managers, [
       {
+        this: Link.of(alice),
         name: 'Alice',
         manages: {
           name: 'Bob',
-          this: Link.of({
-            'Person/name': 'Bob',
-            'Manages/employee': { 'Person/name': 'Mallory' },
-          }),
+          this: Link.of(bob),
         },
-        this: Link.of({
-          'Person/name': 'Alice',
-          'Manages/employee': {
-            'Person/name': 'Bob',
-            'Manages/employee': { 'Person/name': 'Mallory' },
-          },
-        }),
       },
       {
+        this: Link.of(bob),
         name: 'Bob',
-        this: Link.of({
-          'Person/name': 'Bob',
-          'Manages/employee': { 'Person/name': 'Mallory' },
-        }),
         manages: {
           name: 'Mallory',
-          this: Link.of({ 'Person/name': 'Mallory' }),
+          this: Link.of(mallory),
         },
       },
     ])

@@ -7,6 +7,7 @@ import { Constant, Link, matchFact, Var, $, _ } from './lib.js'
 import * as Formula from './formula.js'
 import { add } from './selector.js'
 import { indent, li } from './format.js'
+import * as Task from './task.js'
 
 export { $ }
 
@@ -551,7 +552,7 @@ class RuleApplication {
   /**
    * @template {API.Conclusion} Match
    * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
-   * @param {API.RuleBindings<Match>} terms
+   * @param {Partial<API.RuleBindings<Match>>} terms
    * @param {Circuit} circuit
    */
   static apply(rule, terms, circuit) {
@@ -594,7 +595,7 @@ class RuleApplication {
   }
   /**
    * @param {Circuit} circuit
-   * @param {API.RuleBindings<Match>} match
+   * @param {Partial<API.RuleBindings<Match>> & {}} match
    * @param {DeductiveRule<Match>|InductiveRule<Match>} rule
    * @param {Context} context
    * @param {Map<API.Variable, number>} cells
@@ -635,7 +636,7 @@ class RuleApplication {
           return null
         }
       } else {
-        match[name] = term
+        match[name] = /** @type {API.Scalar} */ (term)
       }
     }
 
@@ -645,7 +646,7 @@ class RuleApplication {
     /** @type {Record<string, Address|API.Scalar>} */
     const match = {}
     for (const [name, term] of Object.entries(this.match)) {
-      match[name] = address(term, this.circuit)
+      match[name] = address(/** @type {API.Scalar} */ (term), this.circuit)
     }
 
     return {
@@ -696,14 +697,14 @@ class RuleApplication {
    * @param {API.Querier} input.source
    */
   query(input) {
-    return this.plan().query(input)
+    return Task.perform(this.plan().query(input))
   }
 
   toDebugString() {
     const { match, rule } = this
-    return `{ match: ${Terms.toDebugString(match)}, rule: ${toDebugString(
-      rule
-    )} }`
+    return `{ match: ${Terms.toDebugString(
+      /** @type {{}} */ (match)
+    )}, rule: ${toDebugString(rule)} }`
   }
 }
 
@@ -785,10 +786,10 @@ class DeductiveRule {
   }
 
   /**
-   * @param {API.RuleBindings<Match>} terms
+   * @param {Partial<API.RuleBindings<Match>>} terms
    * @returns {RuleApplication<Match>}
    */
-  apply(terms) {
+  apply(terms = this.match) {
     return RuleApplication.apply(this, terms, Circuit.new())
   }
 
@@ -1676,7 +1677,7 @@ class InductionPlan {
  */
 class RuleApplicationPlan {
   /**
-   * @param {API.RuleBindings<Match>} match
+   * @param {Partial<API.RuleBindings<Match>>} match
    * @param {API.EvaluationPlan} plan
    * @param {Context} context
    */
@@ -1759,14 +1760,17 @@ class RuleApplicationPlan {
       selection: [new Map()],
     })
 
-    return Selector.select(selector, frames)
+    return Selector.select(
+      /** @type {API.RuleApplication<Match> & API.Selector} */ (selector),
+      frames
+    )
   }
 
   toDebugString() {
     const { match, plan } = this
 
     return indent(`{
-  match: ${indent(Terms.toDebugString(match))},
+  match: ${indent(Terms.toDebugString(/** @type {{}} */ (match)))},
   rule: ${indent(toDebugString(plan))}
 }`)
   }

@@ -1,77 +1,60 @@
 import * as API from './api.js'
 import { default as $ } from './$.js'
-import { scalar, unknown } from './schema/scalar.js'
+import { scalar } from './schema/scalar.js'
 import { entity } from './schema/entity.js'
 export * from './schema/fact.js'
 
-export { scalar, unknown, entity }
+export { scalar, entity }
+
 /**
- * @template {API.The} The
- * @param {API.AttributeDescriptor<The>} options
- * @returns {API.ScalarSchema<null, The>}
+ * @param {{implicit?: null}} [options]
+ * @returns {API.ScalarSchema<null>}
  */
-export const nil = ({ the } = {}) => scalar({ type: null, the })
+export const nil = (options) => scalar({ ...options, type: null })
 
 /**
  * @template {API.The} The
- * @param {API.AttributeDescriptor<The>} options
- * @returns {API.ScalarSchema<boolean, The>}
+ * @param {{implicit?: boolean}} options
+ * @returns {API.ScalarSchema<boolean>}
  */
-export const boolean = ({ the } = {}) => scalar({ type: Boolean, the })
+export const boolean = (options) => scalar({ ...options, type: Boolean })
+
+/**
+ * @param {{implicit?: string}} [options]
+ * @returns {API.ScalarSchema<string>}
+ */
+export const string = (options) => scalar({ ...options, type: String })
 
 /**
  * @template {API.The} The
- * @param {API.AttributeDescriptor<The>} options
- * @returns {API.ScalarSchema<string, The>}
+ * @param {{implicit: API.Int32}} [options]
+ * @returns {API.ScalarSchema<API.Int32>}
  */
-export const string = ({ the } = {}) => scalar({ type: String, the })
-
-/**
- * @template {API.The} The
- * @param {API.AttributeDescriptor<The>} options
- * @returns {API.ScalarSchema<API.Int32, The>}
- */
-export const int32 = ({ the } = {}) => scalar({ type: { Int32: {} }, the })
+export const int32 = (options) => scalar({ ...options, type: { Int32: {} } })
 
 export const integer = int32
 
 /**
- * @template {API.The} The
- * @param {API.AttributeDescriptor<The>} options
- * @returns {API.ScalarSchema<API.Int64, The>}
+ * @param {{implicit: API.Int64}} [options]
+ * @returns {API.ScalarSchema<API.Int64>}
  */
-export const int64 = ({ the } = {}) => scalar({ type: { Int64: {} }, the })
+export const int64 = (options) => scalar({ type: { Int64: {} }, ...options })
 
 /**
  * @template {API.The} The
- * @param {API.AttributeDescriptor<The>} options
- * @returns {API.ScalarSchema<API.Float32, The>}
+ * @param {{implicit: API.Float32}} options
+ * @returns {API.ScalarSchema<API.Float32>}
  */
-export const float32 = ({ the } = {}) => scalar({ type: { Float32: {} }, the })
+export const float32 = (options) =>
+  scalar({ ...options, type: { Float32: {} } })
 
 export const decimal = float32
 
 /**
- * @template {API.The} The
- * @param {API.AttributeDescriptor<The>} options
- * @returns {API.ScalarSchema<Uint8Array, The>}
+ * @param {{implicit?: Uint8Array}} options
+ * @returns {API.ScalarSchema<Uint8Array>}
  */
-export const bytes = ({ the } = {}) => scalar({ type: { Bytes: {} }, the })
-
-/**
- * @template {API.SchemaDescriptor} Descriptor
- * @param {Descriptor} descriptor
- * @returns {API.InferSchema<Descriptor>}
- */
-export const schema = (descriptor) =>
-  /** @type {Record<keyof Descriptor, any>} */ (
-    Object.fromEntries(
-      Object.entries(descriptor).map(([domain, descriptor]) => [
-        domain,
-        entity(descriptor, domain),
-      ])
-    )
-  )
+export const bytes = (options) => scalar({ ...options, type: { Bytes: {} } })
 
 /**
  * Rule that checks that given entity has a value of a given type under a given

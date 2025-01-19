@@ -5,13 +5,10 @@ import {
   namespaceTerms,
   iterateTerms,
   deriveMatch,
-  entity,
   Query,
 } from './entity.js'
 import { scalar } from './scalar.js'
 import { default as $ } from '../$.js'
-import * as Variable from '../variable.js'
-import * as Term from '../term.js'
 
 /**
  * @template {API.The} [The=API.The]
@@ -20,88 +17,62 @@ import * as Term from '../term.js'
  * @param {{the?: The, of?: Of, is?:Is}} descriptor
  * @returns {API.FactSchema<API.InferFact<{the: The, of: Of, is:Is}>>}
  */
-export const fact = ({ the: by, of, is }) => {
+export const fact = (descriptor) => {
   const the = $.the
-  /** @type {API.Select} */
-  const fact = { the }
-  /** @type {Record<string, API.Variable>} */
-  const match = { the }
-  /** @type {API.FactTerms} */
-  const select = { the: by ?? the }
-  /** @type {API.FactMembers} */
-  const members = {}
+  const selector = /** @type {API.FactTerms} */ ({ the: descriptor.the ?? the })
+
+  const members = /** @type {API.FactMembers} */ ({
+    the: scalar({ type: String }),
+  })
 
   /** @type {API.Conjunct[]} */
-  const when = [{ match: fact }]
+  const when = []
 
-  for (const [key, member] of Object.entries({
-    of: of ?? {},
-    is: is ?? scalar(),
-  })) {
-    const name = /** @type {'is'|'of'} */ (key)
-    const schema = build(member)
-    members[name] = schema
+  // We know this must be an entity schema because that is only thing
+  // allowed in the `of`.
+  const of = /** @type {API.EntitySchema} */ (build(descriptor.of ?? {}))
+  members.of = of
+  selector.of = namespaceTerms({ of: of.selector }).of
+  when.push(...of.match(selector.of))
 
-    // If member is an entity we need to copy variables and combine the match
-    if (schema.Object) {
-      members[name] = schema
-      // Doing the same thing as above except above we have a flat structure
-      // while here we use a nested one.
-      const terms = namespaceTerms({ [name]: schema.terms })
+  const is = build(descriptor.is ?? scalar())
+  members.is = is
+  if (is.Object) {
+    // We namespace all the terms to avoid conflicts.
+    selector.is = namespaceTerms({ is: is.selector }).is
 
-      // Create variables corresponding to the members cells prefixing them
-      // with a name of the member.
-      Object.assign(match, deriveMatch(terms))
-
-      select[name] = terms[name]
-      // Generate a rule application for the member entity
-      when.push(...schema.match(terms[name]))
-
-      fact[name] = terms[name].this
-    } else if (schema.Fact) {
-      throw new Error('Not implemented yet')
-    }
-    // If member is a scalar we add variables in both match and to the
-    // variables
-    else {
-      const is = $[name]
-      members[name] = schema
-      select[name] = is
-      match[name] = is
-      fact[name] = is
-      when.push(...schema.match(is))
-    }
+    // Add fact selection to the head, order does not matter for execution but
+    // it does help when reading generated rules.
+    when.unshift({ match: { the, of: selector.of.this, is: selector.is.this } })
+    // Generate a conjuncts for member
+    when.push(...is.match(selector.is))
+  } else if (is.Fact) {
+    throw new Error('Not implemented yet')
+  } else {
+    const term = $.is
+    selector.is = term
+    // Add Fact selection conjunct first
+    when.unshift({ match: { the, of: selector.of.this, is: selector.is } })
+    // Then all the conjuncts produced by the value
+    when.push(...is.match(term))
   }
 
-  // Makes sure that attribute name matches one set in the descriptor.
-  if (by) {
-    when.unshift({ match: { of: by, is: the }, operator: '==' })
-    members.the = scalar({ type: String })
-  }
-
-  if (!select.of) {
-    const of = $.of
-    select.of = of
-    match.of = of
-    fact.of = of
-  }
-
-  if (!select.is) {
-    const is = $.is
-    select.is = is
-    match.is = is
-    fact.is = is
+  // If attribute name in known we bind the `the` variable.
+  if (descriptor.the) {
+    when.push({ match: { of: descriptor.the, is: the }, operator: '==' })
   }
 
   return /** @type {Fact<API.InferFact<{the: The, of: Of, is:Is}>>} */ (
     new Fact(
       members,
-      select,
+      selector,
       {
-        match: deriveMatch(select),
+        match: deriveMatch(selector),
         when: /** @type {API.When} */ (when),
       },
-      /** @type {API.InferFact<{the: The, of: Of, is:Is}>['the']} */ (by)
+      /** @type {API.InferFact<{the: The, of: Of, is:Is}>['the']} */ (
+        descriptor.the
+      )
     )
   )
 }
@@ -113,17 +84,19 @@ export const fact = ({ the: by, of, is }) => {
 export class Fact extends Callable {
   /**
    * @param {API.FactMembers} members
-   * @param {API.FactTerms} terms
+   * @param {API.FactTerms} selector
    * @param {API.Deduction} rule
    * @param {Model['the']} [the]
    */
-  constructor(members, terms, rule, the) {
+  constructor(members, selector, rule, the) {
     super(
-      /** @type {API.FactSchema<Model>['match']} */
-      (terms) => this.match(terms)
+      /**
+       * @param {API.InferTypeTerms<Model>} selector
+       */
+      (selector) => this.match(selector)
     )
     this.members = members
-    this.terms = terms
+    this.selector = selector
     this.rule = rule
     this.the = the
   }
@@ -132,36 +105,7 @@ export class Fact extends Callable {
   }
 
   /**
-   * @template {Model['the'] & {}} The
-   * @param {object} extension
-   * @param {The} extension.the
-   * @returns {API.FactSchema<Model>}
-   */
-  extend({ the }) {
-    if (this.members.the) {
-      throw new TypeError('Fact already has a `the` attribute')
-    }
-
-    return new Fact(
-      this.members,
-      this.terms,
-      {
-        match: this.rule.match,
-        when: [
-          {
-            match: { of: the, is: this.terms.the },
-            operator: '==',
-          },
-          // If rule had no `the` member it had no binding for it.
-          .../** @type {API.Every} */ (this.rule.when),
-        ],
-      },
-      the
-    )
-  }
-
-  /**
-   * @param {API.InferFactTerms<Model>} [terms]
+   * @param {API.InferTypeTerms<Model>} [terms]
    * @returns {API.RuleApplicationView<Model>}
    */
   match(terms) {
@@ -179,23 +123,17 @@ export class Fact extends Callable {
 
   /**
    * @param {API.MatchFrame} bindings
-   * @param {API.EntityTerms} terms
+   * @param {API.InferTypeTerms<Model> & {}} terms
    * @returns {API.EntityView<any>}
    */
   view(bindings, terms) {
+    const { members } = this
     /** @type {Record<string, any>} */
     const model = {}
-    const members = /** @type {Record<string, API.EntityMember>} */ (
-      this.members
-    )
 
-    for (const [key, term] of Object.entries(terms)) {
-      const member = members[key]
-      model[key] =
-        member.Object ?
-          member.view(bindings, /** @type {API.EntityVariables} */ (term))
-        : Variable.is(term) ? bindings.get(/** @type {API.Variable} */ (term))
-        : term
+    for (const [key, selector] of Object.entries(terms)) {
+      const member = members[/** @type {keyof API.FactMembers} */ (key)]
+      model[key] = member.view(bindings, selector)
     }
 
     return /** @type {API.EntityView<any>} */ (model)
@@ -220,7 +158,7 @@ export const is = (descriptor) => {
   if (descriptor.is) {
     const is = build(descriptor.is)
     if (is.Object) {
-      const terms = is.terms
+      const terms = is.selector
     } else {
     }
   }

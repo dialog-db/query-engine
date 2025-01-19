@@ -19,15 +19,15 @@ export const entity = (descriptor) => {
 
   /** @type {API.Variable<API.Entity>} */
   const of = $[`this`]
-  // /** @type {Record<string, API.Variable>} */
-  // const match = { this: of }
 
-  /** @type {API.EntityTerms} */
-  const select = { this: of }
+  const selector =
+    /** @type {API.InferTypeTerms<API.InferSchemaType<Descriptor>> & API.EntityTerms} */ ({
+      this: of,
+    })
 
-  /** @type {Record<string, API.SchemaViewer>} */
+  /** @type {Record<string, API.Schema>} */
   const members = {
-    this: This,
+    this: This.this,
   }
 
   for (const [name, member] of Object.entries(descriptor)) {
@@ -39,12 +39,12 @@ export const entity = (descriptor) => {
     if (schema.Object) {
       // Doing the same thing as above except above we have a flat structure
       // while here we use a nested one.
-      const terms = namespaceTerms({ [name]: schema.terms })
+      const terms = namespaceTerms({ [name]: schema.selector })
       // Create variables corresponding to the members cells prefixing them
       // with a name of the member.
       // Object.assign(match, deriveMatch(terms))
 
-      select[name] = terms[name]
+      selector[name] = terms[name]
       // Add a clause that will join this entity to a member entity
       when.push({ match: { the, of, is: terms[name].this } })
       // We also generate a rule application for the member entity
@@ -53,61 +53,52 @@ export const entity = (descriptor) => {
       // members[name] = new EntityViewer(schema, terms[name])
       members[name] = schema
     } else if (schema.Fact) {
-      const terms = namespaceTerms({ [name]: schema.terms.is })
-      // terms.of.this = of
-      // terms.the = schema.the ?? name
-
-      // We only want to expose the `is` related variables under the name
-      // of the property.
-      // Object.assign(match, deriveMatch({ [name]: terms[name].is }))
-
-      // Note we need to keep all the terms because view will need them
-      // to be able to resolve.
-      select[name] = terms[name]
+      const terms = namespaceTerms({ [name]: schema.selector.is })
+      selector[name] = terms[name]
 
       when.push(
         ...schema.match({
           of: { this: of },
-          the: schema.the ?? name,
+          the: schema.the ?? /** @type {API.The} */ (name),
           is: terms[name],
         })
       )
 
-      // members[name] = new ValueViewer(schema)
       members[name] = schema.members.is
     }
     // If member is a scalar we add variables in both match and to the
     // variables
     else {
       const is = $[name]
-      select[name] = is
+      selector[name] = is
       // match[name] = is
       when.push({ match: { the, of, is } })
       when.push(...schema.match(is))
       members[name] = schema
-      // members[name] = new ScalarViewer(schema, is)
     }
-  }
-
-  // If we have no members at all we just add a match to get all the entries.
-  if (when.length === 0) {
-    when.push({ match: { of } })
   }
 
   return /** @type {API.EntitySchema<API.InferSchemaType<Descriptor>, Descriptor>} */ (
     new Entity({
       descriptor,
       members,
-      terms: select,
+      selector,
       rule: {
-        match: deriveMatch(select),
+        match: deriveMatch(selector),
         when: /** @type {API.When} */ (when),
       },
     })
   )
 }
 
-const This = {
+/**
+ * @implements {API.Schema<API.Entity>}
+ */
+class This extends Callable {
+  static this = new This()
+  constructor() {
+    super(() => this)
+  }
   /**
    * @param {API.MatchFrame} match
    * @param {API.Term<API.Entity>} selector
@@ -117,67 +108,9 @@ const This = {
     return isVariable(selector) ?
         /** @type {API.Entity} */ (match.get(selector))
       : selector
-  },
+  }
   match() {
     return []
-  },
-}
-
-class EntityViewer {
-  /**
-   *
-   * @param {API.EntitySchema} schema
-   * @param {API.EntityTerms} terms
-   */
-  constructor(schema, terms) {
-    this.schema = schema
-    this.terms = terms
-  }
-  /**
-   *
-   * @param {API.MatchFrame} match
-   */
-  view(match) {
-    return Object.fromEntries(
-      Object.entries(this.terms).map(([key, selector]) => [
-        key,
-        this.schema.members[key].view(match),
-      ])
-    )
-  }
-}
-
-class ValueViewer {
-  /**
-   *
-   * @param {API.FactSchema} schema
-   */
-  constructor(schema) {
-    this.schema = schema
-  }
-  /**
-   *
-   * @param {API.MatchFrame} match
-   */
-  view(match) {
-    return this.schema.members.of.view(match)
-  }
-}
-
-class ScalarViewer {
-  /**
-   * @param {API.ScalarSchema} schema
-   * @param {API.Term} term
-   */
-  constructor(schema, term) {
-    this.schema = schema
-    this.term = term
-  }
-  /**
-   * @param {API.MatchFrame} match
-   */
-  view(match) {
-    return match.get(/** @type {API.Variable} */ (this.term))
   }
 }
 
@@ -218,17 +151,17 @@ export class Entity extends Callable {
    * @param {object} source
    * @param {Descriptor} source.descriptor
    * @param {API.Deduction} source.rule
-   * @param {API.EntityTerms} source.terms
-   * @param {Record<string, API.SchemaViewer>} source.members
+   * @param {API.InferTypeTerms<Model> & API.EntityTerms} source.selector
+   * @param {Record<string, API.Schema>} source.members
    * @param {Descriptor} source.descriptor
    */
-  constructor({ rule, terms, members, descriptor }) {
+  constructor({ rule, selector, members, descriptor }) {
     super(
       /** @type {API.EntitySchema<Model, Descriptor>['match']} */
-      (terms) => this.match(terms)
+      (selector) => this.match(selector)
     )
     this.rule = rule
-    this.terms = terms
+    this.selector = selector
     this.members = members
     this.descriptor = descriptor
   }
@@ -271,27 +204,10 @@ export class Entity extends Callable {
 
   /**
    * @param {API.MatchFrame} bindings
-   * @param {API.EntityTerms} selector
+   * @param {API.InferTypeTerms<Model> & {}} selector
    * @returns {API.EntityView<Model>}
    */
   view(bindings, selector) {
-    // /** @type {Record<string, any>} */
-    // const model = {
-    //   this: isVariable(terms.this) ? bindings.get(terms.this) : terms.this,
-    // }
-
-    // for (const [key, member] of Object.entries(this.members)) {
-    //   model[key] =
-    //     member.Object ?
-    //       member.view(bindings, /** @type {API.EntityTerms} */ (terms[key]))
-    //     : member.Fact ?
-    //       member.view(bindings, /** @type {API.EntityTerms} */ (terms[key])).is
-    //     : isVariable(terms[key]) ?
-    //       bindings.get(/** @type {API.Variable} */ (terms[key]))
-    //     : terms[key]
-    // }
-
-    // return /** @type {API.EntityView<Model>} */ (model)
     return /** @type {API.EntityView<Model>} */ (
       Object.fromEntries(
         Object.entries(selector).map(([key, selector]) => [
@@ -309,7 +225,7 @@ export class Entity extends Callable {
   when(derive) {
     const when = []
     for (const each of derive(
-      /** @type {API.InferTypeVariables<Model>} */ (this.terms)
+      /** @type {API.InferTypeVariables<Model>} */ (this.selector)
     )) {
       if (Symbol.iterator in each) {
         when.push(...each)
@@ -320,13 +236,13 @@ export class Entity extends Callable {
 
     // Add all the type constraints for the object members
     for (const [key, schema] of Object.entries(this.members)) {
-      when.push(...schema.match(/** @type {any} */ (this.terms[key])))
+      when.push(...schema.match(this.selector[key]))
     }
 
     return /** @type {API.EntitySchema<Model, Descriptor>} */ (
       new Entity({
         descriptor: this.descriptor,
-        terms: this.terms,
+        selector: this.selector,
         members: this.members,
         rule: {
           match: this.rule.match,
@@ -370,7 +286,19 @@ export class Query {
     this.schema = source.schema
     this.rule = source.schema.rule
 
-    this.plan = rule(this.rule)
+    this.plan = rule({
+      match: this.rule.match,
+      when:
+        this.rule.when?.length === 0 ?
+          [
+            {
+              match: {
+                of: /** @type {API.Term<API.Entity>} */ (this.rule.match.this),
+              },
+            },
+          ]
+        : this.rule.when,
+    })
       .apply(/** @type {{}} */ (this.match))
       .plan()
   }
@@ -387,9 +315,11 @@ export class Query {
   }
 
   *[Symbol.iterator]() {
-    yield {
-      match: this.match,
-      rule: this.rule,
+    if (this.rule.when?.length !== 0) {
+      yield {
+        match: this.match,
+        rule: this.rule,
+      }
     }
   }
 
@@ -397,17 +327,6 @@ export class Query {
    * @param {{ from: API.Querier }} terms
    */
   *query({ from }) {
-    // We set up the bindings for the terms that have being provided
-    // as part of the query as those will not be set by the rule application.
-    // /** @type {API.MatchFrame} */
-    // let bindings = new Map()
-    // for (const [key, term] of Object.entries(this.match)) {
-    //   const variable = this.rule.match[key]
-    //   if (Constant.is(term)) {
-    //     bindings = bindings.set(variable, term)
-    //   }
-    // }
-
     const selection = yield* this.plan.evaluate({
       source: from,
       selection: [new Map()],
@@ -415,7 +334,7 @@ export class Query {
 
     const results = []
     for (const match of selection) {
-      results.push(this.schema.view(match, this.schema.terms))
+      results.push(this.schema.view(match, this.schema.selector))
     }
 
     return results
