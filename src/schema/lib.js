@@ -7,8 +7,9 @@ import * as Selector from './selector.js'
 import $ from '../$.js'
 
 /**
- * @param {API.TypeDescriptor} descriptor
- * @returns {API.EntityMember|API.FactSchema}
+ * @template {API.TypeDescriptor} T
+ * @param {T} descriptor
+ * @returns {API.Schema<API.InferSchemaType<T>>}
  */
 export const build = (descriptor) => {
   switch (descriptor) {
@@ -18,24 +19,29 @@ export const build = (descriptor) => {
     case Number:
     case BigInt:
     case Uint8Array:
-      return /** @type {API.ScalarSchema} */ (scalar({ type: descriptor }))
+      return /** @type {API.Schema<API.InferSchemaType<T>>} */ (
+        scalar({ type: descriptor })
+      )
     default: {
       switch (typeof descriptor) {
         case 'boolean':
         case 'string':
         case 'number':
         case 'bigint':
-          return /** @type {API.ScalarSchema} */ (scalar({ type: descriptor }))
+          return /** @type {API.Schema<API.Scalar & API.InferSchemaType<T>>} */ (
+            the(descriptor)
+          )
         case 'object': {
-          return (
-            descriptor instanceof Uint8Array ? scalar({ type: descriptor })
-            : descriptor.Null ? scalar({ type: descriptor })
-            : descriptor.Boolean ? scalar({ type: descriptor })
-            : descriptor.String ? scalar({ type: descriptor })
-            : descriptor.Int32 ? scalar({ type: descriptor })
-            : descriptor.Int64 ? scalar({ type: descriptor })
-            : descriptor.Bytes ? scalar({ type: descriptor })
-            : descriptor.Reference ? entity({})
+          const type = /** @type {API.ScalarDescriptor} */ (descriptor)
+          return /** @type {API.Schema<API.InferSchemaType<T> & {}>} */ (
+            descriptor instanceof Uint8Array ? the(descriptor)
+            : type.Null ? scalar({ type })
+            : type.Boolean ? scalar({ type })
+            : type.String ? scalar({ type })
+            : type.Int32 ? scalar({ type })
+            : type.Int64 ? scalar({ type })
+            : type.Bytes ? scalar({ type })
+            : type.Reference ? entity({})
             : /** @type {API.EntityMember} */ (
                 /** @type {API.EntitySchema} */ (descriptor).Object ?
                   /** @type {API.EntitySchema} */ (descriptor)
@@ -122,10 +128,7 @@ export const fact = (descriptor) => {
     new Fact(
       members,
       selector,
-      {
-        match: Selector.deriveMatch(selector),
-        when: /** @type {API.When} */ (when),
-      },
+      /** @type {API.Every} */ (when),
       /** @type {API.InferFact<{the: The, of: Of, is:Is}>['the']} */ (
         descriptor.the
       )
@@ -139,7 +142,7 @@ export const fact = (descriptor) => {
  */
 export const entity = (descriptor) => {
   /** @type {API.Conjunct[]} */
-  const when = []
+  const where = []
 
   /** @type {API.Variable<API.Entity>} */
   const of = This.this.selector
@@ -154,7 +157,8 @@ export const entity = (descriptor) => {
     this: This.this,
   }
 
-  for (const [name, member] of Object.entries(descriptor)) {
+  const relations = Object.entries(descriptor)
+  for (const [name, member] of relations) {
     /** @type {API.The} */
     const the = /** @type {API.The} */ (name)
     const schema = build(member)
@@ -170,9 +174,9 @@ export const entity = (descriptor) => {
 
       selector[name] = terms[name]
       // Add a clause that will join this entity to a member entity
-      when.push({ match: { the, of, is: terms[name].this } })
+      where.push({ match: { the, of, is: terms[name].this } })
       // We also generate a rule application for the member entity
-      when.push(...schema.match(terms[name]))
+      where.push(...schema.match(terms[name]))
 
       // members[name] = new EntityViewer(schema, terms[name])
       members[name] = schema
@@ -180,7 +184,7 @@ export const entity = (descriptor) => {
       const terms = Selector.namespaceTerms({ [name]: schema.selector.is })
       selector[name] = terms[name]
 
-      when.push(
+      where.push(
         ...schema.match({
           of: { this: of },
           the: schema.the ?? /** @type {API.The} */ (name),
@@ -196,21 +200,24 @@ export const entity = (descriptor) => {
       const terms = Selector.namespaceTerms({ [name]: schema.selector })
 
       selector[name] = terms[name]
-      when.push({ match: { the, of, is: terms[name] } })
-      when.push(...schema.match(terms[name]))
+      where.push({ match: { the, of, is: terms[name] } })
+      where.push(...schema.match(terms[name]))
       members[name] = schema
     }
   }
+
+  // // If entity had no relations it is effectively an any entity and we ensure
+  // // to add a conjunct to reflect this.
+  // if (when.length === 0) {
+  //   when.push({ match: { of: selector.this } })
+  // }
 
   return /** @type {API.EntitySchema<API.InferSchemaType<Descriptor>, Descriptor>} */ (
     new Entity({
       descriptor,
       members,
       selector,
-      rule: {
-        match: Selector.deriveMatch(selector),
-        when: /** @type {API.When} */ (when),
-      },
+      where,
     })
   )
 }
@@ -224,7 +231,7 @@ export const the = (literal) => {
 }
 
 /**
- * @template {API.ScalarDescriptor} Descriptor
+ * @template {API.ScalarDescriptor|API.ScalarConstructor} Descriptor
  * @param {{ implicit?: API.InferSchemaType<Descriptor>, type: Descriptor}} [descriptor]
  * @returns {API.ScalarSchema<API.InferSchemaType<Descriptor>>}
  */

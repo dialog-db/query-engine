@@ -26,8 +26,9 @@ export class Scalar extends Callable {
     this.selector = /** @type {API.InferTypeTerms<T> & API.Term<T>} */ (
       selector
     )
-
-    this.rule = { match: {} }
+  }
+  get where() {
+    return []
   }
   /**
    * @param {API.ScalarTerms<T>} selector
@@ -73,6 +74,7 @@ export class Scalar extends Callable {
 
 /**
  * @template {API.Scalar} [T=API.Scalar]
+ * @implements {API.Schema<T, T>}
  */
 export class The extends Callable {
   /**
@@ -90,8 +92,9 @@ export class The extends Callable {
     this.selector = /** @type {API.InferTypeTerms<T> & API.Term<T>} */ (
       selector
     )
-
-    this.rule = { match: {} }
+  }
+  get where() {
+    return []
   }
   /**
    * @param {API.ScalarTerms<T>} selector

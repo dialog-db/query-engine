@@ -487,7 +487,7 @@ export const testSchema = {
   'literal values': async (assert) => {
     const Name = Schema.fact({
       the: 'Person/name',
-      is: Schema.the('Alice'),
+      is: 'Alice',
     })
 
     const result = await Name().select({

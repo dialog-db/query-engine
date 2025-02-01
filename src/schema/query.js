@@ -1,41 +1,49 @@
 import * as API from '../api.js'
 import { rule } from '../analyzer.js'
 import * as Task from '../task.js'
-
+import * as Selector from './selector.js'
 /**
  * @template Model
  * @template View
- * @implements {API.MatchRule}
  * @implements {API.RuleApplicationView<View>}
  */
 export class Query {
   /**
    * @param {object} source
-   * @param {API.InferTypeTerms<Model>} source.match
+   * @param {API.InferTypeTerms<Model>} [source.terms]
    * @param {API.Schema<Model, View>} source.schema
    */
-  constructor(source) {
+  constructor({ terms, schema }) {
+    const match = Selector.deriveMatch(schema.selector)
+
+    /** @type {Record<string, API.Term>} */
+    const application = { ...match }
+    for (const [name, term] of Selector.iterateTerms(terms)) {
+      application[name] = term
+    }
+
     this.match =
       /** @type {API.RuleBindings<API.InferTypeVariables<Model> & API.Conclusion>} */ (
-        source.match
+        application
       )
-    this.schema = source.schema
-    // @ts-expect-error TODO fix this
-    this.rule = source.schema.rule
+    this.schema = schema
 
-    this.plan = rule({
-      match: this.rule.match,
-      when:
-        this.rule.when?.length === 0 ?
-          [
-            {
-              match: {
-                of: /** @type {API.Term<API.Entity>} */ (this.rule.match.this),
-              },
+    /** @type {API.Every} */
+    const where =
+      schema.where.length === 0 ?
+        [
+          {
+            match: {
+              of: /** @type {API.Term<API.Entity>} */ (schema.selector.this),
             },
-          ]
-        : this.rule.when,
-    })
+          },
+        ]
+      : /** @type {API.Every} */ (schema.where)
+
+    /** @type {API.Deduction} */
+    this.rule = { match, when: where }
+
+    this.plan = rule(this.rule)
       .apply(/** @type {{}} */ (this.match))
       .plan()
   }
@@ -52,7 +60,7 @@ export class Query {
   }
 
   *[Symbol.iterator]() {
-    if (this.rule.when?.length !== 0) {
+    if (this.schema.where.length !== 0) {
       yield {
         match: this.match,
         rule: this.rule,

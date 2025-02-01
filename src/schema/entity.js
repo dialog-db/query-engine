@@ -3,7 +3,6 @@ import * as Constant from '../constant.js'
 import { toJSON } from '../analyzer.js'
 import $ from '../$.js'
 import * as Variable from '../variable.js'
-import * as Selector from './selector.js'
 import { Schema } from './schema.js'
 import { Query } from './query.js'
 
@@ -17,7 +16,10 @@ export class This extends Schema {
     super()
 
     this.selector = $.this
-    this.rule = { match: {} }
+  }
+  /** @type {API.Conjunct[]} */
+  get where() {
+    return []
   }
   /**
    * @param {API.MatchFrame} match
@@ -33,7 +35,7 @@ export class This extends Schema {
 
 /**
  * @template {API.ObjectDescriptor} Descriptor
- * @template [Model=API.InferTypeTerms<Descriptor>]
+ * @template [Model=API.InferTypeTerms<Descriptor> & {}]
  * @extends {Schema<Model>}
  * @implements {API.EntitySchema<Model, Descriptor>}
  */
@@ -41,15 +43,15 @@ export class Entity extends Schema {
   /**
    * @param {object} source
    * @param {Descriptor} source.descriptor
-   * @param {API.Deduction} source.rule
    * @param {API.InferTypeTerms<Model> & API.EntityTerms} source.selector
+   * @param {API.Conjunct[]} source.where
    * @param {Record<string, API.Schema>} source.members
    * @param {Descriptor} source.descriptor
    */
-  constructor({ rule, selector, members, descriptor }) {
+  constructor({ selector, where, members, descriptor }) {
     super()
-    this.rule = rule
     this.selector = selector
+    this.where = where
     this.members = members
     this.descriptor = descriptor
   }
@@ -70,16 +72,11 @@ export class Entity extends Schema {
    * @returns {API.RuleApplicationView<API.EntityView<Model>>}
    */
   match(terms) {
-    /** @type {Record<string, API.Term>} */
-    const match = { ...this.rule.match }
-    for (const [name, term] of Selector.iterateTerms(terms)) {
-      match[name] = term
-    }
+    const schema = /** @type {API.Schema<Model, API.EntityView<Model>>} */ (
+      this
+    )
 
-    return new Query({
-      match: /** @type {API.InferTypeTerms<Model>} */ (match),
-      schema: /** @type {API.EntitySchema<Model>} */ (this),
-    })
+    return new Query({ terms, schema })
   }
 
   /**
@@ -111,20 +108,20 @@ export class Entity extends Schema {
    * @returns {API.EntitySchema<Model, Descriptor>}
    */
   when(derive) {
-    const when = []
+    const where = []
     for (const each of derive(
       /** @type {API.InferTypeVariables<Model>} */ (this.selector)
     )) {
       if (Symbol.iterator in each) {
-        when.push(...each)
+        where.push(...each)
       } else {
-        when.push(each)
+        where.push(each)
       }
     }
 
     // Add all the type constraints for the object members
     for (const [key, schema] of Object.entries(this.members)) {
-      when.push(...schema.match(this.selector[key]))
+      where.push(...schema.match(this.selector[key]))
     }
 
     return /** @type {API.EntitySchema<Model, Descriptor>} */ (
@@ -132,10 +129,7 @@ export class Entity extends Schema {
         descriptor: this.descriptor,
         selector: this.selector,
         members: this.members,
-        rule: {
-          match: this.rule.match,
-          when: /** @type {[API.Conjunct, ...API.Conjunct[]]} */ (when),
-        },
+        where: /** @type {[API.Conjunct, ...API.Conjunct[]]} */ (where),
       })
     )
   }
