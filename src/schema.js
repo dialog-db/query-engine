@@ -1,10 +1,7 @@
 import * as API from './api.js'
 import { default as $ } from './$.js'
-import { scalar } from './schema/scalar.js'
-import { entity } from './schema/entity.js'
-export * from './schema/fact.js'
-
-export { scalar, entity }
+import { scalar } from './schema/lib.js'
+export * from './schema/lib.js'
 
 /**
  * @param {{implicit?: null}} [options]

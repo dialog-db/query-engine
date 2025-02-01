@@ -460,6 +460,78 @@ export const testSchema = {
     ])
   },
 
+  'define entity with scalars': async (assert) => {
+    const name = Schema.fact({ the: 'Person/name', is: Schema.string() })
+    const Person = Schema.entity({
+      name,
+    })
+
+    const result = await Person().select({ from: db })
+
+    assert.deepEqual(result, [
+      {
+        name: 'Alice',
+        this: Link.of({ 'Person/name': 'Alice' }),
+      },
+      {
+        name: 'Bob',
+        this: Link.of({ 'Person/name': 'Bob' }),
+      },
+      {
+        name: 'Mallory',
+        this: Link.of({ 'Person/name': 'Mallory' }),
+      },
+    ])
+  },
+
+  'literal values': async (assert) => {
+    const Name = Schema.fact({
+      the: 'Person/name',
+      is: Schema.the('Alice'),
+    })
+
+    const result = await Name().select({
+      from: DB.Memory.create([alice, bob, mallory]),
+    })
+
+    assert.deepEqual(result, [
+      {
+        the: 'Person/name',
+        of: { this: Link.of(alice) },
+        is: 'Alice',
+      },
+    ])
+  },
+
+  'skip define implicit attributes': async (assert) => {
+    const title = Schema.fact({
+      the: 'content/title',
+      is: Schema.string(),
+    }).implicit('Untitled')
+
+    const hello = { 'article/content': 'Hello, World!' }
+    const goodbye = {
+      'article/content': 'Goodbye, everybody!',
+      'content/title': 'Epilogue',
+    }
+
+    const db = DB.Memory.create([hello, goodbye])
+
+    assert.deepEqual(
+      await title.match().select({
+        from: db,
+      }),
+      [
+        { the: 'content/title', of: { this: Link.of(hello) }, is: 'Untitled' },
+        {
+          the: 'content/title',
+          of: { this: Link.of(goodbye) },
+          is: 'Epilogue',
+        },
+      ]
+    )
+  },
+
   // 'skip entity maps hypothetical': async (assert) => {
   //   const email = Schema.attribute({ Email: { address: String } }).when(
   //     (email) => [
