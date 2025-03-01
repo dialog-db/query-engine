@@ -5,3 +5,5 @@ node_modules
 coverage
 test/commp/vector.csv.js
 profile
+.lsp
+.clj-kondo

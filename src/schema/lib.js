@@ -1,7 +1,8 @@
 import * as API from '../api.js'
 import { This, Entity } from './entity.js'
-import { Scalar, The } from './scalar.js'
+import { Scalar, Literal } from './scalar.js'
 import { Fact } from './fact.js'
+import { Attribute } from './attribute.js'
 import * as Selector from './selector.js'
 
 import $ from '../$.js'
@@ -9,48 +10,41 @@ import $ from '../$.js'
 /**
  * @template {API.TypeDescriptor} T
  * @param {T} descriptor
- * @returns {API.Schema<API.InferSchemaType<T>>}
+ * @returns {API.ScalarSchema|API.EntitySchema|API.FactSchema}
  */
 export const build = (descriptor) => {
   switch (descriptor) {
     case null:
+      return literal(descriptor)
     case Boolean:
+      return /** @type {API.ScalarSchema} */ (boolean())
     case String:
+      return /** @type {API.ScalarSchema} */ (string())
     case Number:
+      return /** @type {API.ScalarSchema} */ (integer())
     case BigInt:
+      return /** @type {API.ScalarSchema} */ (int64())
     case Uint8Array:
-      return /** @type {API.Schema<API.InferSchemaType<T>>} */ (
-        scalar({ type: descriptor })
-      )
+      return /** @type {API.ScalarSchema} */ (bytes())
     default: {
       switch (typeof descriptor) {
         case 'boolean':
         case 'string':
         case 'number':
         case 'bigint':
-          return /** @type {API.Schema<API.Scalar & API.InferSchemaType<T>>} */ (
-            the(descriptor)
-          )
+          return literal(descriptor)
         case 'object': {
-          const type = /** @type {API.ScalarDescriptor} */ (descriptor)
-          return /** @type {API.Schema<API.InferSchemaType<T> & {}>} */ (
-            descriptor instanceof Uint8Array ? the(descriptor)
-            : type.Null ? scalar({ type })
-            : type.Boolean ? scalar({ type })
-            : type.String ? scalar({ type })
-            : type.Int32 ? scalar({ type })
-            : type.Int64 ? scalar({ type })
-            : type.Bytes ? scalar({ type })
+          const type = /** @type {any} */ (descriptor)
+          return /** @type {any} */ (
+            descriptor instanceof Uint8Array ? literal(descriptor)
+            : type.Null ? literal(null)
+            : type.Boolean ? boolean()
+            : type.String ? string()
+            : type.Int32 ? int32()
+            : type.Int64 ? int64()
+            : type.Bytes ? bytes()
             : type.Reference ? entity({})
-            : /** @type {API.EntityMember} */ (
-                /** @type {API.EntitySchema} */ (descriptor).Object ?
-                  /** @type {API.EntitySchema} */ (descriptor)
-                : /** @type {API.FactSchema} */ (descriptor).Fact ?
-                  /** @type {API.FactSchema} */ (descriptor)
-                : /** @type {API.ScalarSchema} */ (descriptor).Scalar ?
-                  /** @type {API.ScalarSchema} */ (descriptor)
-                : entity(/** @type {API.ObjectDescriptor} */ (descriptor))
-              )
+            : entity(/** @type {API.ObjectDescriptor} */ (descriptor))
           )
         }
         case 'function': {
@@ -70,6 +64,24 @@ export const build = (descriptor) => {
 }
 
 /**
+ * @template {string} The
+ * @template {API.TypeDescriptor} Descriptor
+ * @param {object} source
+ * @param {The} source.the
+ * @param {Descriptor} source.is
+ * @returns {Attribute<The, API.InferSchemaType<Descriptor>, API.InferSchemaView<Descriptor>>}
+ */
+export const attribute = ({ the, is }) => new Attribute({ the, is: build(is) })
+
+/**
+ * @template {API.TypeDescriptor} Descriptor
+ * @param {Descriptor} source
+ * @returns {API.InferSchemaView<Descriptor>}
+ */
+export const view = (source) => {
+  throw source
+}
+/**
  * @template {API.The} [The=API.The]
  * @template {API.ObjectDescriptor | API.EntitySchema} [Of={}]
  * @template {API.TypeDescriptor} [Is={Unknown:{}}]
@@ -77,58 +89,62 @@ export const build = (descriptor) => {
  * @returns {API.FactSchema<API.InferFact<{the: The, of: Of, is:Is}>>}
  */
 export const fact = (descriptor) => {
-  const the = $.the
-  const selector = /** @type {API.FactTerms} */ ({
-    the: descriptor.the ?? the,
+  const members = /** @type {API.FactMembers} */ ({
+    the: descriptor.the ? literal(descriptor.the) : string(),
   })
 
-  const members = /** @type {API.FactMembers} */ ({
-    the: scalar({ type: String }),
+  const selector = /** @type {API.FactTerms} */ ({
+    the: descriptor.the ?? members.the.selector,
   })
+
+  const the = descriptor.the ?? selector.the
 
   /** @type {API.Conjunct[]} */
-  const when = []
+  const where = []
 
   // We know this must be an entity schema because that is only thing
   // allowed in the `of`.
   const of = /** @type {API.EntitySchema} */ (build(descriptor.of ?? {}))
   members.of = of
   selector.of = Selector.namespaceTerms({ of: of.selector }).of
-  when.push(...of.match(selector.of))
+  where.push(...of.match(selector.of))
 
-  const is =
-    descriptor.is === undefined ? scalar() : build(descriptor.is ?? scalar())
+  const is = descriptor.is === undefined ? scalar() : build(descriptor.is)
   members.is = is
   if (is.Object) {
     // We namespace all the terms to avoid conflicts.
-    selector.is = Selector.namespaceTerms({ is: is.selector }).is
+    selector.is = Selector.namespaceTerms({
+      is: /** @type {API.EntityTerms} */ (is.selector),
+    }).is
 
     // Add fact selection to the head, order does not matter for execution but
     // it does help when reading generated rules.
-    when.unshift({ match: { the, of: selector.of.this, is: selector.is.this } })
+    where.unshift({
+      match: { the, of: selector.of.this, is: selector.is.this },
+    })
     // Generate a conjuncts for member
-    when.push(...is.match(selector.is))
+    where.push(...is.match(selector.is))
   } else if (is.Fact) {
     throw new Error('Not implemented yet')
   } else {
     const term = $.is
     selector.is = term
     // Add Fact selection conjunct first
-    when.unshift({ match: { the, of: selector.of.this, is: selector.is } })
+    where.unshift({ match: { the, of: selector.of.this, is: selector.is } })
     // Then all the conjuncts produced by the value
-    when.push(...is.match(term))
+    where.push(...is.match(term))
   }
 
   // If attribute name in known we bind the `the` variable.
   if (descriptor.the) {
-    when.push({ match: { of: descriptor.the, is: the }, operator: '==' })
+    where.push({ match: { of: descriptor.the, is: the }, operator: '==' })
   }
 
   return /** @type {Fact<API.InferFact<{the: The, of: Of, is:Is}>>} */ (
     new Fact(
       members,
       selector,
-      /** @type {API.Every} */ (when),
+      /** @type {API.Every} */ (where),
       /** @type {API.InferFact<{the: The, of: Of, is:Is}>['the']} */ (
         descriptor.the
       )
@@ -225,24 +241,62 @@ export const entity = (descriptor) => {
 /**
  * @template {API.Scalar} T
  * @param {T} literal
+ * @returns {API.ScalarSchema<T>}
  */
-export const the = (literal) => {
-  return new The(literal, $[`the${literal}`])
-}
+export const literal = (literal) => new Literal(literal, $[`the`])
 
 /**
- * @template {API.ScalarDescriptor|API.ScalarConstructor} Descriptor
- * @param {{ implicit?: API.InferSchemaType<Descriptor>, type: Descriptor}} [descriptor]
- * @returns {API.ScalarSchema<API.InferSchemaType<Descriptor>>}
+ * @param {{ implicit?: API.Scalar }} [options]
+ * @returns {API.ScalarSchema<API.Scalar>}
  */
-export const scalar = (descriptor) => {
-  const type = typeOf(descriptor?.type ?? {})
-  if (type === 'object') {
-    return new Scalar(undefined, $['scalar'], descriptor?.implicit)
-  } else {
-    return new Scalar(type, $[type], descriptor?.implicit)
-  }
-}
+export const scalar = (options) =>
+  new Scalar(undefined, $['scalar'], options?.implicit)
+
+/**
+ * @param {{implicit?: boolean}} [options]
+ * @returns {API.ScalarSchema<boolean>}
+ */
+export const boolean = (options) =>
+  new Scalar('boolean', $['boolean'], options?.implicit)
+
+/**
+ * @param {{implicit?: string}} [options]
+ * @returns {API.ScalarSchema<string>}
+ */
+export const string = (options = {}) =>
+  new Scalar('string', $['string'], options?.implicit)
+
+/**
+ * @param {{implicit: API.Int32}} [options]
+ * @returns {API.ScalarSchema<API.Int32>}
+ */
+export const int32 = (options) =>
+  new Scalar('int32', $['int32'], options?.implicit)
+
+/**
+ * @param {{implicit: API.Int64}} [options]
+ * @returns {API.ScalarSchema<API.Int64>}
+ */
+export const int64 = (options) =>
+  new Scalar('int64', $['int64'], options?.implicit)
+
+/**
+ * @param {{implicit: API.Float32}} options
+ * @returns {API.ScalarSchema<API.Float32>}
+ */
+export const float32 = (options) =>
+  new Scalar('float32', $['float32'], options?.implicit)
+
+/**
+ * @param {{implicit?: Uint8Array}} [options]
+ * @returns {API.ScalarSchema<Uint8Array>}
+ */
+export const bytes = (options) =>
+  new Scalar('bytes', $['bytes'], options?.implicit)
+
+export const decimal = float32
+
+export const integer = int32
 
 /**
  * @param {API.TypeDescriptor} descriptor

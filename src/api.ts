@@ -920,26 +920,6 @@ export interface QueryEffect {
   select: Pattern
 }
 
-export type ScalarDescriptor =
-  | null
-  | { Null: {}; Object?: undefined; Rule?: undefined; Boolean?: undefined }
-  | (BooleanConstructor & { Object?: undefined; Rule?: undefined })
-  | { Boolean: {}; Object?: undefined; Rule?: undefined; Null?: undefined }
-  | boolean
-  | (StringConstructor & { Object?: undefined; Rule?: undefined })
-  | { String: {}; Object?: undefined; Rule?: undefined }
-  | string
-  | (NumberConstructor & { Object?: undefined; Rule?: undefined })
-  | { Int32: {}; Object?: undefined; Rule?: undefined }
-  | { Float32: {}; Object?: undefined; Rule?: undefined }
-  | number
-  | (BigIntConstructor & { Object?: undefined; Rule?: undefined })
-  | bigint
-  | { Int64: {}; Object?: undefined; Rule?: undefined }
-  | (Uint8ArrayConstructor & { Object?: undefined; Rule?: undefined })
-  | { Bytes: {}; Object?: undefined; Rule?: undefined }
-  | Uint8Array
-
 export type ObjectDescriptor = {
   [Key: string]: TypeDescriptor
 }
@@ -954,6 +934,7 @@ export type UnknownDescriptor = {
 }
 
 export type TypeDescriptor =
+  | Scalar
   | ScalarConstructor
   | ScalarDescriptor
   | ObjectDescriptor
@@ -961,7 +942,6 @@ export type TypeDescriptor =
   | EntitySchema<any>
   | ScalarSchema<any>
   | FactSchema<any>
-  | UnknownDescriptor
 
 export type InferDescriptorType<T extends TypeDescriptor> =
   T extends null ? null
@@ -999,15 +979,16 @@ export type ScalarConstructor =
   | BigIntConstructor
   | Uint8ArrayConstructor
 
-// export type ScalarDescriptor = Variant<{
-//   Null: {}
-//   Boolean: {}
-//   String: {}
-//   Int32: {}
-//   Float32: {}
-//   Int64: {}
-//   Bytes: {}
-// }>
+export type ScalarDescriptor = Variant<{
+  Null: {}
+  Boolean: {}
+  String: {}
+  Int32: {}
+  Float32: {}
+  Int64: {}
+  Bytes: {}
+  Reference: {}
+}> & { Object?: undefined; Fact?: undefined; Scalar?: undefined }
 
 export type ModelDescriptor<
   Descriptor extends ObjectDescriptor = ObjectDescriptor,
@@ -1045,6 +1026,33 @@ export type InferSchemaType<T extends TypeDescriptor> =
     }>
   : never
 
+export type InferSchema<T extends TypeDescriptor> =
+  T extends null ? Schema<null>
+  : T extends { Null: {} } ? Schema<null>
+  : T extends BooleanConstructor ? Schema<boolean>
+  : T extends { Boolean: {} } ? Schema<boolean>
+  : T extends boolean ? Schema<boolean, T>
+  : T extends StringConstructor ? Schema<string>
+  : T extends { String: {} } ? Schema<string>
+  : T extends string ? Schema<string, T>
+  : T extends NumberConstructor ? Schema<Int32>
+  : T extends { Int32: {} } ? Schema<Int32>
+  : T extends { Float32: {} } ? Schema<Float32>
+  : T extends number ? Schema<T>
+  : T extends BigIntConstructor ? Schema<Int64>
+  : T extends bigint ? Schema<T>
+  : T extends { Int64: {} } ? Schema<Int64>
+  : T extends Uint8ArrayConstructor ? Schema<Bytes>
+  : T extends { Bytes: {} } ? Schema<Bytes>
+  : T extends Uint8Array ? Schema<Bytes, T>
+  : T extends UnknownDescriptor ? Schema<Scalar>
+  : T extends Schema<infer M, infer V> ? T
+  : T extends EntitySchema<infer M> ? Schema<M, EntityView<M>>
+  : never
+
+export type InferSchemaView<T extends TypeDescriptor> =
+  InferSchema<T> extends Schema<any, infer View> ? View : never
+
 export type InferTypeTerms<T, U = T> = T extends Scalar ?
   Term<U extends Scalar ? U : never>
 : unknown extends T ? Term
@@ -1077,6 +1085,7 @@ export type ScalarTerms<T extends Scalar> = Term<T> | { this: Term<T> }
 
 export interface Schema<Model = unknown, View = Model> {
   selector: InferTypeTerms<Model>
+  where: Conjunct[]
 
   // rule: Deduction
 
@@ -1087,8 +1096,18 @@ export interface Schema<Model = unknown, View = Model> {
   view(match: MatchFrame, selector: InferTypeTerms<Model>): View
 }
 
-export interface ImplicitSchema<T, U = T, View = U | T>
-  extends Schema<T | U, View> {}
+export interface Schema2<Model = unknown, View = Model> {
+  selector: InferTypeTerms<Model>
+  where: Conjunct[]
+
+  // rule: Deduction
+
+  (selector: InferTypeTerms<Model>): RuleApplicationView<View>
+
+  match(selector: InferTypeTerms<Model>): RuleApplicationView<View>
+
+  view(match: MatchFrame, selector: InferTypeTerms<Model>): View
+}
 
 export interface ScalarSchema<T extends Scalar = Scalar> extends Schema<T> {
   type?: TypeName
@@ -1157,13 +1176,10 @@ export interface FactSchema<Model extends FactModel = FactModel, View = Model>
   the?: Model['the']
   members: FactMembers
   selector: InferTypeTerms<Model> & FactTerms
-  rule: Deduction
 
   match(terms?: InferTypeTerms<Model>): RuleApplicationView<View>
 
   (terms?: InferFactTerms<Model>): RuleApplicationView<View>
-
-  // view(match: MatchFrame, selector: InferTypeTerms<Model>): View
 }
 
 export interface EntitySchema<
@@ -1177,7 +1193,6 @@ export interface EntitySchema<
   selector: InferTypeTerms<Model> & EntityTerms
 
   members: Record<string, Schema>
-  rule: Deduction
 
   (terms?: InferTypeTerms<Model>): RuleApplicationView<EntityView<Model>>
   match(terms?: InferTypeTerms<Model>): RuleApplicationView<EntityView<Model>>
@@ -1214,7 +1229,7 @@ export type EntityVariables = SchemaVariables & {
 }
 
 export type SchemaTerms = {
-  [key: string]: Term | SchemaTerms
+  [key in string]: Term | SchemaTerms
 }
 export type EntityTerms = SchemaTerms & {
   this: Term<Entity>
@@ -1265,3 +1280,5 @@ export interface FactMembers {
   of: EntityMember
   is: EntityMember
 }
+
+export type Descriptor = null | boolean

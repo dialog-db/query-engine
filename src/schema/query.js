@@ -3,7 +3,7 @@ import { rule } from '../analyzer.js'
 import * as Task from '../task.js'
 import * as Selector from './selector.js'
 /**
- * @template Model
+ * @template {{}} Model
  * @template View
  * @implements {API.RuleApplicationView<View>}
  */

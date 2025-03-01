@@ -26,7 +26,8 @@ export function* iterateTerms(terms, prefix = '') {
  * @param {Terms} source
  * @returns {Terms}
  */
-export const namespaceTerms = (source) => namespaceTermsWithPrefix(source, '')
+export const namespaceTerms = (source) =>
+  /** @type {Terms} */ (namespaceTermsWithPrefix(source, ''))
 
 /**
  * @template {API.SchemaTerms} Terms

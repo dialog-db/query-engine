@@ -4,56 +4,6 @@ import { scalar } from './schema/lib.js'
 export * from './schema/lib.js'
 
 /**
- * @param {{implicit?: null}} [options]
- * @returns {API.ScalarSchema<null>}
- */
-export const nil = (options) => scalar({ ...options, type: null })
-
-/**
- * @template {API.The} The
- * @param {{implicit?: boolean}} options
- * @returns {API.ScalarSchema<boolean>}
- */
-export const boolean = (options) => scalar({ ...options, type: Boolean })
-
-/**
- * @param {{implicit?: string}} [options]
- * @returns {API.ScalarSchema<string>}
- */
-export const string = (options) => scalar({ ...options, type: String })
-
-/**
- * @template {API.The} The
- * @param {{implicit: API.Int32}} [options]
- * @returns {API.ScalarSchema<API.Int32>}
- */
-export const int32 = (options) => scalar({ ...options, type: { Int32: {} } })
-
-export const integer = int32
-
-/**
- * @param {{implicit: API.Int64}} [options]
- * @returns {API.ScalarSchema<API.Int64>}
- */
-export const int64 = (options) => scalar({ type: { Int64: {} }, ...options })
-
-/**
- * @template {API.The} The
- * @param {{implicit: API.Float32}} options
- * @returns {API.ScalarSchema<API.Float32>}
- */
-export const float32 = (options) =>
-  scalar({ ...options, type: { Float32: {} } })
-
-export const decimal = float32
-
-/**
- * @param {{implicit?: Uint8Array}} options
- * @returns {API.ScalarSchema<Uint8Array>}
- */
-export const bytes = (options) => scalar({ ...options, type: { Bytes: {} } })
-
-/**
  * Rule that checks that given entity has a value of a given type under a given
  * attribute.
  */

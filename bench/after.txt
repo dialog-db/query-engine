@@ -1,0 +1,9 @@
+[0m[38;5;245m    CPU | Apple M3 Max[0m
+[0m[38;5;245mRuntime | Deno 2.1.2 (aarch64-apple-darwin)[0m
+
+[0m[38;5;245mfile:///Users/gozala/Projects/datalog/bench/bench.js[0m
+
+benchmark               time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------------------- ----------------------------- --------------------- --------------------------
+Run query with a join   [0m[33m        10.5 ms[0m          94.9 ([0m[36m  9.7 ms[0m … [0m[35m 12.2 ms[0m)[0m[35m  11.0 ms  12.2 ms  12.2 ms[0m
+

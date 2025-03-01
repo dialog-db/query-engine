@@ -503,6 +503,113 @@ export const testSchema = {
     ])
   },
 
+  'attribute schema': async (assert) => {
+    const title = Schema.attribute({ the: 'content/title', is: String })
+    const hello = { 'article/content': 'Hello, World!' }
+    const goodbye = {
+      'article/content': 'Goodbye, everybody!',
+      'content/title': 'Epilogue',
+    }
+
+    assert.deepEqual(
+      await title({}).select({
+        from: DB.Memory.create([hello, goodbye]),
+      }),
+      ['Epilogue']
+    )
+  },
+
+  'implicit attribute use': async (assert) => {
+    const title = Schema.attribute({ the: 'content/title', is: String })
+    const hello = { 'article/content': 'Hello, World!' }
+    const goodbye = {
+      'article/content': 'Goodbye, everybody!',
+      'content/title': 'Epilogue',
+    }
+    const implicitTitle = title.implicit('Untitled')
+
+    assert.throws(
+      () =>
+        Analyzer.plan({
+          match: { this: $.this },
+          rule: {
+            match: { this: $.this },
+            // when: [{ not: { match: { of: $.this, the: 'content/title' } } }],
+            when: [implicitTitle({ of: $.this })],
+          },
+        }),
+      / Unbound \?of variable referenced from { not: { match: { the: "content\/title", of: \$.of } } }/
+    )
+  },
+
+  'implicit attribute schema': async (assert) => {
+    const title = Schema.attribute({ the: 'content/title', is: String })
+    const hello = { 'article/content': 'Hello, World!' }
+    const goodbye = {
+      'article/content': 'Goodbye, everybody!',
+      'content/title': 'Epilogue',
+    }
+    const implicitTitle = title.implicit('Untitled')
+
+    assert.deepEqual(
+      await implicitTitle({
+        of: Link.of(hello),
+      }).select({
+        from: DB.Memory.create([hello, goodbye]),
+      }),
+      ['Untitled']
+    )
+
+    assert.deepEqual(
+      await implicitTitle({
+        of: Link.of(goodbye),
+      }).select({
+        from: DB.Memory.create([hello, goodbye]),
+      }),
+      ['Epilogue']
+    )
+  },
+
+  'implicit object schema': async (assert) => {
+    const MetaData = Schema.entity({
+      name: String,
+      version: Number,
+    })
+
+    const Meta = Schema.attribute({ the: 'meta/data', is: MetaData })
+    const ImplicitMeta = Meta.implicit({
+      this: Link.of({}),
+      name: 'Test',
+      version: 2,
+    })
+
+    // This is interesting case. Not excludes matches instead of adding new ones
+    // however if there was nothing to exclude it will contain implicit bindings.
+
+    const result = await ImplicitMeta({
+      of: Link.of({ name: 'test ' }),
+    }).select({
+      from: DB.Memory.create([
+        { name: 'test' },
+        // {
+        //   'meta/data': {
+        //     this: Link.of('explicit'),
+        //     name: 'explicit',
+        //     version: 1,
+        //   },
+        // },
+      ]),
+    })
+
+    assert.deepEqual(result, [
+      {
+        this: Link.of({}),
+        name: 'Test',
+        version: 2,
+      },
+    ])
+  },
+
   'skip define implicit attributes': async (assert) => {
     const title = Schema.fact({
       the: 'content/title',

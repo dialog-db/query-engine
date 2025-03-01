@@ -74,9 +74,9 @@ export class Scalar extends Callable {
 
 /**
  * @template {API.Scalar} [T=API.Scalar]
- * @implements {API.Schema<T, T>}
+ * @implements {API.ScalarSchema<T>}
  */
-export class The extends Callable {
+export class Literal extends Callable {
   /**
    * @param {T} literal
    * @param {API.Term<T>} selector
