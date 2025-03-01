@@ -1054,11 +1054,11 @@ class Join {
     //    other conjuncts.
     for (const source of conjuncts) {
       const conjunct = circuit.create(source)
-      if (conjunct instanceof Not) {
-        negation.push(conjunct)
-      } else {
-        assertion.push(conjunct)
-      }
+      // if (conjunct instanceof Not) {
+      //   negation.push(conjunct)
+      // } else {
+      assertion.push(conjunct)
+      // }
 
       total += conjunct.cost ?? 0
 
@@ -1230,8 +1230,8 @@ class Join {
         if (waiting) {
           for (const assertion of waiting) {
             let unblock = true
-            // Go over all the cells in thi assertion that was blocked on this
-            // variable and check it can be planned now.
+            // Go over all the cells in this assertion that was blocked on this
+            // variable and check if it can be planned now.
             for (const [cell, cost] of assertion.cells) {
               const variable = resolve(local, cell)
               // If cell is required and is still not available, we can't
@@ -1266,6 +1266,12 @@ class Join {
 
     return new JoinPlan(
       ordered,
+      // TODO: We need make sure that negations can actually be planned, even
+      // though we planned all assertions we may still have negation referring
+      // to unbound variable.
+      // 🤔 I think we don't need to make negations last, we just need to make
+      // sure their bindings are bound, because no other clause could produce
+      // more matches for existing bindings they can only reduce them.
       this.negation.map((negation) => negation.plan(local)),
       context.references,
       cost
@@ -1301,11 +1307,10 @@ class Not {
     // Not's cost includes underlying operation
     const cells = new Map()
     for (const [variable, cost] of operation.cells) {
-      // Not has no output but all the inputs must be bound before it can be
-      // evaluated.
-      if (cost > 0) {
-        cells.set(variable, cost)
-      }
+      // Not marks all the cells as required inputs as they
+      // need to be bound before not can be evaluated, since it
+      // only eliminates matches.
+      cells.set(variable, Infinity)
     }
 
     return new this(circuit, operation, cells)
@@ -1348,6 +1353,10 @@ class Not {
   address(by) {
     // Return null because we don't want to address by the negation.
     return null
+  }
+
+  toDebugString() {
+    return `{ not: ${toDebugString(this.constraint)} }`
   }
 }
 

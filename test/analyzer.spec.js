@@ -317,14 +317,14 @@ export const testAnalyzer = {
           when: {
             branch1: [
               { match: { the: 'status', of: $.doc, is: 'draft' } },
-              { match: { the: 'author', of: $.doc, is: $.user } },
               { not: { match: { the: 'deleted', of: $.doc, is: true } } },
+              { match: { the: 'author', of: $.doc, is: $.user } },
             ],
             branch2: [
               { match: { the: 'status', of: $.doc, is: 'draft' } },
+              { not: { match: { the: 'deleted', of: $.doc, is: true } } },
               { match: { the: 'team', of: $.doc, is: $.team } },
               { not: { match: { the: 'archived', of: $.team, is: true } } },
-              { not: { match: { the: 'deleted', of: $.doc, is: true } } },
             ],
           },
         },
@@ -1358,5 +1358,37 @@ export const testAnalyzer = {
         ],
       },
     })
+  },
+
+  'negation references are inputs': (assert) => {
+    assert.throws(() => {
+      const plan = Analyzer.plan({
+        match: { q: $.q },
+        rule: {
+          match: { q: $.q },
+          when: [
+            {
+              not: { match: { the: 'status/ready', of: $.q } },
+            },
+          ],
+        },
+      })
+    }, /Unbound \?q variable/)
+  },
+  'formula input is required': (assert) => {
+    assert.throws(() => {
+      const plan = Analyzer.plan({
+        match: { q: $.q },
+        rule: {
+          match: { q: $.q },
+          when: [
+            {
+              match: { of: $.q, is: 'string' },
+              operator: 'data/type',
+            },
+          ],
+        },
+      })
+    }, /Unbound \?q variable referenced from { match: { of: \$.q, is: "string" }, operator: "data\/type" }/)
   },
 }
