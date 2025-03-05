@@ -20,4 +20,8 @@ export class Schema extends Callable {
   match(selector) {
     return []
   }
+
+  get Schema() {
+    return this
+  }
 }

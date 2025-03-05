@@ -535,7 +535,7 @@ export const testSchema = {
           rule: {
             match: { this: $.this },
             // when: [{ not: { match: { of: $.this, the: 'content/title' } } }],
-            when: [implicitTitle({ of: $.this })],
+            when: [implicitTitle({ of: { this: $.this } })],
           },
         }),
       / Unbound \?of variable referenced from { not: { match: { the: "content\/title", of: \$.of } } }/
@@ -553,7 +553,7 @@ export const testSchema = {
 
     assert.deepEqual(
       await implicitTitle({
-        of: Link.of(hello),
+        of: { this: Link.of(hello) },
       }).select({
         from: DB.Memory.create([hello, goodbye]),
       }),
@@ -562,7 +562,7 @@ export const testSchema = {
 
     assert.deepEqual(
       await implicitTitle({
-        of: Link.of(goodbye),
+        of: { this: Link.of(goodbye) },
       }).select({
         from: DB.Memory.create([hello, goodbye]),
       }),
@@ -585,27 +585,41 @@ export const testSchema = {
 
     // This is interesting case. Not excludes matches instead of adding new ones
     // however if there was nothing to exclude it will contain implicit bindings.
+    const withoutMeta = { name: 'with meta' }
+    const withMeta = {
+      name: 'without meta',
+      'meta/data': {
+        name: 'explicit',
+        version: 1,
+      },
+    }
+    const db = DB.Memory.create([withMeta, withoutMeta])
 
-    const result = await ImplicitMeta({
-      of: Link.of({ name: 'test ' }),
+    const implicit = await ImplicitMeta({
+      of: { this: Link.of(withoutMeta) },
     }).select({
-      from: DB.Memory.create([
-        { name: 'test' },
-        // {
-        //   'meta/data': {
-        //     this: Link.of('explicit'),
-        //     name: 'explicit',
-        //     version: 1,
-        //   },
-        // },
-      ]),
+      from: db,
     })
 
-    assert.deepEqual(result, [
+    assert.deepEqual(implicit, [
       {
         this: Link.of({}),
         name: 'Test',
         version: 2,
+      },
+    ])
+
+    const explicit = await await ImplicitMeta({
+      of: { this: Link.of(withMeta) },
+    }).select({
+      from: db,
+    })
+
+    assert.deepEqual(explicit, [
+      {
+        this: Link.of(withMeta['meta/data']),
+        name: 'explicit',
+        version: 1,
       },
     ])
   },
@@ -639,52 +653,173 @@ export const testSchema = {
     )
   },
 
-  // 'skip entity maps hypothetical': async (assert) => {
-  //   const email = Schema.attribute({ Email: { address: String } }).when(
-  //     (email) => [
-  //       {
-  //         match: { text: email, pattern: '*@*.*' },
-  //         operator: 'text/like',
-  //       },
-  //     ]
-  //   )
+  'skip entity maps hypothetical': async (assert) => {
+    // const Email = Schema.attribute({
+    //   the: 'email/address',
+    //   is: String,
+    // }).when((email) => [
+    //   {
+    //     match: { text: email, pattern: '*@*.*' },
+    //     operator: 'text/like',
+    //   },
+    // ])
 
-  //   const Email = Schema.value().when(email => [
-  //     Schema.string
-  //     {
-  //       match: { text: email, pattern: '*@*.*' },
-  //       operator: 'text/like'
-  //     }
-  //   ])
+    const EmailAddress = Schema.attribute({
+      the: 'email/address',
+      is: String,
+    })
 
-  //   const Person = Schema.entity({
-  //     name: Schema.string().from("person"),
-  //     emain: Schema
+    const Like =
+      /**
+       * @param {object} terms
+       * @param {DB.Term<string>} terms.text
+       * @param {DB.Term<string>} terms.pattern
+       */
+      ({ text, pattern }) =>
+        /** @type {const} */ ({
+          match: { text, pattern },
+          operator: 'text/like',
+        })
 
-  //     Person: { name: String },
-  //     Email: {}
-  //   })
+    const Email = Schema.entity({ email: String }).when(
+      ({ this: of, email }) => [
+        EmailAddress({ of, is: email }),
+        Like({ text: email, pattern: '*@*.*' }),
+      ]
+    )
 
-  //   const AccountID = Schema.for({ domain: {},  })
+    const Person = Schema.entity({
+      name: Schema.string(),
+      email: Email,
 
-  //   Schema.string().for({ the: `account/id`, type: Number })
+      Person: { name: String },
+    })
+  },
 
-  //   const FirstName = Schema.person.firstName({ type: String })
-  //   const LastName = Schema.person.lastName({ type: String })
+  'joins through relation records': async (assert) => {
+    const People = Schema.entity({
+      name: String,
+    })
 
-  //   attribute({ Account: { id: Number } })
-  //   const firstName = Schema.attribute({ Person: { firstName: String } })
-  //   const lastName = Schema.attribute({ Person: { lastName: String } })
+    const Manages = Schema.entity({
+      manager: People,
+      manages: People,
+    })
 
-  //   const Account = Schema.entity({
-  //     id: Schema.account.id({ type: Number }),
-  //     firstName: Schema.person.firstName({ type: String }),
-  //     lastName: Schema.person.lastName({ type: String }),
-  //     email: Schema.email
-  //       .address({ type: String })
-  //       .when((email) => [
-  //         { match: { text: email, pattern: '*@*.*' }, operator: 'text/like' },
-  //       ]),
-  //   })
-  // },
+    const manager = { name: 'Bitdiddle Ben' }
+    const manages = { name: 'Hacker Alyssa P' }
+    const relation = { manager: Link.of(manager), manages: Link.of(manages) }
+    const data = DB.Memory.create([manager, manages, relation])
+
+    assert.deepEqual(await Manages().select({ from: data }), [
+      {
+        this: Link.of(relation),
+        manager: {
+          ...manager,
+          this: Link.of(manager),
+        },
+        manages: {
+          ...manages,
+          this: Link.of(manages),
+        },
+      },
+    ])
+  },
+
+  'join through direct links': async (assert) => {
+    const name = Schema.attribute({ the: 'person/name', is: String })
+    const Employee = Schema.entity({
+      name,
+    })
+
+    const manages = Schema.attribute({ the: 'employee/manages', is: Employee })
+
+    const Manager = Schema.entity({
+      name,
+      manages,
+    })
+
+    const employee = { 'person/name': 'Hacker Alyssa P' }
+    const manager = {
+      'person/name': 'Bitdiddle Ben',
+      'employee/manages': Link.of(employee),
+    }
+    const data = DB.Memory.create([manager, employee])
+
+    assert.deepEqual(await Manager().select({ from: data }), [
+      {
+        this: Link.of(manager),
+        name: manager['person/name'],
+        manages: {
+          this: Link.of(employee),
+          name: employee['person/name'],
+        },
+      },
+    ])
+  },
+
+  'anti joins': async (assert) => {
+    const People = Schema.entity({
+      name: String,
+    })
+
+    const Manages = Schema.entity({
+      manager: People,
+      manages: People,
+    })
+
+    const manager = { name: 'Bitdiddle Ben' }
+    const manages = { name: 'Hacker Alyssa P' }
+    const relation = { manager: Link.of(manager), manages: Link.of(manages) }
+    const data = DB.Memory.create([manager, manages, relation])
+
+    const Unmanaged = People.when((people) => [
+      People(people),
+      { not: { match: { the: 'manages', is: people.this } } },
+      // Manages.not({
+      // manages: people,
+      // manager: { this: $._, name: $._ },
+      // }),
+    ])
+
+    assert.deepEqual(await Unmanaged().select({ from: data }), [
+      {
+        ...manager,
+        this: Link.of(manager),
+      },
+    ])
+  },
+
+  'skip anti-join through direct links': async (assert) => {
+    const name = Schema.attribute({ the: 'person/name', is: String })
+    const Employee = Schema.entity({
+      name,
+    })
+
+    const manages = Schema.attribute({ the: 'employee/manages', is: Employee })
+
+    const Manager = Schema.entity({
+      name,
+      manages,
+    })
+
+    const Unmanaged = Employee.when((employee) => [
+      Employee(employee),
+      Manager.not(employee),
+    ])
+
+    const employee = { 'person/name': 'Hacker Alyssa P' }
+    const manager = {
+      'person/name': 'Bitdiddle Ben',
+      'employee/manages': Link.of(employee),
+    }
+    const data = DB.Memory.create([manager, employee])
+
+    assert.deepEqual(await Unmanaged().select({ from: data }), [
+      {
+        this: Link.of(manager),
+        name: manager['person/name'],
+      },
+    ])
+  },
 }

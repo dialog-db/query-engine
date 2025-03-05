@@ -66,3 +66,20 @@ export const deriveMatch = (source) => {
 
   return match
 }
+
+/**
+ * @template {API.SchemaTerms} Terms
+ * @param {Terms} source
+ * @returns {Record<string, API.Term>}
+ */
+export const deriveApplication = (source) => {
+  /** @type {Record<string, API.Variable>} */
+  const terms = {}
+  for (const [key, term] of iterateTerms(source)) {
+    if (Variable.is(term)) {
+      terms[key] = term
+    }
+  }
+
+  return terms
+}

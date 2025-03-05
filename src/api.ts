@@ -482,10 +482,10 @@ export type Rule<Match extends Conclusion = Conclusion> =
 
 export interface Deduction<Match extends Conclusion = Conclusion> {
   readonly match: Match
-  when?: When
+  readonly when?: When
 
-  repeat?: undefined
-  while?: undefined
+  readonly repeat?: undefined
+  readonly while?: undefined
 }
 
 export type Induction<
@@ -530,7 +530,7 @@ export interface Negation {
 
 export type Conjunct = Constraint | Negation
 
-export type Every = [Conjunct, ...Conjunct[]]
+export type Every = readonly [Conjunct, ...Conjunct[]]
 export interface Some {
   readonly [Case: string]: Every
 }
@@ -756,7 +756,10 @@ export type RuleBindings<Case extends Conclusion = Conclusion> = {
 }
 
 export interface RuleApplication<Match extends Conclusion = Conclusion> {
-  match: Partial<RuleBindings<Match>>
+  // ⚠️ This is actually Partial<RuleBindings<Match>> but we still type it
+  // without `Partial` because at the type level we have no good way of
+  // omitting variables that could be ignored
+  match: RuleBindings<Match>
   rule: Rule<Match>
 }
 
@@ -942,6 +945,7 @@ export type TypeDescriptor =
   | EntitySchema<any>
   | ScalarSchema<any>
   | FactSchema<any>
+  | Schema<any, any>
 
 export type InferDescriptorType<T extends TypeDescriptor> =
   T extends null ? null
@@ -1020,6 +1024,7 @@ export type InferSchemaType<T extends TypeDescriptor> =
   : T extends ModelDescriptor<infer Descriptor> ? InferSchemaType<Descriptor>
   : T extends [infer Element] ? Element[]
   : T extends FactSchema<infer Fact> ? Required<Fact>['is']
+  : T extends Schema<any, infer View> ? View
   : T extends ObjectDescriptor ?
     EntityModel<{
       [Key in keyof T]: InferSchemaType<T[Key]>
@@ -1089,9 +1094,9 @@ export interface Schema<Model = unknown, View = Model> {
 
   // rule: Deduction
 
-  (selector: InferTypeTerms<Model>): MatchView<Model>
+  (selector: InferTypeTerms<Model>): MatchView<View>
 
-  match(selector: InferTypeTerms<Model>): MatchView<Model>
+  match(selector: InferTypeTerms<Model>): MatchView<View>
 
   view(match: MatchFrame, selector: InferTypeTerms<Model>): View
 }
@@ -1180,6 +1185,22 @@ export interface FactSchema<Model extends FactModel = FactModel, View = Model>
   match(terms?: InferTypeTerms<Model>): RuleApplicationView<View>
 
   (terms?: InferFactTerms<Model>): RuleApplicationView<View>
+}
+
+export interface AttributeSchema<T extends The, Model, View>
+  extends Schema<{ of: { this: Entity }; is: Model }, View> {
+  the: T
+  is: Schema<Model, View>
+
+  implicit(value: View): AttributeSchema<T, Model, View>
+
+  match(
+    terms?: InferTypeTerms<{ of: { this: Entity }; is: Model }>
+  ): RuleApplicationView<View>
+
+  (
+    terms?: InferTypeTerms<{ of: { this: Entity }; is: Model }>
+  ): RuleApplicationView<View>
 }
 
 export interface EntitySchema<

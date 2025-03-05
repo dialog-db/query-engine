@@ -20,8 +20,8 @@ const toValueSelector = (selector) =>
  * @template {string} The
  * @template {{}|null} Model
  * @template View
- * @extends {Schema<{ of: API.Entity, is: Model }>}
- * @implements {API.Schema<{ of: API.Entity, is: Model }, View>}
+ * @extends {Schema<{ of: {}, is: Model }>}
+ * @implements {API.Schema<{ of: {}, is: Model }, View>}
  */
 export class Attribute extends Schema {
   /**
@@ -34,8 +34,12 @@ export class Attribute extends Schema {
     this.the = the
     this.is = is
 
+    this.members = {
+      is: is,
+    }
+
     this.selector = {
-      of: $.of,
+      of: { this: /** @type {API.Variable<API.Entity>} */ ($.of) },
       is: Selector.namespaceTerms({
         is: is.selector,
       }).is,
@@ -46,22 +50,50 @@ export class Attribute extends Schema {
       {
         match: {
           the,
-          of: this.selector.of,
+          of: this.selector.of.this,
           is: toValueSelector(this.selector.is),
         },
       },
       ...is.match(this.selector.is),
     ]
   }
+  get Fact() {
+    return this
+  }
 
   /**
-   * @returns {API.Schema<{ of: API.Entity, is: Model }, View>}
+   * @param {{of?: { this?: API.Term<API.Entity> }, is?: API.InferTypeTerms<Model> }} [terms]
+   */
+  match2(terms = {}) {
+    const of = terms.of?.this
+    const is = terms.is
+
+    const factSelector = {
+      match: {
+        the: this.the,
+        ...(of ? { of } : null),
+        ...(is ? { is: toValueSelector(/** @type {{}} */ (is)) } : null),
+      },
+    }
+
+    const isSelector = is ? this.is.match(is) : []
+
+    const match = Selector.deriveMatch(terms)
+
+    return rule({
+      match,
+      when: [factSelector, ...isSelector],
+    }).apply(match)
+  }
+
+  /**
+   * @returns {API.Schema<{ of: {}, is: Model }, View>}
    */
   get schema() {
     return this
   }
   /**
-   * @param {{of?: API.Term<API.Entity>, is?: API.InferTypeTerms<Model> }} [selector]
+   * @param {{of?: { this?: API.Term<API.Entity> }, is?: API.InferTypeTerms<Model> }} [selector]
    */
   match(selector) {
     return new Query({
@@ -83,11 +115,23 @@ export class Attribute extends Schema {
 
   /**
    * @param {API.MatchFrame} bindings
-   * @param {{ of: API.Term<API.Entity>, is: API.InferTypeTerms<Model> }} selector
+   * @param {{ of: {this: API.Term<API.Entity>}, is: API.InferTypeTerms<Model> }} selector
    * @returns {View}
    */
   view(bindings, selector) {
     return this.is.view(bindings, selector.is)
+  }
+
+  /**
+   * @param {(variables: API.InferTypeVariables<Model>) => Iterable<API.Conjunct|API.MatchView<unknown>>} derive
+   * @returns {API.Schema<{ of: {this: API.Entity}, is: Model }, View>} derive
+   */
+  when(derive) {
+    return this
+  }
+
+  get [Symbol.toPrimitive]() {
+    return this.the
   }
 }
 
@@ -95,8 +139,8 @@ export class Attribute extends Schema {
  * @template {string} The
  * @template {{}|null} Model
  * @template View
- * @extends {Schema<{ of: API.Entity, is: Model }>}
- * @implements {API.Schema<{ of: API.Entity, is: Model }, View>}
+ * @extends {Schema<{ of: { this: API.Entity }, is: Model }>}
+ * @implements {API.Schema<{ of: { this: API.Entity }, is: Model }, View>}
  */
 class ImplicitAttribute extends Schema {
   /**
@@ -111,9 +155,9 @@ class ImplicitAttribute extends Schema {
     this.is = is
     this.default = implicit
 
-    /** @type {{of: API.Term<API.Entity>, is: API.InferTypeTerms<Model>}} */
+    /** @type {{of: { this: API.Term<API.Entity> }, is: API.InferTypeTerms<Model>}} */
     this.selector = {
-      of: $.of,
+      of: { this: $.of },
       is: Selector.namespaceTerms({
         is: is.selector,
       }).is,
@@ -124,13 +168,13 @@ class ImplicitAttribute extends Schema {
   }
 
   /**
-   * @returns {API.Schema<{ of: API.Entity, is: Model }, View>}
+   * @returns {API.Schema<{ of: {}, is: Model }, View>}
    */
   get schema() {
     return this
   }
   /**
-   * @param {{of?: API.Term<API.Entity>, is?: API.InferTypeTerms<Model> }} [selector]
+   * @param {{of?: { this?: API.Term<API.Entity> }, is?: API.InferTypeTerms<Model> }} [selector]
    * @returns {API.RuleApplicationView<View>}
    */
   match(selector) {
@@ -146,7 +190,7 @@ class ImplicitAttribute extends Schema {
 
   /**
    * @param {API.MatchFrame} bindings
-   * @param {{of: API.Term<API.Entity>, is: API.InferTypeTerms<Model> }} selector
+   * @param {{of: { this: API.Term<API.Entity> }, is: API.InferTypeTerms<Model> }} selector
    * @returns {View}
    */
   view(bindings, selector) {
@@ -163,10 +207,10 @@ class ImplicitQuery {
   /**
    * @param {object} source
    * @param {string} source.the
-   * @param {{of?: API.Term<API.Entity>, is?: API.InferTypeTerms<Model>}} [source.terms]
-   * @param {API.Schema<{of: API.Entity, is: Model}, View>} source.schema
+   * @param {{of?: { this?: API.Term<API.Entity> }, is?: API.InferTypeTerms<Model>}} [source.terms]
+   * @param {API.Schema<{of: {}, is: Model}, View>} source.schema
    * @param {API.Schema<Model, View>} source.is
-   * @param {{of: API.Term<API.Entity>, is: API.InferTypeTerms<Model>}} source.selector
+   * @param {{of: { this: API.Term<API.Entity> }, is: API.InferTypeTerms<Model>}} source.selector
    * @param {View} source.implicit
    */
   constructor({ terms, the, schema, is, implicit, selector }) {
@@ -188,15 +232,21 @@ class ImplicitQuery {
       match,
       when: {
         Explicit: /** @type {API.Every} */ ([
-          { match: { the, of: selector.of, is: toValueSelector(selector.is) } },
+          {
+            match: {
+              the,
+              of: selector.of.this,
+              is: toValueSelector(selector.is),
+            },
+          },
           ...is.match(selector.is),
         ]),
 
         Implicit: /** @type {API.Every} */ ([
-          { not: { match: { the, of: selector.of } } },
+          { not: { match: { the, of: selector.of.this } } },
           // effectively mark of as input
           {
-            match: { of: selector.of, is: 'reference' },
+            match: { of: selector.of.this, is: 'reference' },
             operator: 'data/type',
           },
           ...deriveBindings(

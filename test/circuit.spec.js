@@ -36,22 +36,60 @@ export const testSyntax = {
       ],
     })
 
-    const [name, age] = select.disjuncts.when.assertion
-    console.log(name.address($.name))
-    console.log(age.address($.age))
-    console.log(JSON.stringify(select.form(), null, 2))
-    return console.log(JSON.stringify(name.form(), null, 2))
-
-    return
-
     assert.deepEqual(select.form(), {
       when: [
         {
           match: {
             the: 'person/name',
+            of: {
+              the: $.person,
+              as: {
+                port: 'this',
+                distance: 0,
+              },
+            },
             is: {
               the: $.name,
-              as: ['port'],
+              as: {
+                match: {
+                  the: 'person/name',
+                  of: {
+                    port: 'this',
+                    distance: 0,
+                  },
+                  is: Syntax.ROUTE_TARGET,
+                },
+                fact: {},
+                distance: 0,
+              },
+            },
+          },
+          fact: {},
+        },
+        {
+          match: {
+            the: 'person/age',
+            of: {
+              the: $.person,
+              as: {
+                port: 'this',
+                distance: 0,
+              },
+            },
+            is: {
+              the: $.age,
+              as: {
+                match: {
+                  the: 'person/age',
+                  of: {
+                    port: 'this',
+                    distance: 0,
+                  },
+                  is: Syntax.ROUTE_TARGET,
+                },
+                fact: {},
+                distance: 0,
+              },
             },
           },
           fact: {},

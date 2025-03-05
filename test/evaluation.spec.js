@@ -79,7 +79,7 @@ export const testEvaluation = {
       },
     })
 
-    const result = await Task.perform(plan.query({ source: db }))
+    const result = await Task.perform(plan.query({ from: db }))
 
     assert.deepEqual(result, [
       {
@@ -134,7 +134,7 @@ export const testEvaluation = {
       })
       .plan()
 
-    const result = await Task.perform(plan.query({ source: db }))
+    const result = await Task.perform(plan.query({ from: db }))
 
     assert.deepEqual(result, [
       {
@@ -260,7 +260,7 @@ export const testEvaluation = {
       ],
     })
 
-    const result = await rule.apply().query({ source: db })
+    const result = await rule.apply().select({ source: db })
 
     console.log(result)
   },

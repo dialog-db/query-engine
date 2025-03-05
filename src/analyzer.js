@@ -4,7 +4,7 @@ import * as Terms from './terms.js'
 import * as Bindings from './bindings.js'
 import * as Term from './term.js'
 import { Constant, Link, matchFact, Var, $, _ } from './lib.js'
-import * as Formula from './formula.js'
+import { operators } from './formula.js'
 import { add } from './selector.js'
 import { indent, li } from './format.js'
 import * as Task from './task.js'
@@ -434,7 +434,7 @@ class FormulaApplication {
     const { from, to, source } = this
     const operator =
       /** @type {(input: API.Operand) => Iterable<API.Operand>} */
-      (source.formula ?? Formula.operators[this.source.operator])
+      (source.formula ?? operators[this.source.operator])
 
     const matches = []
     for (const frame of context.selection) {
@@ -694,9 +694,9 @@ class RuleApplication {
 
   /**
    * @param {object} input
-   * @param {API.Querier} input.source
+   * @param {API.Querier} input.from
    */
-  query(input) {
+  select(input) {
     return Task.perform(this.plan().query(input))
   }
 
@@ -1171,7 +1171,13 @@ class Join {
         // We resolve the target of the cell as we may have multiple different
         // references to the same variable.
         const reference = resolve(local, variable)
-        if (cost >= Infinity && !isBound(local, reference)) {
+        if (
+          cost >= Infinity &&
+          !isBound(local, reference) &&
+          // If it is _ we don't actually need it perhaps
+          // TODO: Evaluate if this is correct ❓
+          reference !== $._
+        ) {
           requires++
           const waiting = blocked.get(reference)
           if (waiting) {
@@ -1519,6 +1525,7 @@ class Selector {
    * @template {API.Selector} Selector
    * @param {Selector} selector
    * @param {Iterable<API.MatchFrame>} frames
+   * @returns {API.InferBindings<Selector>[]}
    */
   static select(selector, frames) {
     /** @type {API.InferBindings<Selector>[]} */
@@ -1759,9 +1766,9 @@ class RuleApplicationPlan {
 
   /**
    * @param {object} input
-   * @param {API.Querier} input.source
+   * @param {API.Querier} input.from
    */
-  *query({ source }) {
+  *query({ from: source }) {
     const { match: selector } = this
 
     const frames = yield* this.evaluate({
@@ -1769,10 +1776,15 @@ class RuleApplicationPlan {
       selection: [new Map()],
     })
 
-    return Selector.select(
-      /** @type {API.RuleApplication<Match> & API.Selector} */ (selector),
-      frames
-    )
+    return Selector.select(/** @type {Match} */ (selector), frames)
+  }
+
+  /**
+   * @param {object} source
+   * @param {API.Querier} source.from
+   */
+  select(source) {
+    return Task.perform(this.query(source))
   }
 
   toDebugString() {
@@ -1852,8 +1864,8 @@ class Negate {
   }
 }
 
-const NOTHING = Link.of({ '/': 'bafkqaaa' })
-const ROUTE_TARGET = Link.of({ '?': NOTHING })
+export const NOTHING = Link.of({ '/': 'bafkqaaa' })
+export const ROUTE_TARGET = Link.of({ '?': NOTHING })
 
 /**
  * Connections represent some query expression containing a variable by which we

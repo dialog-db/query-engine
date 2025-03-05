@@ -1,25 +1,21 @@
 import * as API from '../api.js'
-import { Callable } from './callable.js'
 import * as Term from '../term.js'
 import * as Variable from '../variable.js'
+import { Schema } from './schema.js'
 
 /**
  * @template {API.Scalar} [T=API.Scalar]
+ * @extends Schema<T>
  * @implements {API.ScalarSchema<T>}
  */
-export class Scalar extends Callable {
+export class Scalar extends Schema {
   /**
    * @param {API.TypeName|undefined} type
    * @param {API.Term<T>} selector
    * @param {T} [implicit]
    */
   constructor(type, selector, implicit) {
-    super(
-      /**
-       * @param {API.ScalarTerms<T>} term
-       */
-      (term) => this.match(term)
-    )
+    super()
     this.type = type
     this.implicitValue = implicit
 
@@ -74,20 +70,16 @@ export class Scalar extends Callable {
 
 /**
  * @template {API.Scalar} [T=API.Scalar]
+ * @extends {Schema<T>}
  * @implements {API.ScalarSchema<T>}
  */
-export class Literal extends Callable {
+export class Literal extends Schema {
   /**
    * @param {T} literal
    * @param {API.Term<T>} selector
    */
   constructor(literal, selector) {
-    super(
-      /**
-       * @param {API.ScalarTerms<T>} term
-       */
-      (term) => this.match(term)
-    )
+    super()
     this.literal = literal
     this.selector = /** @type {API.InferTypeTerms<T> & API.Term<T>} */ (
       selector

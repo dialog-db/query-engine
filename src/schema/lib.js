@@ -69,10 +69,20 @@ export const build = (descriptor) => {
  * @param {object} source
  * @param {The} source.the
  * @param {Descriptor} source.is
- * @returns {Attribute<The, API.InferSchemaType<Descriptor>, API.InferSchemaView<Descriptor>>}
+ * @returns {API.AttributeSchema<The, API.InferSchemaType<Descriptor>, API.InferSchemaView<Descriptor>>}
  */
 export const attribute = ({ the, is }) => new Attribute({ the, is: build(is) })
 
+/**
+ * @template {string} The
+ * @template {API.TypeDescriptor} Descriptor
+ * @param {The} the
+ * @param {Descriptor} type
+ * @returns {API.AttributeSchema<The, API.InferSchemaType<Descriptor>, API.InferSchemaView<Descriptor>> & unique symbol}
+ */
+export const the = (the, type) =>
+  /** @type {any} */
+  (new Attribute({ the, is: build(type) }))
 /**
  * @template {API.TypeDescriptor} Descriptor
  * @param {Descriptor} source
@@ -151,6 +161,7 @@ export const fact = (descriptor) => {
     )
   )
 }
+
 /**
  * @template {API.ObjectDescriptor} Descriptor
  * @param {Descriptor} descriptor
