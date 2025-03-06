@@ -533,7 +533,7 @@ class FormulaApplication {
  * @template {API.Conclusion} [Match=API.Conclusion]
  * @implements {API.MatchRule<Match>}
  */
-class RuleApplication {
+export class RuleApplication {
   /**
    * @template {API.Conclusion} [Match=API.Conclusion]
    * @param {Circuit} circuit

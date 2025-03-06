@@ -1,7 +1,5 @@
-import { $, Memory, API, plan } from 'datalogia'
-import * as Link from '../src/link.js'
-import * as Schema from '../src/schema.js'
-import * as Syntax from '../src/syntax.js'
+import { Memory } from 'datalogia'
+import { assert, Fact, Text } from '../src/syntax.js'
 
 const db = Memory.create([
   {
@@ -13,213 +11,90 @@ const db = Memory.create([
  * @type {import('entail').Suite}
  */
 export const testConstraints = {
-  like: async (assert) => {
-    // assert.deepEqual(
-    //   DB.query(db, {
-    //     select: {
-    //       word,
-    //     },
-    //     where: [DB.match([DB._, 'word', word]), DB.like(word, 'piz%')],
-    //   }),
-    //   [{ word: 'pizza' }]
-    // )
-
-    // assert.deepEqual(
-    //   DB.query(db, {
-    //     select: {
-    //       word,
-    //     },
-    //     where: [DB.match([DB._, 'word', word]), DB.like(word, 'Piz%')],
-    //   }),
-    //   [{ word: 'pizza' }]
-    // )
-
-    // assert.deepEqual(
-    //   DB.query(db, {
-    //     select: {
-    //       word,
-    //     },
-    //     where: [DB.match([DB._, 'word', word]), DB.like(word, 'Piz.*')],
-    //   }),
-    //   []
-    // )
-
-    const rule = Syntax.rule({
-      match: { word: $.word },
-      when: [
-        Syntax.Fact({ the: 'word', is: $.words }),
-        Syntax.Fact({ of: $.words, is: $.word }),
-        Syntax.Text.match({
-          text: $.word,
+  like: async (test) => {
+    const Piz = assert({ word: String })
+      .with({ words: Object })
+      .when(({ word, words }) => [
+        Fact({ the: 'word', is: words }),
+        Fact({ of: words, is: word }),
+        Text.match({
+          this: word,
           like: 'piz*a',
         }),
-        // Syntax.apply('text/like', { text: $.word, pattern: 'piz*a' }),
-        // { match: { the: 'word', is: $.words } },
-        // { match: { of: $.words, is: $.word } },
-        // { match: { text: $.word, pattern: 'piz*a' }, operator: 'text/like' },
-      ],
-    })
+      ])
 
-    assert.deepEqual(await rule.apply({ word: $.q }).select({ from: db }), [
-      { word: 'pizza' },
-    ])
-
-    // assert.deepEqual(
-    //   await DB.query(db, {
-    //     select: {
-    //       word,
-    //     },
-    //     where: [
-    //       DB.match([DB._, 'word', words]),
-    //       DB.match([words, DB._, word]),
-    //       DB.like(word, 'piz?a'),
-    //     ],
-    //   }),
-    //   [{ word: 'pizza' }]
-    // )
+    test.deepEqual(await Piz().select({ from: db }), [{ word: 'pizza' }])
   },
 
-  'skip glob': async (assert) => {
-    const word = DB.string()
-    const words = DB.link()
+  'make pattern rule': async (test) => {
+    const Content = assert({ word: String, match: String })
+      .with({ words: Object })
+      .when(({ word, words, match: like }) => [
+        Fact({ the: 'word', is: words }),
+        Fact({ of: words, is: word }),
+        Text.match({
+          this: word,
+          like,
+        }),
+      ])
 
-    assert.deepEqual(
-      await DB.query(db, {
-        select: {
-          word,
-        },
-        where: [
-          DB.match([DB._, 'word', words]),
-          DB.match([words, DB._, word]),
-          DB.like(word, 'piz%'),
-        ],
-      }),
-      [],
-      'like pattern does not apply to glob'
-    )
+    test.deepEqual(await Content({ match: 'piz*' }).select({ from: db }), [
+      { word: 'pizza', match: 'piz*' },
+    ])
 
-    assert.deepEqual(
-      await DB.query(db, {
-        select: {
-          word,
-        },
-        where: [
-          DB.match([DB._, 'word', words]),
-          DB.match([words, DB._, word]),
-          DB.like(word, 'piz*'),
-        ],
-      }),
-      [{ word: 'pizza' }],
-      '* matches anything'
-    )
+    test.deepEqual(await Content({ match: 'piz%' }).select({ from: db }), [])
 
-    assert.deepEqual(
-      await DB.query(db, {
-        select: {
-          word,
-        },
-        where: [
-          DB.match([DB._, 'word', words]),
-          DB.match([words, DB._, word]),
-          DB.like(word, 'Piz*'),
-        ],
-      }),
-      [],
-      'glob is case sensitive'
-    )
+    test.deepEqual(await Content({ match: 'Piz*' }).select({ from: db }), [])
 
-    assert.deepEqual(
-      await DB.query(db, {
-        select: {
-          word,
-        },
-        where: [
-          DB.match([DB._, 'word', words]),
-          DB.match([words, DB._, word]),
-          DB.like(word, 'piz.\\*'),
-        ],
-      }),
-      [],
-      'does not care about regexp patterns'
-    )
+    test.deepEqual(await Content({ match: 'piz\\*' }).select({ from: db }), [])
+    test.deepEqual(await Content({ match: 'piz?a' }).select({ from: db }), [
+      { word: 'pizza', match: 'piz?a' },
+    ])
 
-    assert.deepEqual(
-      await DB.query(db, {
-        select: {
-          word,
-        },
-        where: [
-          DB.match([DB._, 'word', words]),
-          DB.match([words, DB._, word]),
-          DB.like(word, 'piz?a'),
-        ],
-      }),
-      [{ word: 'pizza' }],
-      'can match single character'
-    )
+    test.deepEqual(await Content({ match: 'store/*' }).select({ from: db }), [
+      { word: 'store/*', match: 'store/*' },
+      { word: 'store/add', match: 'store/*' },
+    ])
 
-    assert.deepEqual(
-      await DB.query(db, {
-        select: {
-          word,
-        },
-        where: [
-          DB.match([DB._, 'word', words]),
-          DB.match([words, DB._, word]),
-          DB.like(word, 'store/*'),
-        ],
-      }),
-      [{ word: 'store/*' }, { word: 'store/add' }]
-    )
+    test.deepEqual(await Content({ match: '*' }).select({ from: db }), [
+      { word: 'pizza', match: '*' },
+      { word: 'store/*', match: '*' },
+      { word: 'store/add', match: '*' },
+      { word: '*', match: '*' },
+      { word: '[a-z]', match: '*' },
+    ])
+  },
 
-    assert.deepEqual(
-      await DB.query(db, {
-        select: {
-          word,
-        },
-        where: [
-          DB.match([DB._, 'word', words]),
-          DB.match([words, DB._, word]),
-          DB.like(word, '*'),
-        ],
-      }),
-      [
-        { word: 'pizza' },
-        { word: 'store/*' },
-        { word: 'store/add' },
-        { word: '*' },
-        { word: '[a-z]' },
-      ]
-    )
+  'test find patterns that match text': async (test) => {
+    const Content = assert({ word: String })
+      .with({ words: Object })
+      .when(({ word, words }) => [
+        Fact({ the: 'word', is: words }),
+        Fact({ of: words, is: word }),
+        Text.match({
+          this: 'store/list',
+          like: word,
+        }),
+      ])
 
-    assert.deepEqual(
-      await DB.query(db, {
-        select: {
-          word,
-        },
-        where: [
-          DB.match([DB._, 'word', words]),
-          DB.match([words, DB._, word]),
-          DB.like('store/list', word),
-        ],
-      }),
-      [{ word: 'store/*' }, { word: '*' }],
-      'can use term as pattern'
-    )
+    test.deepEqual(await Content().select({ from: db }), [
+      { word: 'store/*' },
+      { word: '*' },
+    ])
+  },
 
-    assert.deepEqual(
-      await DB.query(db, {
-        select: {
-          word,
-        },
-        where: [
-          DB.match([DB._, 'word', words]),
-          DB.match([words, DB._, word]),
-          DB.like(word, '\\*'),
-        ],
-      }),
-      [{ word: '*' }],
-      'can escape'
-    )
+  'test revers pattern': async (test) => {
+    const Content = assert({ word: String })
+      .with({ words: Object })
+      .when(({ word, words }) => [
+        Fact({ the: 'word', is: words }),
+        Fact({ of: words, is: word }),
+        Text.match({
+          this: word,
+          like: '\\*',
+        }),
+      ])
+
+    test.deepEqual(await Content().select({ from: db }), [{ word: '*' }])
   },
 }

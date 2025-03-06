@@ -966,6 +966,7 @@ export type InferDescriptorType<T extends TypeDescriptor> =
   : T extends Uint8ArrayConstructor ? Bytes
   : T extends { Bytes: {} } ? Bytes
   : T extends Uint8Array ? T
+  : T extends ObjectConstructor ? Entity
   : T extends UnknownDescriptor ? Scalar
   : T extends ScalarSchema<infer Scalar> ? Scalar
   : T extends EntitySchema<infer Model> ? Model
@@ -982,6 +983,7 @@ export type ScalarConstructor =
   | NumberConstructor
   | BigIntConstructor
   | Uint8ArrayConstructor
+  | ObjectConstructor
 
 export type ScalarDescriptor = Variant<{
   Null: {}
@@ -992,6 +994,7 @@ export type ScalarDescriptor = Variant<{
   Int64: {}
   Bytes: {}
   Reference: {}
+  Entity: {}
 }> & { Object?: undefined; Fact?: undefined; Scalar?: undefined }
 
 export type ModelDescriptor<
@@ -1078,6 +1081,14 @@ export type InferTypeVariables<T, U = T> = T extends Scalar ?
 : { this: Term<Entity> } & {
     [Key in keyof T]: InferTypeVariables<T[Key]>
   }
+
+export interface RuleDescriptor {
+  [key: string]: ScalarConstructor | ScalarDescriptor | ObjectConstructor
+}
+export type InferRuleVariables<T extends RuleDescriptor> = {
+  [Key in keyof T]: Variable<InferDescriptorType<T[Key]>>
+}
+
 export type ArraySchema<Of> = {
   $: Variable<Entity>
   match(terms: {
