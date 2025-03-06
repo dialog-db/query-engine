@@ -38,8 +38,9 @@ export class Text {
    * @param {object} terms
    * @param {[left:API.Term<string>, right: API.Term<string>]} terms.of
    * @param {API.Term<string>} [terms.is]
+   * @returns {API.SystemOperator}
    */
-  static Conact({ of: [left, right], is }) {
+  static Concat({ of: [left, right], is }) {
     return {
       match: { of: left, with: right, is },
       operator: /** @type {const} */ ('text/concat'),
@@ -76,18 +77,19 @@ export class Text {
   static UpperCase({ of, is }) {
     return {
       match: { of },
-      operator: /** @type {const} */ ('text/upper/case'),
+      operator: /** @type {const} */ ('text/case/upper'),
     }
   }
   /**
    * @param {object} terms
    * @param {API.Term<string>} terms.of
    * @param {API.Term<string>} [terms.is]
+   *
    */
   static LowerCase({ of, is }) {
     return {
       match: { of, is },
-      operator: /** @type {const} */ ('text/lower/case'),
+      operator: /** @type {const} */ ('text/case/lower'),
     }
   }
   /**
@@ -141,6 +143,7 @@ export class UTF8 {
    * @param {object} terms
    * @param {API.Term<Uint8Array>} terms.of
    * @param {API.Term<string>} [terms.is]
+   * @returns {API.SystemOperator}
    */
   static ToText({ of, is }) {
     return {
@@ -153,6 +156,7 @@ export class UTF8 {
    * @param {object} terms
    * @param {API.Term<string>} terms.of
    * @param {API.Term<Uint8Array>} [terms.is]
+   * @returns {API.SystemOperator}
    */
   static FromText({ of, is }) {
     return {
@@ -164,15 +168,18 @@ export class UTF8 {
 
 export class Data {
   /**
+   * @template {API.Scalar} This
+   * @template {API.Scalar} As
    * @param {object} terms
-   * @param {API.Term} terms.this
-   * @param {API.Term} [terms.as]
+   * @param {API.Term<This>} terms.this
+   * @param {API.Term<As>} [terms.as]
+   * @returns {API.SystemOperator}
    */
   static same({ this: of, as }) {
-    return {
-      match: { of: of, is: as },
+    return /** @type {API.SystemOperator} */ ({
+      match: { of, is: as },
       operator: /** @type {const} */ ('=='),
-    }
+    })
   }
 
   /**
@@ -260,12 +267,13 @@ export class Math {
    * @param {API.Term<API.Numeric>} terms.of
    * @param {API.Term<API.Numeric>} terms.with
    * @param {API.Term<API.Numeric>} [terms.is]
+   * @returns {API.SystemOperator}
    */
   static Sum({ of, with: by, is }) {
-    return {
+    return /** @type {API.SystemOperator} */ ({
       match: { of, with: by, is },
       operator: /** @type {const} */ ('+'),
-    }
+    })
   }
   static ['+'] = this.Sum
 
@@ -274,12 +282,13 @@ export class Math {
    * @param {API.Term<API.Numeric>} terms.of
    * @param {API.Term<API.Numeric>} terms.by
    * @param {API.Term<API.Numeric>} [terms.is]
+   * @returns {API.SystemOperator}
    */
   static Subtraction(terms) {
-    return {
+    return /** @type {API.SystemOperator} */ ({
       match: terms,
       operator: /** @type {const} */ ('-'),
-    }
+    })
   }
   static ['-'] = this.Subtraction
 
@@ -288,12 +297,13 @@ export class Math {
    * @param {API.Term<API.Numeric>} terms.of
    * @param {API.Term<API.Numeric>} terms.by
    * @param {API.Term<API.Numeric>} [terms.is]
+   * @returns {API.SystemOperator}
    */
   static Multiplication(terms) {
-    return {
+    return /** @type {API.SystemOperator} */ ({
       match: terms,
       operator: /** @type {const} */ ('*'),
-    }
+    })
   }
   static ['*'] = this.Multiplication
 
@@ -302,12 +312,13 @@ export class Math {
    * @param {API.Term<API.Numeric>} terms.of
    * @param {API.Term<API.Numeric>} terms.by
    * @param {API.Term<API.Numeric>} [terms.is]
+   * @returns {API.SystemOperator}
    */
   static Division(terms) {
-    return {
+    return /** @type {API.SystemOperator} */ ({
       match: terms,
       operator: /** @type {const} */ ('/'),
-    }
+    })
   }
   static ['/'] = this.Division
 
@@ -316,12 +327,13 @@ export class Math {
    * @param {API.Term<API.Numeric>} terms.of
    * @param {API.Term<API.Numeric>} terms.by
    * @param {API.Term<API.Numeric>} [terms.is]
+   * @returns {API.SystemOperator}
    */
   static Modulo(terms) {
-    return {
+    return /** @type {API.SystemOperator} */ ({
       match: terms,
       operator: /** @type {const} */ ('%'),
-    }
+    })
   }
   static ['%'] = this.Modulo
 
@@ -330,12 +342,13 @@ export class Math {
    * @param {API.Term<API.Numeric>} terms.of
    * @param {API.Term<API.Numeric>} terms.exponent
    * @param {API.Term<API.Numeric>} [terms.is]
+   * @returns {API.SystemOperator}
    */
-  static Power(terms) {
-    return {
-      match: terms,
+  static Power({ of, exponent, is }) {
+    return /** @type {API.SystemOperator} */ ({
+      match: { of, by: exponent, is },
       operator: /** @type {const} */ ('**'),
-    }
+    })
   }
   static ['**'] = this.Power
 
@@ -343,12 +356,13 @@ export class Math {
    * @param {object} terms
    * @param {API.Term<API.Numeric>} terms.of
    * @param {API.Term<API.Numeric>} [terms.is]
+   * @returns {API.SystemOperator}
    */
   static Absolute({ of, is }) {
-    return {
+    return /** @type {API.SystemOperator} */ ({
       match: { of, is },
       operator: /** @type {const} */ ('math/absolute'),
-    }
+    })
   }
 }
 
