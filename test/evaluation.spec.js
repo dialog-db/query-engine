@@ -260,7 +260,7 @@ export const testEvaluation = {
       ],
     })
 
-    const result = await rule.apply().select({ source: db })
+    const result = await rule.apply().select({ from: db })
 
     console.log(result)
   },

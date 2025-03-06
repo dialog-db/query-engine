@@ -230,20 +230,21 @@ export class Data {
 
   /**
    * @param {object} terms
-   * @param {API.Term} terms.of
-   * @param {API.Term<string>} [terms.is]
+   * @param {API.Term<API.Scalar>} terms.of
+   * @param {API.Term<API.TypeName>|API.Term<string>} [terms.is]
+   * @returns {API.SystemOperator}
    */
   static Type({ of, is }) {
-    return {
+    return /** @type {API.SystemOperator} */ ({
       match: { of, is },
       operator: /** @type {const} */ ('data/type'),
-    }
+    })
   }
 
   /**
    * @param {object} terms
-   * @param {API.Term} terms.of
-   * @param {API.Term} [terms.is]
+   * @param {API.Term<any>} terms.of
+   * @param {API.Term<API.Entity>} [terms.is]
    */
   static Reference({ of, is }) {
     return {

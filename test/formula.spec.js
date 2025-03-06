@@ -1,6 +1,6 @@
 import * as DB from 'datalogia'
 import { Task, Link } from 'datalogia'
-
+import { assert, Fact, Data } from '../src/syntax.js'
 const $ = DB.Memory.entity
 
 const db = DB.Memory.create([
@@ -19,11 +19,8 @@ const db = DB.Memory.create([
  * @type {import('entail').Suite}
  */
 export const testRelation = {
-  'test type relation': (assert) =>
+  'only test type relation': (test) =>
     Task.spawn(function* () {
-      /** @type {DB.Variable<DB.TypeName>} */
-      const type = DB.variable()
-      const q = DB.variable()
       const expert = /** @type {const} */ ({
         text: 'string',
         int: 'int32',
@@ -37,41 +34,35 @@ export const testRelation = {
       })
 
       for (const [key, type] of Object.entries(expert)) {
-        const result = yield* DB.query(db, {
-          select: { type },
-          where: [
-            {
-              Case: [$(1), key, q],
-            },
-            {
-              Match: [q, 'data/type', type],
-            },
-          ],
-        })
-        assert.deepEqual(
+        const Query = assert({ type: String })
+          .with({ q: Object })
+          .when(({ type, q }) => [
+            Fact({ the: key, of: $(1), is: q }),
+            Data.Type({ of: q, is: type }),
+          ])
+
+        const result = yield* Query().select({ from: db })
+
+        test.deepEqual(
           result,
           [{ type: type }],
           `Expected ${type} got ${result} `
         )
       }
 
-      assert.deepEqual(
-        yield* DB.query(db, {
-          select: { type },
-          where: [
-            {
-              Match: [Infinity, 'data/type', type],
-            },
-          ],
-        }),
+      const Query = assert({ type: String }).when(({ type }) => [
+        Data.Type({ of: Infinity, is: type }),
+      ])
+
+      test.deepEqual(
+        yield* Query().select({ from: db }),
         [],
-        'will produce no frames'
+        'produces no frames'
       )
     }),
 
-  'test reference relation': (assert) =>
+  'only reference relation': (test) =>
     Task.spawn(function* () {
-      const q = DB.link()
       const fixtures = [
         'hello',
         $(1),
@@ -84,17 +75,13 @@ export const testRelation = {
       ]
 
       for (const data of fixtures) {
-        assert.deepEqual(
-          yield* DB.query(db, {
-            select: { q },
-            where: [
-              {
-                Match: [data, 'data/refer', q],
-              },
-            ],
-          }),
-          [{ q: Link.of(data) }]
-        )
+        const Query = assert({ link: Object }).when(({ link }) => [
+          Data.Reference({ of: data, is: link }),
+        ])
+
+        test.deepEqual(yield* Query().select({ from: db }), [
+          { link: Link.of(data) },
+        ])
       }
     }),
 
