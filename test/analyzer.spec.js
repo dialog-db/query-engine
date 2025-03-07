@@ -1375,6 +1375,45 @@ export const testAnalyzer = {
       })
     }, /Unbound \?q variable/)
   },
+
+  'salary variable reuse test': async (assert) => {
+    const Employee = /** @type {const} */ ({
+      match: {
+        this: $.this,
+        name: $.name,
+        salary: $.salary,
+      },
+      when: [
+        { match: { the: 'name', of: $.this, is: $.name } },
+        { match: { the: 'salary', of: $.this, is: $.salary } },
+      ],
+    })
+
+    const Supervisor = Analyzer.rule({
+      match: {
+        employee: $.employee,
+        supervisor: $.supervisor,
+      },
+      when: [
+        // Using the same wildcard variable $._ for two different salary parameters
+        {
+          match: { this: $.subordinate, name: $.employee, salary: $._ },
+          rule: Employee,
+        },
+        { match: { the: 'supervisor', of: $.subordinate, is: $.manager } },
+        {
+          match: { this: $.manager, name: $.supervisor, salary: $._ },
+          rule: Employee,
+        },
+      ],
+    })
+
+    const plan = Supervisor.apply({}).plan()
+    assert.ok(
+      plan,
+      'Should successfully create a plan with reused wildcard variables'
+    )
+  },
   'formula input is required': (assert) => {
     assert.throws(() => {
       const plan = Analyzer.plan({
@@ -1390,5 +1429,19 @@ export const testAnalyzer = {
         },
       })
     }, /Unbound \?q variable referenced from { match: { of: \$.q, is: "string" }, operator: "data\/type" }/)
+  },
+
+  'discard variable still fails with required operators': (assert) => {
+    const rule = Analyzer.rule({
+      match: { type: $.type },
+      when: [
+        // Using $._ as the required 'of' parameter - this should still fail
+        { match: { of: $._, is: $.type }, operator: 'data/type' },
+      ],
+    })
+
+    assert.throws(() => {
+      rule.apply({ type: 'string' }).plan()
+    }, /Unbound \?_ variable referenced from/)
   },
 }

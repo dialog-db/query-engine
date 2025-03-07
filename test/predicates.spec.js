@@ -58,11 +58,11 @@ export const testMore = {
       ])
 
     test.deepEqual(await Supervisor().select({ from: testDB }), [
-      { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
       { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
       { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
       { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
       { employee: 'Reasoner Louis', supervisor: 'Hacker Alyssa P' },
+      { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
       { employee: 'Scrooge Eben', supervisor: 'Warbucks Oliver' },
       { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
       { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },

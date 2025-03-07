@@ -472,7 +472,11 @@ class Rule extends Callable {
    * @returns {Query<Descriptor>}
    */
   match(terms = {}) {
-    const match = { ...this.rule.match, ...terms }
+    const defaults = Object.fromEntries(
+      Object.keys(this.rule.match).map((name) => [name, $._])
+    )
+
+    const match = { ...this.rule.match, /* ...this.rule.match, */ ...terms }
     const application = this.rule.apply(match)
     return new Query(match, { match: this.case, when: this.when }, application)
   }

@@ -1161,10 +1161,11 @@ class Join {
         const reference = resolve(local, variable)
         if (
           cost >= Infinity &&
-          !isBound(local, reference) &&
+          !isBound(local, reference)
+          // &&
           // If it is _ we don't actually need it perhaps
           // TODO: Evaluate if this is correct ❓
-          reference !== $._
+          // reference !== $._
         ) {
           requires++
           const waiting = blocked.get(reference)
@@ -1196,7 +1197,7 @@ class Join {
 
       if (!top) {
         throw new ReferenceError(
-          `Cannot plan ${blocked.keys()} deduction without required cells`
+          `Cannot plan ${[...blocked.keys()]} deduction without required cells`
         )
       }
 
@@ -1884,6 +1885,9 @@ class Circuit {
     for (const [port, id] of ports) {
       this.ready.set(port, { port: id, distance: 0 })
     }
+
+    // Special handling for discard variable - always consider it connected
+    this.ready.set($._, { port: '_', distance: 0 })
   }
 
   /**
