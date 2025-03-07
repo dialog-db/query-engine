@@ -449,17 +449,21 @@ class RuleBuilder {
 class Rule extends Callable {
   /**
    * @param {Descriptor} descriptor
-   * @param {API.Every} where
+   * @param {API.When} when
    */
-  constructor(descriptor, where) {
+  constructor(descriptor, when) {
     super(
       /** @param {Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>} [terms] */
       (terms) => this.match(terms)
     )
 
+    this.descriptor = descriptor
+    this.when = when
+    this.case = RuleBuilder.buildMatch(descriptor)
+
     this.rule = Analyzer.rule({
-      match: RuleBuilder.buildMatch(descriptor),
-      when: where,
+      match: this.case,
+      when,
     })
   }
   /**
@@ -468,7 +472,9 @@ class Rule extends Callable {
    * @returns {Query<Descriptor>}
    */
   match(terms = {}) {
-    return new Query({ ...this.rule.match, ...terms }, this.rule)
+    const match = { ...this.rule.match, ...terms }
+    const application = this.rule.apply(match)
+    return new Query(match, { match: this.case, when: this.when }, application)
   }
 }
 
@@ -478,23 +484,25 @@ class Rule extends Callable {
  */
 class Query {
   /**
-   * @param {API.InferRuleVariables<Descriptor>} terms
-   * @param {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>} rule
+   * @param {API.InferRuleVariables<Descriptor>} match
+   * @param {API.Rule} rule
+   * @param {Analyzer.RuleApplication<API.InferRuleVariables<Descriptor>>} application
    */
-  constructor(terms, rule) {
-    this.terms = terms
+  constructor(match, rule, application) {
+    this.match = match
     this.rule = rule
+    this.application = application
   }
   /**
    * @param {{ from: API.Querier }} source
    */
   select(source) {
-    return this.rule.apply(this.terms).select(source)
+    return this.application.select(source)
   }
 
   *[Symbol.iterator]() {
     yield {
-      match: this.terms,
+      match: this.match,
       rule: this.rule,
     }
   }
