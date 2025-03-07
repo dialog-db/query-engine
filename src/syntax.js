@@ -76,7 +76,7 @@ export class Text {
    */
   static UpperCase({ of, is }) {
     return {
-      match: { of },
+      match: { of, is },
       operator: /** @type {const} */ ('text/case/upper'),
     }
   }
@@ -444,7 +444,7 @@ class RuleBuilder {
 
 /**
  * @template {API.RuleDescriptor} Descriptor
- * @extends {Callable<(terms?: Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>) => Analyzer.RuleApplication<API.InferRuleVariables<Descriptor>>>}
+ * @extends {Callable<(terms?: Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>) => Query<Descriptor>>}
  */
 class Rule extends Callable {
   /**
@@ -465,9 +465,37 @@ class Rule extends Callable {
   /**
    *
    * @param {Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>} [terms]
-   * @returns {Analyzer.RuleApplication<API.InferRuleVariables<Descriptor>>}
+   * @returns {Query<Descriptor>}
    */
   match(terms = {}) {
-    return this.rule.apply({ ...this.rule.match, ...terms })
+    return new Query({ ...this.rule.match, ...terms }, this.rule)
+  }
+}
+
+/**
+ * @template {API.RuleDescriptor} Descriptor
+ * @param {API.Every} where
+ */
+class Query {
+  /**
+   * @param {API.InferRuleVariables<Descriptor>} terms
+   * @param {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>} rule
+   */
+  constructor(terms, rule) {
+    this.terms = terms
+    this.rule = rule
+  }
+  /**
+   * @param {{ from: API.Querier }} source
+   */
+  select(source) {
+    return this.rule.apply(this.terms).select(source)
+  }
+
+  *[Symbol.iterator]() {
+    yield {
+      match: this.terms,
+      rule: this.rule,
+    }
   }
 }

@@ -1,9 +1,10 @@
-import * as DB from 'datalogia'
+import { Memory } from 'datalogia'
 import { Task, Link } from 'datalogia'
 import { assert, Fact, Data, Text, UTF8, Math } from '../src/syntax.js'
-const $ = DB.Memory.entity
 
-const db = DB.Memory.create([
+const $ = Memory.entity
+
+const db = Memory.create([
   [$(1), 'text', 'hello'],
   [$(1), 'int', 3],
   [$(1), 'bigint', 2n ** 60n],
@@ -148,56 +149,47 @@ export const testRelation = {
 
   'test text/words': (test) =>
     Task.spawn(function* () {
-      // Use the DB.query approach since the Word operators are returning multiple results
-      const text = DB.string()
-      const word = DB.string()
+      const Word = assert({ word: String })
+        .with({ text: String })
+        .when(({ text, word }) => [
+          Data.same({ this: 'hello world', as: text }),
+          Text.Words({ of: text, is: word }),
+        ])
 
-      test.deepEqual(
-        yield* DB.query(db, {
-          select: { word },
-          where: [
-            { Match: ['hello world', '==', text] },
-            { Match: [text, 'text/words', word] },
-          ],
-        }),
-        [{ word: 'hello' }, { word: 'world' }]
-      )
+      test.deepEqual(yield* Word().select({ from: db }), [
+        { word: 'hello' },
+        { word: 'world' },
+      ])
     }),
 
   'test text/lines': (test) =>
     Task.spawn(function* () {
-      // Use the DB.query approach for Lines which returns multiple results
-      const text = DB.string()
-      const line = DB.string()
+      const Lines = assert({ line: String })
+        .with({ text: String })
+        .when(({ text, line }) => [
+          Data.same({ this: 'hello,\nhow are you\r\n', as: text }),
+          Text.Lines({ of: text, is: line }),
+        ])
 
-      test.deepEqual(
-        yield* DB.query(db, {
-          select: { line },
-          where: [
-            { Match: ['hello,\nhow are you\r\n', '==', text] },
-            { Match: [text, 'text/lines', line] },
-          ],
-        }),
-        [{ line: 'hello,' }, { line: 'how are you' }, { line: '' }]
-      )
+      test.deepEqual(yield* Lines().select({ from: db }), [
+        { line: 'hello,' },
+        { line: 'how are you' },
+        { line: '' },
+      ])
     }),
 
   'test text/case/upper': (test) =>
     Task.spawn(function* () {
-      // Use the DB.query approach for text operations
-      const text = DB.string()
-      const word = DB.string()
+      const UpperCase = assert({ word: String })
+        .with({ text: String })
+        .when(({ word, text }) => [
+          Data.same({ this: 'hello', as: text }),
+          Text.UpperCase({ of: text, is: word }),
+        ])
 
-      test.deepEqual(
-        yield* DB.query(db, {
-          select: { word },
-          where: [
-            { Match: ['hello', '==', text] },
-            { Match: [text, 'text/case/upper', word] },
-          ],
-        }),
-        [{ word: 'HELLO' }]
-      )
+      test.deepEqual(yield* UpperCase().select({ from: db }), [
+        { word: 'HELLO' },
+      ])
     }),
 
   'test text/case/lower': (test) =>

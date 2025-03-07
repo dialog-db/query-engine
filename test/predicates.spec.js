@@ -1,10 +1,61 @@
 import * as DB from 'datalogia'
 import testDB from './microshaft.db.js'
+import { assert, Fact, Text } from '../src/syntax.js'
 
 /**
  * @type {import('entail').Suite}
  */
 export const testMore = {
+  'only test facts': async (test) => {
+    const Employee = assert({ name: String, job: String })
+      .with({ this: Object })
+      .when(($) => [
+        Fact({ the: 'name', of: $.this, is: $.name }),
+        Fact({ the: 'job', of: $.this, is: $.job }),
+      ])
+
+    const job = 'Computer programmer'
+    test.deepEqual(await Employee({ job }).select({ from: testDB }), [
+      { job, name: 'Hacker Alyssa P' },
+      { job, name: 'Fect Cy D' },
+    ])
+
+    const ComputerPeople = assert({ name: String, job: String })
+      .with({ this: Object })
+      .when(($) => [
+        Employee($),
+        Text.match({ this: $.job, like: 'Computer*' }),
+      ])
+
+    test.deepEqual(await ComputerPeople().select({ from: testDB }), [
+      { name: 'Bitdiddle Ben', job: 'Computer wizard' },
+      { name: 'Hacker Alyssa P', job: 'Computer programmer' },
+      { name: 'Fect Cy D', job: 'Computer programmer' },
+      { name: 'Tweakit Lem E', job: 'Computer technician' },
+      { name: 'Reasoner Louis', job: 'Computer programmer trainee' },
+    ])
+
+    // test.deepEqual(
+    //   await DB.query(testDB, {
+    //     select: {
+    //       name: employee.name,
+    //       job: employee.job,
+    //     },
+    //     where: [
+    //       {
+    //         Match: [{ text: employee.job, pattern: 'Computer*' }, 'text/like'],
+    //       },
+    //     ],
+    //   }),
+    //   [
+    //     { name: 'Bitdiddle Ben', job: 'Computer wizard' },
+    //     { name: 'Hacker Alyssa P', job: 'Computer programmer' },
+    //     { name: 'Fect Cy D', job: 'Computer programmer' },
+    //     { name: 'Tweakit Lem E', job: 'Computer technician' },
+    //     { name: 'Reasoner Louis', job: 'Computer programmer trainee' },
+    //   ]
+    // )
+  },
   'test facts': async (assert) => {
     const Employee = DB.entity({
       name: DB.string,

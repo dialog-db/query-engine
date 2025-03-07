@@ -447,12 +447,13 @@ class FormulaApplication {
         if (cells.length === 0) {
           matches.push(frame)
         } else {
+          const match = cells.length > 0 ? new Map(frame) : frame
           const extension = /** @type {Record<string, API.Scalar>} */ (out)
           try {
             for (const [key, cell] of cells) {
-              merge(this.context, cell, extension[key], frame)
+              merge(this.context, cell, extension[key], match)
             }
-            matches.push(frame)
+            matches.push(match)
           } catch {}
         }
       }
@@ -725,7 +726,7 @@ const ruleBindings = (match) => {
  * @template {API.Conclusion} [Match=API.Conclusion]
  * @implements {API.Deduction<Match>}
  */
-class DeductiveRule {
+export class DeductiveRule {
   /**
    * @template {API.Conclusion} Case
    * @param {API.Deduction<Case>} source
