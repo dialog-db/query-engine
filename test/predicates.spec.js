@@ -6,12 +6,12 @@ import { assert, Fact, Text } from '../src/syntax.js'
  * @type {import('entail').Suite}
  */
 export const testMore = {
-  'only test facts': async (test) => {
+  'test facts': async (test) => {
     const Employee = assert({ name: String, job: String })
-      .with({ this: Object })
-      .when(($) => [
-        Fact({ the: 'name', of: $.this, is: $.name }),
-        Fact({ the: 'job', of: $.this, is: $.job }),
+      .with({ of: Object })
+      .when(({ of, name, job }) => [
+        Fact({ the: 'name', of, is: name }),
+        Fact({ the: 'job', of, is: job }),
       ])
 
     const job = 'Computer programmer'
@@ -20,12 +20,12 @@ export const testMore = {
       { job, name: 'Fect Cy D' },
     ])
 
-    const ComputerPeople = assert({ name: String, job: String })
-      .with({ this: Object })
-      .when(($) => [
-        Employee($),
-        Text.match({ this: $.job, like: 'Computer*' }),
-      ])
+    const ComputerPeople = assert({ name: String, job: String }).when(
+      ({ name, job }) => [
+        Employee({ name, job }),
+        Text.match({ this: job, like: 'Computer*' }),
+      ]
+    )
 
     test.deepEqual(await ComputerPeople().select({ from: testDB }), [
       { name: 'Bitdiddle Ben', job: 'Computer wizard' },
@@ -34,67 +34,41 @@ export const testMore = {
       { name: 'Tweakit Lem E', job: 'Computer technician' },
       { name: 'Reasoner Louis', job: 'Computer programmer trainee' },
     ])
-
-    // test.deepEqual(
-    //   await DB.query(testDB, {
-    //     select: {
-    //       name: employee.name,
-    //       job: employee.job,
-    //     },
-    //     where: [
-    //       {
-    //         Match: [{ text: employee.job, pattern: 'Computer*' }, 'text/like'],
-    //       },
-    //     ],
-    //   }),
-    //   [
-    //     { name: 'Bitdiddle Ben', job: 'Computer wizard' },
-    //     { name: 'Hacker Alyssa P', job: 'Computer programmer' },
-    //     { name: 'Fect Cy D', job: 'Computer programmer' },
-    //     { name: 'Tweakit Lem E', job: 'Computer technician' },
-    //     { name: 'Reasoner Louis', job: 'Computer programmer trainee' },
-    //   ]
-    // )
   },
-  'test facts': async (assert) => {
-    const Employee = DB.entity({
-      name: DB.string,
-      job: DB.string,
-    })
 
-    const employee = new Employee()
-    const result = await DB.query(testDB, {
-      select: {
-        name: employee.name,
-      },
-      where: [employee.job.is('Computer programmer')],
-    })
-    assert.deepEqual(result, [
-      { name: 'Hacker Alyssa P' },
-      { name: 'Fect Cy D' },
+  'only test supervisor': async (test) => {
+    const Employee = assert({
+      this: Object,
+      name: String,
+      salary: Number,
+    }).when(({ this: of, name, salary }) => [
+      Fact({ the: 'name', of, is: name }),
+      Fact({ the: 'salary', of, is: salary }),
     ])
 
-    assert.deepEqual(
-      await DB.query(testDB, {
-        select: {
-          name: employee.name,
-          job: employee.job,
-        },
-        where: [
-          {
-            Match: [{ text: employee.job, pattern: 'Computer*' }, 'text/like'],
-          },
-        ],
-      }),
-      [
-        { name: 'Bitdiddle Ben', job: 'Computer wizard' },
-        { name: 'Hacker Alyssa P', job: 'Computer programmer' },
-        { name: 'Fect Cy D', job: 'Computer programmer' },
-        { name: 'Tweakit Lem E', job: 'Computer technician' },
-        { name: 'Reasoner Louis', job: 'Computer programmer trainee' },
-      ]
-    )
+    const Supervisor = assert({
+      employee: String,
+      supervisor: String,
+    })
+      .with({ subordinate: Object, manager: Object })
+      .when(({ employee, supervisor, subordinate, manager, _ }) => [
+        Employee({ this: subordinate, name: employee, salary: _ }),
+        Fact({ the: 'supervisor', of: subordinate, is: manager }),
+        Employee({ this: manager, name: supervisor, salary: _ }),
+      ])
+
+    test.deepEqual(await Supervisor().select({ from: testDB }), [
+      { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
+      { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
+      { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
+      { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
+      { employee: 'Reasoner Louis', supervisor: 'Hacker Alyssa P' },
+      { employee: 'Scrooge Eben', supervisor: 'Warbucks Oliver' },
+      { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
+      { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
+    ])
   },
+
   'test supervisor': async (assert) => {
     const Supervisor = DB.entity({
       name: DB.string,
