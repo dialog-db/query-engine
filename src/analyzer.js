@@ -1041,7 +1041,6 @@ class Join {
     let total = 0
 
     const assertion = []
-    const negation = []
     const circuit = new Circuit(bindings)
 
     // Here we asses each conjunct of the join one by one and identify:
@@ -1088,24 +1087,14 @@ class Join {
       total += cost
     }
 
-    return new this(
-      circuit.connect(),
-      assertion,
-      negation,
-      cells,
-      total,
-      `${name}`
-    )
+    return new this(circuit.connect(), assertion, cells, total, `${name}`)
   }
 
   /**
    * @returns {{}[]}
    */
   form() {
-    return [
-      ...this.assertion.map((conjunct) => conjunct.form()),
-      ...this.negation.map((conjunct) => conjunct.form()),
-    ]
+    return [...this.assertion.map((conjunct) => conjunct.form())]
   }
 
   /**
@@ -1137,15 +1126,13 @@ class Join {
   /**
    * @param {Circuit} circuit
    * @param {Constraint[]} assertion
-   * @param {Not[]} negation
    * @param {Map<API.Variable, number>} cells
    * @param {number} cost
    * @param {string} name
    */
-  constructor(circuit, assertion, negation, cells, cost, name) {
+  constructor(circuit, assertion, cells, cost, name) {
     this.circuit = circuit
     this.assertion = assertion
-    this.negation = negation
     this.cells = cells
     this.cost = cost
     this.name = name
@@ -1271,29 +1258,15 @@ class Join {
       }
     }
 
-    return new JoinPlan(
-      ordered,
-      // TODO: We need make sure that negations can actually be planned, even
-      // though we planned all assertions we may still have negation referring
-      // to unbound variable.
-      // 🤔 I think we don't need to make negations last, we just need to make
-      // sure their bindings are bound, because no other clause could produce
-      // more matches for existing bindings they can only reduce them.
-      this.negation.map((negation) => negation.plan(local)),
-      context.references,
-      cost
-    )
+    return new JoinPlan(ordered, context.references, cost)
   }
 
   toJSON() {
-    return [...this.assertion, ...this.negation]
+    return [...this.assertion]
   }
 
   toDebugString() {
-    const content = [
-      ...this.assertion.map(toDebugString),
-      ...this.negation.map(toDebugString),
-    ].join(',\n  ')
+    const content = [...this.assertion.map(toDebugString)].join(',\n  ')
 
     return `[${content}]`
   }
@@ -1370,13 +1343,11 @@ class Not {
 class JoinPlan {
   /**
    * @param {API.EvaluationPlan[]} assertion - Ordered binding operations
-   * @param {API.EvaluationPlan[]} negation - Negation operations to run after
    * @param {References} references - Variable references
    * @param {number} cost - Total cost of the plan
    */
-  constructor(assertion, negation, references, cost) {
+  constructor(assertion, references, cost) {
     this.assertion = assertion
-    this.negation = negation
     this.references = references
     this.cost = cost
   }
@@ -1390,30 +1361,19 @@ class JoinPlan {
       selection = yield* plan.evaluate({ source, selection })
     }
 
-    // Then execute negation steps
-    for (const plan of this.negation) {
-      selection = yield* plan.evaluate({ source, selection })
-    }
-
     return selection
   }
 
   toJSON() {
-    return [...this.assertion.map(toJSON), ...this.negation.map(toJSON)]
+    return [...this.assertion.map(toJSON)]
   }
 
   debug() {
-    return [
-      ...this.assertion.map(($) => debug($)),
-      ...this.negation.map(($) => debug($)),
-    ].join('\n')
+    return [...this.assertion.map(($) => debug($))].join('\n')
   }
 
   toDebugString() {
-    const body = [
-      ...this.assertion.map(($) => toDebugString($)),
-      ...this.negation.map(($) => toDebugString($)),
-    ]
+    const body = [...this.assertion.map(($) => toDebugString($))]
     return `[${indent(`\n${body.join(',\n')}`)}\n]`
   }
 }
