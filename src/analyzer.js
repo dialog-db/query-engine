@@ -664,11 +664,9 @@ export class RuleApplication {
    * @param {Context} context
    */
   plan(context = ContextView.free) {
-    // create a context that shares references with `this.context` and
-    // that has copy of bindings. We will use it to bind values from the
-    // outer context.
+    // create a copy of the context for this application.
     const application = ContextView.new(
-      this.context.references,
+      new Map(this.context.references),
       new Map(this.context.bindings)
     )
 
@@ -689,7 +687,7 @@ export class RuleApplication {
     return new RuleApplicationPlan(
       this.match,
       this.rule.plan(application),
-      this.context
+      application
     )
   }
 
