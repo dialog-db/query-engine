@@ -1,6 +1,6 @@
 import * as DB from 'datalogia'
 import testDB from './microshaft.db.js'
-import { assert, Fact, Text } from '../src/syntax.js'
+import { assert, Fact, Text, Data } from '../src/syntax.js'
 
 /**
  * @type {import('entail').Suite}
@@ -15,7 +15,7 @@ export const testMore = {
       ])
 
     const job = 'Computer programmer'
-    test.deepEqual(await Employee({ job }).select({ from: testDB }), [
+    test.deepEqual(await Employee.where({ job }).select({ from: testDB }), [
       { job, name: 'Hacker Alyssa P' },
       { job, name: 'Fect Cy D' },
     ])
@@ -36,7 +36,7 @@ export const testMore = {
     ])
   },
 
-  'only test supervisor': async (test) => {
+  'test supervisor': async (test) => {
     const Employee = assert({
       this: Object,
       name: String,
@@ -67,32 +67,22 @@ export const testMore = {
       { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
       { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
     ])
-  },
 
-  'test supervisor': async (assert) => {
-    const Supervisor = DB.entity({
-      name: DB.string,
-      salary: DB.link,
-    })
+    test.deepEqual(
+      await Supervisor.match({ employee: DB.$.q }).select({ from: testDB }),
+      [
+        { employee: 'Hacker Alyssa P' },
+        { employee: 'Fect Cy D' },
+        { employee: 'Tweakit Lem E' },
+        { employee: 'Reasoner Louis' },
+        { employee: 'Bitdiddle Ben' },
+        { employee: 'Scrooge Eben' },
+        { employee: 'Cratchet Robert' },
+        { employee: 'Aull DeWitt' },
+      ]
+    )
 
-    const Employee = DB.entity({
-      name: DB.string,
-      salary: DB.link,
-      supervisor: Supervisor,
-    })
-
-    const employee = new Employee()
-    const supervisor = new Supervisor()
-
-    const result = await DB.query(testDB, {
-      select: {
-        employee: employee.name,
-        supervisor: supervisor.name,
-      },
-      where: [employee.supervisor.is(supervisor)],
-    })
-
-    assert.deepEqual(result, [
+    test.deepEqual(await Supervisor().select({ from: testDB }), [
       { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
       { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
       { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
@@ -102,97 +92,122 @@ export const testMore = {
       { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
       { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
     ])
+
+    test.deepEqual(
+      await Supervisor.match({
+        ...Supervisor.$,
+        supervisor: 'Warbucks Oliver',
+      }).select({
+        from: testDB,
+      }),
+      [
+        { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
+        { employee: 'Scrooge Eben', supervisor: 'Warbucks Oliver' },
+        { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
+      ]
+    )
   },
-  'test salary': async (assert) => {
-    const Employee = DB.entity({
-      name: DB.string,
-      salary: DB.integer,
-    })
 
-    const employee = new Employee()
-    const query = {
-      select: {
-        // employee,
-        name: employee.name,
-        salary: employee.salary,
-      },
-      where: [employee.salary.greater(30_000)],
-    }
+  'test salary': async (test) => {
+    const Employee = assert({
+      this: Object,
+      name: String,
+      salary: Number,
+    }).when(({ this: of, name, salary }) => [
+      Fact({ the: 'name', of, is: name }),
+      Fact({ the: 'salary', of, is: salary }),
+    ])
 
-    const result = await DB.query(testDB, query)
+    const NonPoorEmployees = assert({ name: String, salary: Number }).when(
+      ({ name, salary }) => [
+        Employee.match({ name, salary }),
+        Data.greater({ this: salary, than: 30_000 }),
+      ]
+    )
 
-    assert.deepEqual(result, [
+    test.deepEqual(await NonPoorEmployees().select({ from: testDB }), [
       { name: 'Bitdiddle Ben', salary: 60_000 },
       { name: 'Hacker Alyssa P', salary: 40_000 },
       { name: 'Fect Cy D', salary: 35_000 },
       { name: 'Warbucks Oliver', salary: 150_000 },
       { name: 'Scrooge Eben', salary: 75_000 },
     ])
-    assert.deepEqual(
-      await DB.query(testDB, {
-        select: {
-          name: employee.name,
-          salary: employee.salary,
-        },
-        where: [employee.salary.greater(30_000), employee.salary.less(100_000)],
-      }),
-      [
-        { name: 'Bitdiddle Ben', salary: 60_000 },
-        { name: 'Hacker Alyssa P', salary: 40_000 },
-        { name: 'Fect Cy D', salary: 35_000 },
-        { name: 'Scrooge Eben', salary: 75_000 },
-      ]
-    )
+
+    const L2Employees = NonPoorEmployees.when((employee) => [
+      Data.less({ this: employee.salary, than: 100_000 }),
+    ])
+
+    test.deepEqual(await L2Employees().select({ from: testDB }), [
+      { name: 'Bitdiddle Ben', salary: 60_000 },
+      { name: 'Hacker Alyssa P', salary: 40_000 },
+      { name: 'Fect Cy D', salary: 35_000 },
+      { name: 'Scrooge Eben', salary: 75_000 },
+    ])
   },
-  'test address': async (assert) => {
-    const Employee = DB.entity({
-      name: DB.string,
-      address: DB.string,
-    })
+  'test address': async (test) => {
+    const Employee = assert({
+      this: Object,
+      name: String,
+      address: String,
+    }).when((employee) => [
+      Fact({ the: 'name', of: employee.this, is: employee.name }),
+      Fact({ the: 'address', of: employee.this, is: employee.address }),
+    ])
 
-    const employee = new Employee()
+    const WhoLivesInCambridge = assert({
+      name: String,
+      address: String,
+    }).when(({ name, address }) => [
+      Employee.match({ name, address }),
+      Text.includes({ this: address, slice: 'Campridge' }),
+    ])
 
-    const whoLivesInCambridge = {
-      select: {
-        name: employee.name,
-        address: employee.address,
-      },
-      where: [employee.address.contains('Campridge')],
-    }
-
-    assert.deepEqual(await DB.query(testDB, whoLivesInCambridge), [
+    test.deepEqual(await WhoLivesInCambridge().select({ from: testDB }), [
       { name: 'Hacker Alyssa P', address: 'Campridge, Mass Ave 78' },
       { name: 'Fect Cy D', address: 'Campridge, Ames Street 3' },
     ])
   },
-  'test employee with non comp supervisor ': async (assert) => {
-    const Employee = DB.entity({
-      name: DB.string,
-      supervisor: DB.string,
-      job: DB.string,
+  'test employee with non comp supervisor ': async (test) => {
+    const Employee = assert({
+      this: Object,
+      name: String,
+      job: String,
+    }).when(({ name, job, this: of }) => [
+      Fact({ the: 'name', of, is: name }),
+      Fact({ the: 'job', of, is: job }),
+    ])
+
+    const Query = assert({
+      employeeName: String,
+      supervisorName: String,
     })
+      .with({
+        employee: Object,
+        employeeJob: String,
+        supervisor: Object,
+        supervisorJob: String,
+      })
+      .when(($) => [
+        Employee.match({
+          this: $.employee,
+          name: $.employeeName,
+          job: $.employeeJob,
+        }),
+        Fact({ the: 'supervisor', of: $.employee, is: $.supervisor }),
+        Employee.match({
+          this: $.supervisor,
+          name: $.supervisorName,
+          job: $.supervisorJob,
+        }),
+        Text.match({ this: $.employeeJob, like: 'Computer*' }),
+        Text.match.not({ this: $.supervisorJob, like: 'Computer*' }),
+      ])
 
-    const employee = new Employee()
-    const supervisor = new Employee()
-
-    assert.deepEqual(
-      await DB.query(testDB, {
-        select: {
-          employee: employee.name,
-          supervisor: supervisor.name,
-        },
-        where: [
-          employee.job.startsWith('Computer'),
-          employee.supervisor.is(supervisor),
-          DB.not(supervisor.job.startsWith('Computer')),
-        ],
-      }),
-      [
-        {
-          employee: 'Bitdiddle Ben',
-          supervisor: 'Warbucks Oliver',
-        },
-      ]
-    )
+    test.deepEqual(await Query().select({ from: testDB }), [
+      {
+        employeeName: 'Bitdiddle Ben',
+        supervisorName: 'Warbucks Oliver',
+      },
+    ])
   },
 }
