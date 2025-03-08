@@ -5,11 +5,35 @@ import { Callable } from './schema/callable.js'
 
 export { loop } from './analyzer.js'
 
+export const Fact = Object.assign(
+  /**
+   * @template {API.Select} Select
+   * @param {Select} selector
+   */
+  (selector) => ({ match: selector, fact: {} }),
+  {
+    /**
+     * @template {API.Select} Select
+     * @param {Select} selector
+     */
+    not: (selector) => ({ not: Fact(selector) }),
+  }
+)
+
 /**
- * @template {API.Select} Select
- * @param {Select} selector
+ * @template I, O
+ * @param {(input: I) => O} formula
  */
-export const Fact = (selector) => ({ match: selector, fact: {} })
+const Operator = (formula) =>
+  Object.assign(formula, {
+    /**
+     * @param {I} variables
+     * @returns {{not: O}}
+     */
+    not: (variables) => ({
+      not: formula(variables),
+    }),
+  })
 
 export class Text {
   /**
@@ -17,12 +41,12 @@ export class Text {
    * @param {API.Term<string>} terms.this
    * @param {API.Term<string>} terms.like
    */
-  static match({ this: text, like }) {
+  static match = Operator(({ this: text, like }) => {
     return {
       match: { text, pattern: like },
       operator: /** @type {const} */ ('text/like'),
     }
-  }
+  })
   /**
    * @param {object} terms
    * @param {API.Term<string>} terms.this
@@ -183,9 +207,11 @@ export class Data {
   }
 
   /**
+   * @template {number|string} T
    * @param {object} terms
-   * @param {API.Term} terms.this
-   * @param {API.Term} terms.than
+   * @param {API.Term<T>} terms.this
+   * @param {API.Term<T>} terms.than
+   * @returns {API.SystemOperator}
    */
   static greater(terms) {
     return {
@@ -196,9 +222,11 @@ export class Data {
   static ['>'] = this.greater
 
   /**
+   * @template {number|string} T
    * @param {object} terms
-   * @param {API.Term} terms.this
-   * @param {API.Term} terms.than
+   * @param {API.Term<T>} terms.this
+   * @param {API.Term<T>} terms.than
+   * @returns {API.SystemOperator}
    */
   static greaterOrEqual(terms) {
     return {
@@ -209,9 +237,11 @@ export class Data {
   static ['>='] = this.greaterOrEqual
 
   /**
+   * @template {number|string} T
    * @param {object} terms
-   * @param {API.Term} terms.this
-   * @param {API.Term} terms.than
+   * @param {API.Term<T>} terms.this
+   * @param {API.Term<T>} terms.than
+   * @returns {API.SystemOperator}
    */
   static less(terms) {
     return {
@@ -222,9 +252,11 @@ export class Data {
   static ['<'] = this.less
 
   /**
+   * @template {number|string} T
    * @param {object} terms
-   * @param {API.Term} terms.this
-   * @param {API.Term} terms.than
+   * @param {API.Term<T>} terms.this
+   * @param {API.Term<T>} terms.than
+   * @returns {API.SystemOperator}
    */
   static lessOrEqual(terms) {
     return {
@@ -417,7 +449,7 @@ class RuleBuilder {
   }
   /**
    * @param {(variables: API.InferRuleVariables<Descriptor & Locals> & { _: API.Variable<any> }) => Iterable<API.Conjunct|API.MatchView<unknown>>} derive
-   * @returns {Rule<Descriptor>}
+   * @returns {Rule<Descriptor, Locals>}
    */
   when(derive) {
     const variables = RuleBuilder.buildMatch({
@@ -436,7 +468,8 @@ class RuleBuilder {
     }
 
     return new Rule(
-      this.this.descriptor,
+      this.descriptor,
+      this.locals,
       /** @type {[API.Conjunct, ...API.Conjunct[]]} */ (when)
     )
   }
@@ -444,41 +477,88 @@ class RuleBuilder {
 
 /**
  * @template {API.RuleDescriptor} Descriptor
- * @extends {Callable<(terms?: Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>) => Query<Descriptor>>}
+ * @template {API.RuleDescriptor} Locals
+ * @extends {Callable<(terms?: API.RuleBindings<API.InferRuleVariables<Descriptor>>) => Query<Descriptor>>}
  */
 class Rule extends Callable {
   /**
    * @param {Descriptor} descriptor
-   * @param {API.When} when
+   * @param {Locals} locals
+   * @param {API.Every} when
    */
-  constructor(descriptor, when) {
+  constructor(descriptor, locals, when) {
     super(
-      /** @param {Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>} [terms] */
+      /** @type {typeof this.match} */
       (terms) => this.match(terms)
     )
 
+    this.locals = locals
     this.descriptor = descriptor
-    this.when = when
-    this.case = RuleBuilder.buildMatch(descriptor)
 
-    this.rule = Analyzer.rule({
-      match: this.case,
+    const source = {
+      match: RuleBuilder.buildMatch(descriptor),
       when,
-    })
+    }
+    this.source = source
+    this.form = Analyzer.rule(source)
+  }
+
+  /**
+   * @param {(variables: API.InferRuleVariables<Descriptor & Locals> & { _: API.Variable<any> }) => Iterable<API.Conjunct|API.MatchView<unknown>>} derive
+   * @returns {Rule<Descriptor, Locals>}
+   */
+  when(derive) {
+    const variables = {
+      _: $._,
+      ...RuleBuilder.buildMatch({
+        ...this.locals,
+        ...this.descriptor,
+      }),
+    }
+
+    const when = [...this.source.when]
+
+    for (const each of derive(variables)) {
+      if (Symbol.iterator in each) {
+        for (const conjunct of each) {
+          when.push(conjunct)
+        }
+      } else {
+        when.push(each)
+      }
+    }
+
+    return new Rule(
+      this.descriptor,
+      this.locals,
+      /** @type {[API.Conjunct, ...API.Conjunct[]]} */ (when)
+    )
+  }
+
+  get $() {
+    return this.form.match
   }
   /**
-   *
-   * @param {Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>} [terms]
+   * @template {Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>} Selection
+   * @param {Selection} [terms]
+   * @returns {Query<{[K in keyof Selection]: Descriptor[K]}>}
+   */
+  match(terms) {
+    const match =
+      /** @type {API.InferRuleVariables<{[K in keyof Selection & keyof Descriptor]: Descriptor[K]}>} */ (
+        terms ?? this.form.match
+      )
+
+    return new Query(match, this)
+  }
+
+  /**
+   * @template {Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>} Selection
+   * @param {Selection} [terms]
    * @returns {Query<Descriptor>}
    */
-  match(terms = {}) {
-    const defaults = Object.fromEntries(
-      Object.keys(this.rule.match).map((name) => [name, $._])
-    )
-
-    const match = { ...this.rule.match, /* ...this.rule.match, */ ...terms }
-    const application = this.rule.apply(match)
-    return new Query(match, { match: this.case, when: this.when }, application)
+  where(terms) {
+    return this.match({ ...this.form.match, ...terms })
   }
 }
 
@@ -487,27 +567,34 @@ class Rule extends Callable {
  * @param {API.Every} where
  */
 class Query {
+  /** @type {Analyzer.RuleApplication<API.InferRuleVariables<Descriptor>>|undefined} */
+  #form
   /**
    * @param {API.InferRuleVariables<Descriptor>} match
-   * @param {API.Rule} rule
-   * @param {Analyzer.RuleApplication<API.InferRuleVariables<Descriptor>>} application
+   * @param {Rule<Descriptor, {}>} rule
    */
-  constructor(match, rule, application) {
+  constructor(match, rule) {
     this.match = match
     this.rule = rule
-    this.application = application
+  }
+
+  get form() {
+    if (!this.#form) {
+      this.#form = this.rule.form.apply(this.match)
+    }
+    return this.#form
   }
   /**
    * @param {{ from: API.Querier }} source
    */
   select(source) {
-    return this.application.select(source)
+    return this.form.select(source)
   }
 
   *[Symbol.iterator]() {
     yield {
       match: this.match,
-      rule: this.rule,
+      rule: this.rule.source,
     }
   }
 }
