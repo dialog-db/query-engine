@@ -503,7 +503,7 @@ export const testRelation = {
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: 'Hello World', as: text }),
-          Text.match({ this: text, like: 'Hello*' }),
+          Text.match({ this: text, pattern: 'Hello*' }),
           Data.same({ this: text, as: out }),
         ])
 
@@ -513,7 +513,7 @@ export const testRelation = {
 
       const BooleanPatternQuery = assert({ text: String }).when(({ text }) => [
         Data.same({ this: 'Hello World', as: text }),
-        Text.match({ this: text, like: 'Hello*' }),
+        Text.match({ this: text, pattern: 'Hello*' }),
       ])
 
       test.deepEqual(yield* BooleanPatternQuery().select({ from: db }), [
@@ -524,7 +524,7 @@ export const testRelation = {
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: 'Hello World', as: text }),
-          Text.match({ this: text, like: 'hello*' }),
+          Text.match({ this: text, pattern: 'hello*' }),
           Data.same({ this: text, as: out }),
         ])
 

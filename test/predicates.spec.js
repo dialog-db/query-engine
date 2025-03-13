@@ -1,6 +1,6 @@
 import * as DB from 'datalogia'
 import testDB from './microshaft.db.js'
-import { assert, Fact, Text, Data } from '../src/syntax.js'
+import { assert, Fact, Text, Data, text } from '../src/syntax.js'
 
 /**
  * @type {import('entail').Suite}
@@ -23,7 +23,7 @@ export const testMore = {
     const ComputerPeople = assert({ name: String, job: String }).when(
       ({ name, job }) => [
         Employee({ name, job }),
-        Text.match({ this: job, like: 'Computer*' }),
+        Text.match({ this: job, pattern: 'Computer*' }),
       ]
     )
 
@@ -199,8 +199,8 @@ export const testMore = {
           name: $.supervisorName,
           job: $.supervisorJob,
         }),
-        Text.match({ this: $.employeeJob, like: 'Computer*' }),
-        Text.match.not({ this: $.supervisorJob, like: 'Computer*' }),
+        Text.match({ this: $.employeeJob, pattern: 'Computer*' }),
+        Text.not({ this: $.supervisorJob, pattern: 'Computer*' }),
       ])
 
     test.deepEqual(await Query().select({ from: testDB }), [

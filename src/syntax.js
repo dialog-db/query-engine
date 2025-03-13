@@ -5,189 +5,357 @@ import { Callable } from './schema/callable.js'
 
 export { loop } from './analyzer.js'
 
-export const Fact = Object.assign(
-  /**
-   * @template {API.Select} Select
-   * @param {Select} selector
-   */
-  (selector) => ({ match: selector, fact: {} }),
-  {
-    /**
-     * @template {API.Select} Select
-     * @param {Select} selector
-     */
-    not: (selector) => ({ not: Fact(selector) }),
-  }
-)
-
 /**
- * @template I, O
- * @param {(input: I) => O} formula
+ * @template Terms
+ * @template {(terms: any) => API.Constraint} F
+ * @extends {Callable<F>}
  */
-const Operator = (formula) =>
-  Object.assign(formula, {
-    /**
-     * @param {I} variables
-     * @returns {{not: O}}
-     */
-    not: (variables) => ({
-      not: formula(variables),
-    }),
-  })
-
-export class Text {
+export class Operator extends Callable {
   /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.this
-   * @param {API.Term<string>} terms.like
+   * @template Terms
+   * @template {(terms: Terms) => API.Constraint} Formula
+   * @param {Formula} match
+   * @returns {Operator<Terms, Formula>}
    */
-  static match = Operator(({ this: text, like }) => {
-    return {
-      match: { text, pattern: like },
-      operator: /** @type {const} */ ('text/like'),
-    }
-  })
-  /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.this
-   * @param {API.Term<string>} terms.slice
-   */
-  static includes({ this: source, slice }) {
-    return {
-      match: { this: source, slice },
-      operator: /** @type {const} */ ('text/includes'),
-    }
+  static for(match) {
+    return new this(match)
   }
   /**
-   * @param {object} terms
-   * @param {[left:API.Term<string>, right: API.Term<string>]} terms.of
-   * @param {API.Term<string>} [terms.is]
-   * @returns {API.SystemOperator}
+   * @param {F} match
    */
-  static Concat({ of: [left, right], is }) {
-    return {
-      match: { of: left, with: right, is },
-      operator: /** @type {const} */ ('text/concat'),
-    }
+  constructor(match) {
+    super(match)
+    this.match = match
   }
 
   /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.of
-   * @param {API.Term<string>} [terms.is]
+   * @param {Terms} terms
+   * @returns {API.Negation}
    */
-  static Words({ of, is }) {
-    return {
-      match: { of, is },
-      operator: /** @type {const} */ ('text/words'),
-    }
-  }
-  /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.of
-   * @param {API.Term<string>} [terms.is]
-   */
-  static Lines({ of, is }) {
-    return {
-      match: { of, is },
-      operator: /** @type {const} */ ('text/lines'),
-    }
-  }
-  /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.of
-   * @param {API.Term<string>} [terms.is]
-   */
-  static UpperCase({ of, is }) {
-    return {
-      match: { of, is },
-      operator: /** @type {const} */ ('text/case/upper'),
-    }
-  }
-  /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.of
-   * @param {API.Term<string>} [terms.is]
-   *
-   */
-  static LowerCase({ of, is }) {
-    return {
-      match: { of, is },
-      operator: /** @type {const} */ ('text/case/lower'),
-    }
-  }
-  /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.of
-   * @param {API.Term<string>} [terms.is]
-   */
-  static Trim({ of, is }) {
-    return {
-      match: { of, is },
-      operator: /** @type {const} */ ('text/trim'),
-    }
-  }
-  /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.of
-   * @param {API.Term<string>} [terms.is]
-   */
-  static TrimStart({ of, is }) {
-    return {
-      match: { of, is },
-      operator: /** @type {const} */ ('text/trim/start'),
-    }
-  }
-  /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.of
-   * @param {API.Term<string>} [terms.is]
-   */
-  static TrimEnd({ of, is }) {
-    return {
-      match: { of, is },
-      operator: /** @type {const} */ ('text/trim/end'),
-    }
-  }
-  /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.of
-   * @param {API.Term<number>} [terms.is]
-   */
-  static Length({ of, is }) {
-    return {
-      match: { of, is },
-      operator: /** @type {const} */ ('text/length'),
-    }
+  not(terms) {
+    return { not: this.match(terms) }
   }
 }
 
-export class UTF8 {
+export const Fact = Operator.for(
   /**
-   * @param {object} terms
-   * @param {API.Term<Uint8Array>} terms.of
-   * @param {API.Term<string>} [terms.is]
-   * @returns {API.SystemOperator}
+   * @template {API.Select} Select
+   * @param {Select} terms
+   * @returns {{match: Select, fact: {}}}
    */
-  static ToText({ of, is }) {
-    return {
-      match: { of, is },
-      operator: /** @type {const} */ ('utf8/to/text'),
-    }
+  (terms) => ({ match: terms, fact: {} })
+)
+
+/**
+ * @param {API.Term<string>} term
+ */
+export const text = (term) => new TextVariable(term)
+
+class TextVariable {
+  #this
+  /**
+   * @param {API.Term<string>} term
+   */
+  constructor(term) {
+    this.#this = term
+  }
+
+  /**
+   * @param {API.Term<string>} pattern
+   */
+  like(pattern) {
+    return Text.match({ this: this.#this, pattern: pattern })
+  }
+
+  /**
+   * @param {API.Term<string>} slice
+   */
+  includes(slice) {
+    return Text.includes({ this: this.#this, slice })
   }
 
   /**
    * @param {object} terms
-   * @param {API.Term<string>} terms.of
-   * @param {API.Term<Uint8Array>} [terms.is]
-   * @returns {API.SystemOperator}
+   * @param {API.Term<string>} terms.with
+   * @param {API.Term<string>} terms.is
    */
-  static FromText({ of, is }) {
+  concat(terms) {
+    return Text.Concat({ of: [this.#this, terms.with], is: terms.is })
+  }
+
+  words() {
+    const of = this.#this
     return {
-      match: { of, is },
-      operator: /** @type {const} */ ('text/to/utf8'),
+      /**
+       * @param {API.Term<string>} is
+       */
+      is(is) {
+        return Text.Words({ of, is })
+      },
     }
   }
+
+  lines() {
+    const of = this.#this
+    return {
+      /**
+       * @param {API.Term<string>} is
+       */
+      is(is) {
+        return Text.Lines({ of, is })
+      },
+    }
+  }
+
+  toUpperCase() {
+    const of = this.#this
+    return {
+      /**
+       * @param {API.Term<string>} is
+       */
+      is(is) {
+        return Text.UpperCase({ of, is })
+      },
+      /**
+       * @param {API.Term<string>} is
+       */
+      not(is) {
+        return { not: Text.UpperCase({ of, is }) }
+      },
+    }
+  }
+
+  /**
+   */
+  toLowerCase() {
+    const of = this.#this
+    return {
+      /**
+       * @param {API.Term<string>} is
+       */
+      is(is) {
+        return Text.LowerCase({ of, is })
+      },
+      /**
+       * @param {API.Term<string>} is
+       */
+      not(is) {
+        return { not: Text.LowerCase({ of, is }) }
+      },
+    }
+  }
+
+  /**
+   * @param {API.Term<string>} is
+   */
+  trim(is) {
+    return Text.Trim({ of: this.#this, is })
+  }
+}
+
+export class Text {
+  #this
+  /**
+   * @param {API.Term<string>} source
+   */
+  constructor(source) {
+    this.#this = source
+  }
+
+  static match = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.this
+     * @param {API.Term<string>} terms.pattern
+     */
+    ({ this: text, pattern: like }) => ({
+      match: { text, pattern: like },
+      operator: /** @type {const} */ ('text/like'),
+    })
+  )
+
+  /**
+   * @param {object} terms
+   * @param {API.Term<string>} terms.this
+   * @param {API.Term<string>} terms.pattern
+   */
+  static not(terms) {
+    return { not: this.match(terms) }
+  }
+
+  static includes = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.this
+     * @param {API.Term<string>} terms.slice
+     */
+    ({ this: source, slice }) => {
+      return {
+        match: { this: source, slice },
+        operator: /** @type {const} */ ('text/includes'),
+      }
+    }
+  )
+
+  static Concat = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {[left:API.Term<string>, right: API.Term<string>]} terms.of
+     * @param {API.Term<string>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of: [left, right], is }) => {
+      return {
+        match: { of: left, with: right, is },
+        operator: /** @type {const} */ ('text/concat'),
+      }
+    }
+  )
+
+  static Words = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/words'),
+      }
+    }
+  )
+
+  static Lines = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/lines'),
+      }
+    }
+  )
+
+  static UpperCase = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/case/upper'),
+      }
+    }
+  )
+
+  static LowerCase = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     *
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/case/lower'),
+      }
+    }
+  )
+
+  static Trim = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/trim'),
+      }
+    }
+  )
+
+  static TrimStart = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/trim/start'),
+      }
+    }
+  )
+
+  static TrimEnd = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/trim/end'),
+      }
+    }
+  )
+
+  static Length = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<number>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/length'),
+      }
+    }
+  )
+}
+
+export class UTF8 {
+  static ToText = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<Uint8Array>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('utf8/to/text'),
+      }
+    }
+  )
+
+  static FromText = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<Uint8Array>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/to/utf8'),
+      }
+    }
+  )
 }
 
 export class Data {
@@ -206,196 +374,222 @@ export class Data {
     })
   }
 
-  /**
-   * @template {number|string} T
-   * @param {object} terms
-   * @param {API.Term<T>} terms.this
-   * @param {API.Term<T>} terms.than
-   * @returns {API.SystemOperator}
-   */
-  static greater(terms) {
-    return {
-      match: terms,
-      operator: /** @type {const} */ ('>'),
+  static greater = Operator.for(
+    /**
+     * @template {number|string} T
+     * @param {object} terms
+     * @param {API.Term<T>} terms.this
+     * @param {API.Term<T>} terms.than
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return {
+        match: terms,
+        operator: /** @type {const} */ ('>'),
+      }
     }
-  }
+  )
   static ['>'] = this.greater
 
-  /**
-   * @template {number|string} T
-   * @param {object} terms
-   * @param {API.Term<T>} terms.this
-   * @param {API.Term<T>} terms.than
-   * @returns {API.SystemOperator}
-   */
-  static greaterOrEqual(terms) {
-    return {
-      match: terms,
-      operator: /** @type {const} */ ('>='),
+  static greaterOrEqual = Operator.for(
+    /**
+     * @template {number|string} T
+     * @param {object} terms
+     * @param {API.Term<T>} terms.this
+     * @param {API.Term<T>} terms.than
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return {
+        match: terms,
+        operator: /** @type {const} */ ('>='),
+      }
     }
-  }
+  )
   static ['>='] = this.greaterOrEqual
 
-  /**
-   * @template {number|string} T
-   * @param {object} terms
-   * @param {API.Term<T>} terms.this
-   * @param {API.Term<T>} terms.than
-   * @returns {API.SystemOperator}
-   */
-  static less(terms) {
-    return {
-      match: terms,
-      operator: /** @type {const} */ ('<'),
+  static less = Operator.for(
+    /**
+     * @template {number|string} T
+     * @param {object} terms
+     * @param {API.Term<T>} terms.this
+     * @param {API.Term<T>} terms.than
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return {
+        match: terms,
+        operator: /** @type {const} */ ('<'),
+      }
     }
-  }
+  )
   static ['<'] = this.less
 
-  /**
-   * @template {number|string} T
-   * @param {object} terms
-   * @param {API.Term<T>} terms.this
-   * @param {API.Term<T>} terms.than
-   * @returns {API.SystemOperator}
-   */
-  static lessOrEqual(terms) {
-    return {
-      match: terms,
-      operator: /** @type {const} */ ('<='),
+  static lessOrEqual = Operator.for(
+    /**
+     * @template {number|string} T
+     * @param {object} terms
+     * @param {API.Term<T>} terms.this
+     * @param {API.Term<T>} terms.than
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return {
+        match: terms,
+        operator: /** @type {const} */ ('<='),
+      }
     }
-  }
+  )
 
   static ['<='] = this.lessOrEqual
 
-  /**
-   * @param {object} terms
-   * @param {API.Term<API.Scalar>} terms.of
-   * @param {API.Term<API.TypeName>|API.Term<string>} [terms.is]
-   * @returns {API.SystemOperator}
-   */
-  static Type({ of, is }) {
-    return /** @type {API.SystemOperator} */ ({
-      match: { of, is },
-      operator: /** @type {const} */ ('data/type'),
-    })
-  }
-
-  /**
-   * @param {object} terms
-   * @param {API.Term<any>} terms.of
-   * @param {API.Term<API.Entity>} [terms.is]
-   */
-  static Reference({ of, is }) {
-    return {
-      match: { of, is },
-      operator: /** @type {const} */ ('data/refer'),
+  static Type = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Scalar>} terms.of
+     * @param {API.Term<API.TypeName>|API.Term<string>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, is }) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: { of, is },
+        operator: /** @type {const} */ ('data/type'),
+      })
     }
-  }
+  )
+
+  static Reference = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<any>} terms.of
+     * @param {API.Term<API.Entity>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('data/refer'),
+      }
+    }
+  )
 }
 
 export class Math {
-  /**
-   * @param {object} terms
-   * @param {API.Term<API.Numeric>} terms.of
-   * @param {API.Term<API.Numeric>} terms.with
-   * @param {API.Term<API.Numeric>} [terms.is]
-   * @returns {API.SystemOperator}
-   */
-  static Sum({ of, with: by, is }) {
-    return /** @type {API.SystemOperator} */ ({
-      match: { of, with: by, is },
-      operator: /** @type {const} */ ('+'),
-    })
-  }
+  static Sum = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.with
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, with: by, is }) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: { of, with: by, is },
+        operator: /** @type {const} */ ('+'),
+      })
+    }
+  )
   static ['+'] = this.Sum
 
-  /**
-   * @param {object} terms
-   * @param {API.Term<API.Numeric>} terms.of
-   * @param {API.Term<API.Numeric>} terms.by
-   * @param {API.Term<API.Numeric>} [terms.is]
-   * @returns {API.SystemOperator}
-   */
-  static Subtraction(terms) {
-    return /** @type {API.SystemOperator} */ ({
-      match: terms,
-      operator: /** @type {const} */ ('-'),
-    })
-  }
+  static Subtraction = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.by
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: terms,
+        operator: /** @type {const} */ ('-'),
+      })
+    }
+  )
   static ['-'] = this.Subtraction
 
-  /**
-   * @param {object} terms
-   * @param {API.Term<API.Numeric>} terms.of
-   * @param {API.Term<API.Numeric>} terms.by
-   * @param {API.Term<API.Numeric>} [terms.is]
-   * @returns {API.SystemOperator}
-   */
-  static Multiplication(terms) {
-    return /** @type {API.SystemOperator} */ ({
-      match: terms,
-      operator: /** @type {const} */ ('*'),
-    })
-  }
+  static Multiplication = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.by
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: terms,
+        operator: /** @type {const} */ ('*'),
+      })
+    }
+  )
   static ['*'] = this.Multiplication
 
-  /**
-   * @param {object} terms
-   * @param {API.Term<API.Numeric>} terms.of
-   * @param {API.Term<API.Numeric>} terms.by
-   * @param {API.Term<API.Numeric>} [terms.is]
-   * @returns {API.SystemOperator}
-   */
-  static Division(terms) {
-    return /** @type {API.SystemOperator} */ ({
-      match: terms,
-      operator: /** @type {const} */ ('/'),
-    })
-  }
+  static Division = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.by
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: terms,
+        operator: /** @type {const} */ ('/'),
+      })
+    }
+  )
   static ['/'] = this.Division
 
-  /**
-   * @param {object} terms
-   * @param {API.Term<API.Numeric>} terms.of
-   * @param {API.Term<API.Numeric>} terms.by
-   * @param {API.Term<API.Numeric>} [terms.is]
-   * @returns {API.SystemOperator}
-   */
-  static Modulo(terms) {
-    return /** @type {API.SystemOperator} */ ({
-      match: terms,
-      operator: /** @type {const} */ ('%'),
-    })
-  }
+  static Modulo = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.by
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: terms,
+        operator: /** @type {const} */ ('%'),
+      })
+    }
+  )
   static ['%'] = this.Modulo
 
-  /**
-   * @param {object} terms
-   * @param {API.Term<API.Numeric>} terms.of
-   * @param {API.Term<API.Numeric>} terms.exponent
-   * @param {API.Term<API.Numeric>} [terms.is]
-   * @returns {API.SystemOperator}
-   */
-  static Power({ of, exponent, is }) {
-    return /** @type {API.SystemOperator} */ ({
-      match: { of, by: exponent, is },
-      operator: /** @type {const} */ ('**'),
-    })
-  }
+  static Power = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.exponent
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, exponent, is }) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: { of, by: exponent, is },
+        operator: /** @type {const} */ ('**'),
+      })
+    }
+  )
   static ['**'] = this.Power
 
-  /**
-   * @param {object} terms
-   * @param {API.Term<API.Numeric>} terms.of
-   * @param {API.Term<API.Numeric>} [terms.is]
-   * @returns {API.SystemOperator}
-   */
-  static Absolute({ of, is }) {
-    return /** @type {API.SystemOperator} */ ({
-      match: { of, is },
-      operator: /** @type {const} */ ('math/absolute'),
-    })
-  }
+  static Absolute = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, is }) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: { of, is },
+        operator: /** @type {const} */ ('math/absolute'),
+      })
+    }
+  )
 }
 
 /**
@@ -448,7 +642,7 @@ class RuleBuilder {
     return new RuleBuilder(this.descriptor, { ...extension, ...this.locals })
   }
   /**
-   * @param {(variables: API.InferRuleVariables<Descriptor & Locals> & { _: API.Variable<any> }) => Iterable<API.Conjunct|API.MatchView<unknown>>} derive
+   * @param {(variables: API.InferRuleVariables<Descriptor & Locals> & { _: API.Variable<any> }) => Iterable<API.Conjunct|API.MatchView<unknown>|void>} derive
    * @returns {Rule<Descriptor, Locals>}
    */
   when(derive) {
@@ -458,7 +652,9 @@ class RuleBuilder {
     })
     const when = []
     for (const each of derive({ ...variables, _: $._ })) {
-      if (Symbol.iterator in each) {
+      if (each === undefined) {
+        continue
+      } else if (Symbol.iterator in each) {
         for (const conjunct of each) {
           when.push(conjunct)
         }

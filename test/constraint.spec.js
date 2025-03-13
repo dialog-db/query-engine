@@ -19,7 +19,7 @@ export const testConstraints = {
         Fact({ of: words, is: word }),
         Text.match({
           this: word,
-          like: 'piz*a',
+          pattern: 'piz*a',
         }),
       ])
 
@@ -34,7 +34,7 @@ export const testConstraints = {
         Fact({ of: words, is: word }),
         Text.match({
           this: word,
-          like,
+          pattern: like,
         }),
       ])
 
@@ -73,7 +73,7 @@ export const testConstraints = {
         Fact({ of: words, is: word }),
         Text.match({
           this: 'store/list',
-          like: word,
+          pattern: word,
         }),
       ])
 
@@ -91,7 +91,7 @@ export const testConstraints = {
         Fact({ of: words, is: word }),
         Text.match({
           this: word,
-          like: '\\*',
+          pattern: '\\*',
         }),
       ])
 
