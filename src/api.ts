@@ -1314,3 +1314,9 @@ export interface FactMembers {
 }
 
 export type Descriptor = null | boolean
+
+interface TextVariable extends Variable<string> {
+  like(pattern: Term<string>): Constraint
+  toUpperCase(is: Term<string>): Constraint
+  toLowerCase(is: Term<string>): Constraint
+}

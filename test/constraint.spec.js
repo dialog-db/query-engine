@@ -1,4 +1,4 @@
-import { Memory } from 'datalogia'
+import { Memory, $ } from 'datalogia'
 import { assert, Fact, Text } from '../src/syntax.js'
 
 const db = Memory.create([
@@ -38,31 +38,48 @@ export const testConstraints = {
         }),
       ])
 
-    test.deepEqual(await Content({ match: 'piz*' }).select({ from: db }), [
-      { word: 'pizza', match: 'piz*' },
-    ])
+    test.deepEqual(
+      await Content({ match: 'piz*', word: $ }).select({ from: db }),
+      [{ word: 'pizza', match: 'piz*' }]
+    )
 
-    test.deepEqual(await Content({ match: 'piz%' }).select({ from: db }), [])
+    test.deepEqual(
+      await Content.match({ match: 'piz%' }).select({ from: db }),
+      []
+    )
 
-    test.deepEqual(await Content({ match: 'Piz*' }).select({ from: db }), [])
+    test.deepEqual(
+      await Content.match({ match: 'Piz*' }).select({ from: db }),
+      []
+    )
 
-    test.deepEqual(await Content({ match: 'piz\\*' }).select({ from: db }), [])
-    test.deepEqual(await Content({ match: 'piz?a' }).select({ from: db }), [
-      { word: 'pizza', match: 'piz?a' },
-    ])
+    test.deepEqual(
+      await Content.match({ match: 'piz\\*' }).select({ from: db }),
+      []
+    )
+    test.deepEqual(
+      await Content({ match: 'piz?a', word: $ }).select({ from: db }),
+      [{ word: 'pizza', match: 'piz?a' }]
+    )
 
-    test.deepEqual(await Content({ match: 'store/*' }).select({ from: db }), [
-      { word: 'store/*', match: 'store/*' },
-      { word: 'store/add', match: 'store/*' },
-    ])
+    test.deepEqual(
+      await Content({ match: 'store/*', word: $ }).select({ from: db }),
+      [
+        { word: 'store/*', match: 'store/*' },
+        { word: 'store/add', match: 'store/*' },
+      ]
+    )
 
-    test.deepEqual(await Content({ match: '*' }).select({ from: db }), [
-      { word: 'pizza', match: '*' },
-      { word: 'store/*', match: '*' },
-      { word: 'store/add', match: '*' },
-      { word: '*', match: '*' },
-      { word: '[a-z]', match: '*' },
-    ])
+    test.deepEqual(
+      await Content({ match: '*', word: $ }).select({ from: db }),
+      [
+        { word: 'pizza', match: '*' },
+        { word: 'store/*', match: '*' },
+        { word: 'store/add', match: '*' },
+        { word: '*', match: '*' },
+        { word: '[a-z]', match: '*' },
+      ]
+    )
   },
 
   'test find patterns that match text': async (test) => {

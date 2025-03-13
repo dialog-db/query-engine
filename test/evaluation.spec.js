@@ -158,16 +158,17 @@ export const testEvaluation = {
     ])
   },
 
-  'only test generate query': async (assert) => {
-    const db = DB.Memory.create([
-      {
-        'Person/name': 'Alice',
-        'Manages/employee': {
-          'Person/name': 'Bob',
-          'Manages/employee': { 'Person/name': 'Mallory' },
-        },
-      },
-    ])
+  'test generate query': async (assert) => {
+    const mallory = { 'Person/name': 'Mallory' }
+    const bob = {
+      'Person/name': 'Bob',
+      'Manages/employee': mallory,
+    }
+    const alice = {
+      'Person/name': 'Alice',
+      'Manages/employee': bob,
+    }
+    const db = DB.Memory.create([alice])
 
     const rule = Analyzer.rule({
       match: {
@@ -176,10 +177,8 @@ export const testEvaluation = {
         'name.is': $['name.is'],
         'name.of': $.this,
         'manages.the': $['manages.the'],
-        'manages.is.this': $['manages.is.this'],
         'manages.is.name.the': $['manages.is.name.the'],
         'manages.is.name.is': $['manages.is.name.is'],
-        'manages.is.name.of': $['manages.is.this'],
         'manages.of': $.this,
       },
       when: [
@@ -200,7 +199,6 @@ export const testEvaluation = {
             'is.this': $['manages.is.this'],
             'is.name.the': $['manages.is.name.the'],
             'is.name.is': $['manages.is.name.is'],
-            'is.name.of': $['manages.is.name.of'],
             of: $.this,
           },
           rule: {
@@ -209,7 +207,6 @@ export const testEvaluation = {
               'is.this': $['is.this'],
               'is.name.the': $['is.name.the'],
               'is.name.is': $['is.name.is'],
-              'is.name.of': $['is.this'],
               of: $.of,
             },
             when: [
@@ -262,7 +259,28 @@ export const testEvaluation = {
 
     const result = await rule.apply().select({ from: db })
 
-    console.log(result)
+    assert.deepEqual(result, [
+      {
+        this: Link.of(alice),
+        'name.the': 'Person/name',
+        'name.is': 'Alice',
+        'name.of': Link.of(alice),
+        'manages.of': Link.of(alice),
+        'manages.the': 'Manages/employee',
+        'manages.is.name.the': 'Person/name',
+        'manages.is.name.is': 'Bob',
+      },
+      {
+        this: Link.of(bob),
+        'name.the': 'Person/name',
+        'name.is': 'Bob',
+        'name.of': Link.of(bob),
+        'manages.of': Link.of(bob),
+        'manages.the': 'Manages/employee',
+        'manages.is.name.the': 'Person/name',
+        'manages.is.name.is': 'Mallory',
+      },
+    ])
   },
 }
 

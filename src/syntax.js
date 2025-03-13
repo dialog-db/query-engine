@@ -359,20 +359,33 @@ export class UTF8 {
 }
 
 export class Data {
-  /**
-   * @template {API.Scalar} This
-   * @template {API.Scalar} As
-   * @param {object} terms
-   * @param {API.Term<This>} terms.this
-   * @param {API.Term<As>} [terms.as]
-   * @returns {API.SystemOperator}
-   */
-  static same({ this: of, as }) {
-    return /** @type {API.SystemOperator} */ ({
-      match: { of, is: as },
-      operator: /** @type {const} */ ('=='),
-    })
-  }
+  static same = Object.assign(
+    /**
+     * @template {API.Scalar} This
+     * @template {API.Scalar} As
+     * @param {object} terms
+     * @param {API.Term<This>} terms.this
+     * @param {API.Term<As>} [terms.as]
+     * @returns {API.SystemOperator}
+     */
+    ({ this: of, as }) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: { of, is: as },
+        operator: /** @type {const} */ ('=='),
+      })
+    },
+    {
+      /**
+       * @template {API.Scalar} This
+       * @template {API.Scalar} As
+       * @param {object} terms
+       * @param {API.Term<This>} terms.this
+       * @param {API.Term<As>} [terms.as]
+       * @returns {API.Negation}
+       */
+      not: (terms) => ({ not: Data.same(terms) }),
+    }
+  )
 
   static greater = Operator.for(
     /**
