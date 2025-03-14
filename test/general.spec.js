@@ -206,45 +206,46 @@ export const testDB = {
     ])
   },
 
-  'skip test or': async (assert) => {
-    const ben = DB.link()
-    const alyssa = DB.link()
-    const employee = {
-      id: DB.link(),
-      name: DB.string(),
-    }
-    const supervisor = {
-      id: DB.link(),
-      name: DB.string(),
-    }
-
-    const matches = await DB.query(employeeDB, {
-      select: {
-        name: employee.name,
-        supervisor: supervisor.name,
-      },
-      where: [
-        DB.match([ben, 'name', 'Bitdiddle Ben']),
-        DB.match([alyssa, 'name', 'Hacker Alyssa P']),
-        DB.or(
-          DB.match([employee.id, 'supervisor', ben]),
-          DB.match([employee.id, 'supervisor', alyssa])
-        ),
-        DB.match([employee.id, 'name', employee.name]),
-        DB.match([employee.id, 'supervisor', supervisor.id]),
-        DB.match([supervisor.id, 'name', supervisor.name]),
-      ],
-    })
-
-    assert.deepEqual(
-      [...matches],
-      [
-        { name: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
-        { name: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
-        { name: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
-        { name: 'Reasoner Louis', supervisor: 'Hacker Alyssa P' },
+  'test disjunction': async (assert) => {
+    const Employee = derive({ this: Object, name: String }).when(
+      ({ this: employee, name }) => [
+        Fact({ the: 'name', of: employee, is: name }),
       ]
     )
+
+    const Supervisor = derive({ this: Object, name: String, of: Object }).when(
+      ({ this: supervisor, of, name }) => [
+        Employee({ this: supervisor, name }),
+        Fact({ the: 'supervisor', of, is: supervisor }),
+      ]
+    )
+
+    const Ben = Supervisor.when(({ name }) => [
+      Data.same({ this: 'Bitdiddle Ben', as: name }),
+    ])
+    const Alyssa = Supervisor.when(({ name }) => [
+      Data.same({ this: 'Hacker Alyssa P', as: name }),
+    ])
+
+    const Query = derive({ employee: String, supervisor: String })
+      .with({ subordinate: Object, manager: Object })
+      .when(({ employee, supervisor, subordinate, manager }) => ({
+        Ben: [
+          Employee({ this: subordinate, name: employee }),
+          Ben({ this: manager, of: subordinate, name: supervisor }),
+        ],
+        Alyssa: [
+          Employee({ this: subordinate, name: employee }),
+          Alyssa({ this: manager, of: subordinate, name: supervisor }),
+        ],
+      }))
+
+    assert.deepEqual(await Query().select({ from: employeeDB }), [
+      { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
+      { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
+      { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
+      { employee: 'Reasoner Louis', supervisor: 'Hacker Alyssa P' },
+    ])
   },
 
   'test negation': async (assert) => {
