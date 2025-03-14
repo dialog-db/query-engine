@@ -655,7 +655,7 @@ class RuleBuilder {
     return new RuleBuilder(this.descriptor, { ...extension, ...this.locals })
   }
   /**
-   * @param {(variables: API.InferRuleVariables<Descriptor & Locals> & { _: API.Variable<any> }) => Iterable<API.Conjunct|API.MatchView<unknown>|void>} derive
+   * @param {API.WhenBuilder<Descriptor & Locals>} derive
    * @returns {Rule<Descriptor, Locals>}
    */
   when(derive) {
@@ -663,24 +663,50 @@ class RuleBuilder {
       ...this.locals,
       ...this.descriptor,
     })
-    const when = []
-    for (const each of derive({ ...variables, _: $._ })) {
-      if (each === undefined) {
-        continue
-      } else if (Symbol.iterator in each) {
-        for (const conjunct of each) {
-          when.push(conjunct)
-        }
-      } else {
-        when.push(each)
-      }
+
+    const when = /** @type {Record<string, API.Every>} */ ({})
+    for (const [name, disjunct] of iterateDisjuncts(
+      derive({ ...variables, _: $._ })
+    )) {
+      const conjuncts = [...iterateConjuncts(disjunct)]
+      when[name] = /** @type {[API.Conjunct, ...API.Conjunct[]]} */ (conjuncts)
     }
 
     return new Rule(
       this.descriptor,
       this.locals,
-      /** @type {[API.Conjunct, ...API.Conjunct[]]} */ (when)
+      /** @type {API.Some} */ (when)
     )
+  }
+}
+
+/**
+ * @param {API.EveryView} source
+ * @returns {Iterable<API.Conjunct>}
+ */
+function* iterateConjuncts(source) {
+  for (const member of source) {
+    if (member === undefined) {
+      continue
+    } else if (Symbol.iterator in member) {
+      for (const conjunct of member) {
+        yield conjunct
+      }
+    } else {
+      yield member
+    }
+  }
+}
+
+/**
+ * @param {API.WhenView} source
+ * @returns {Iterable<[string, API.EveryView]>}
+ */
+function* iterateDisjuncts(source) {
+  if (Array.isArray(source)) {
+    yield ['when', source]
+  } else {
+    yield* Object.entries(source)
   }
 }
 
@@ -693,7 +719,7 @@ class Rule extends Callable {
   /**
    * @param {Descriptor} descriptor
    * @param {Locals} locals
-   * @param {API.Every} when
+   * @param {API.Some} when
    */
   constructor(descriptor, locals, when) {
     super(
@@ -713,7 +739,7 @@ class Rule extends Callable {
   }
 
   /**
-   * @param {(variables: API.InferRuleVariables<Descriptor & Locals> & { _: API.Variable<any> }) => Iterable<API.Conjunct|API.MatchView<unknown>>} derive
+   * @param {API.WhenBuilder<Descriptor & Locals>} derive
    * @returns {Rule<Descriptor, Locals>}
    */
   when(derive) {
@@ -725,22 +751,20 @@ class Rule extends Callable {
       }),
     }
 
-    const when = [...this.source.when]
+    const base = /** @type {API.Conjunct[]} */ ([...this.match(variables)])
 
-    for (const each of derive(variables)) {
-      if (Symbol.iterator in each) {
-        for (const conjunct of each) {
-          when.push(conjunct)
-        }
-      } else {
-        when.push(each)
-      }
+    const when = /** @type {Record<string, API.Every>} */ ({})
+    for (const [name, disjunct] of iterateDisjuncts(derive(variables))) {
+      when[name] = /** @type {[API.Conjunct, ...API.Conjunct[]]} */ ([
+        ...base,
+        ...iterateConjuncts(disjunct),
+      ])
     }
 
     return new Rule(
       this.descriptor,
       this.locals,
-      /** @type {[API.Conjunct, ...API.Conjunct[]]} */ (when)
+      /** @type {API.Some} */ (when)
     )
   }
 

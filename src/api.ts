@@ -537,6 +537,18 @@ export interface Some {
 
 export type When = Some | Every
 
+export type WhenBuilder<T extends RuleDescriptor> = (
+  variables: InferRuleVariables<T> & { _: Variable<any> }
+) => WhenView
+
+export type WhenView = EveryView | SomeView
+export type EveryView = ConjunctView[]
+export type ConjunctView = Conjunct | MatchView<unknown> | void
+
+export interface SomeView {
+  [Case: string]: EveryView
+}
+
 export interface MatchRule<Match extends Conclusion = Conclusion> {
   readonly rule: Rule<Match>
   readonly match: Partial<RuleBindings<Match>>
