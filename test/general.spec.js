@@ -1,5 +1,5 @@
 import * as DB from 'datalogia'
-import { assert as derive, Data, Fact, Text } from '../src/syntax.js'
+import { deduce as derive, Data, Fact, Text } from '../src/syntax.js'
 import * as Link from '../src/link.js'
 import proofsDB from './proofs.db.js'
 import moviesDB from './movie.db.js'

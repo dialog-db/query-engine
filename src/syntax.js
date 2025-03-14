@@ -609,7 +609,7 @@ export class Math {
  * @template {API.RuleDescriptor} Descriptor
  * @param {Descriptor} descriptor
  */
-export const assert = (descriptor) => new RuleBuilder(descriptor, {})
+export const deduce = (descriptor) => new RuleBuilder(descriptor, {})
 
 /**
  * @template {API.RuleDescriptor} Descriptor

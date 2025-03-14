@@ -1,6 +1,6 @@
 import * as DB from 'datalogia'
 import * as Analyzer from '../src/analyzer.js'
-import { assert, Fact, Data } from '../src/syntax.js'
+import { deduce, Fact, Data } from '../src/syntax.js'
 import * as Link from '../src/link.js'
 import proofsDB from './proofs.db.js'
 import moviesDB from './movie.db.js'
@@ -10,8 +10,8 @@ import employeeDB from './microshaft.db.js'
  * @type {import('entail').Suite}
  */
 export const testSelector = {
-  'nested selection': async (test) => {
-    const Delegation = assert({
+  'nested selection': async (assert) => {
+    const Delegation = deduce({
       this: Object,
       cid: String,
       can: Object,
@@ -26,7 +26,7 @@ export const testSelector = {
         Fact({ the: 'with', of: capability, is: space }),
       ])
 
-    const Permission = assert({
+    const Permission = deduce({
       space: String,
       upload: String,
       store: String,
@@ -36,7 +36,7 @@ export const testSelector = {
     ])
 
     const result = await Permission().select({ from: proofsDB })
-    test.deepEqual(result, [
+    assert.deepEqual(result, [
       {
         space: 'did:key:zAlice',
         upload: 'bafy...upload',
@@ -44,8 +44,8 @@ export const testSelector = {
       },
     ])
   },
-  'deeply nested selection': async (test) => {
-    const Delegation = assert({
+  'deeply nested selection': async (assert) => {
+    const Delegation = deduce({
       this: Object,
       cid: String,
       can: Object,
@@ -68,7 +68,7 @@ export const testSelector = {
       Data.same({ this: 'store/add', as: can }),
     ])
 
-    const Query = assert({
+    const Query = deduce({
       upload: String,
       store: String,
       space: String,
@@ -77,7 +77,7 @@ export const testSelector = {
       Store.match({ space, cid: store }),
     ])
 
-    test.deepEqual(await Query().select({ from: proofsDB }), [
+    assert.deepEqual(await Query().select({ from: proofsDB }), [
       {
         space: 'did:key:zAlice',
         upload: 'bafy...upload',

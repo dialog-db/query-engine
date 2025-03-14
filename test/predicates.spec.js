@@ -1,13 +1,13 @@
 import * as DB from 'datalogia'
 import testDB from './microshaft.db.js'
-import { assert, Fact, Text, Data, text } from '../src/syntax.js'
+import { deduce, Fact, Text, Data, text } from '../src/syntax.js'
 
 /**
  * @type {import('entail').Suite}
  */
 export const testMore = {
-  'test facts': async (test) => {
-    const Employee = assert({ name: String, job: String })
+  'test facts': async (assert) => {
+    const Employee = deduce({ name: String, job: String })
       .with({ of: Object })
       .when(({ of, name, job }) => [
         Fact({ the: 'name', of, is: name }),
@@ -15,19 +15,19 @@ export const testMore = {
       ])
 
     const job = 'Computer programmer'
-    test.deepEqual(await Employee.where({ job }).select({ from: testDB }), [
+    assert.deepEqual(await Employee.where({ job }).select({ from: testDB }), [
       { job, name: 'Hacker Alyssa P' },
       { job, name: 'Fect Cy D' },
     ])
 
-    const ComputerPeople = assert({ name: String, job: String }).when(
+    const ComputerPeople = deduce({ name: String, job: String }).when(
       ({ name, job }) => [
         Employee({ name, job }),
         Text.match({ this: job, pattern: 'Computer*' }),
       ]
     )
 
-    test.deepEqual(await ComputerPeople().select({ from: testDB }), [
+    assert.deepEqual(await ComputerPeople().select({ from: testDB }), [
       { name: 'Bitdiddle Ben', job: 'Computer wizard' },
       { name: 'Hacker Alyssa P', job: 'Computer programmer' },
       { name: 'Fect Cy D', job: 'Computer programmer' },
@@ -36,8 +36,8 @@ export const testMore = {
     ])
   },
 
-  'test supervisor': async (test) => {
-    const Employee = assert({
+  'test supervisor': async (assert) => {
+    const Employee = deduce({
       this: Object,
       name: String,
       salary: Number,
@@ -46,7 +46,7 @@ export const testMore = {
       Fact({ the: 'salary', of, is: salary }),
     ])
 
-    const Supervisor = assert({
+    const Supervisor = deduce({
       employee: String,
       supervisor: String,
     })
@@ -57,7 +57,7 @@ export const testMore = {
         Employee({ this: manager, name: supervisor, salary: _ }),
       ])
 
-    test.deepEqual(await Supervisor().select({ from: testDB }), [
+    assert.deepEqual(await Supervisor().select({ from: testDB }), [
       { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
       { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
       { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
@@ -68,7 +68,7 @@ export const testMore = {
       { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
     ])
 
-    test.deepEqual(
+    assert.deepEqual(
       await Supervisor.match({ employee: DB.$.q }).select({ from: testDB }),
       [
         { employee: 'Hacker Alyssa P' },
@@ -82,7 +82,7 @@ export const testMore = {
       ]
     )
 
-    test.deepEqual(await Supervisor().select({ from: testDB }), [
+    assert.deepEqual(await Supervisor().select({ from: testDB }), [
       { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
       { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
       { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
@@ -93,7 +93,7 @@ export const testMore = {
       { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
     ])
 
-    test.deepEqual(
+    assert.deepEqual(
       await Supervisor.match({
         ...Supervisor.$,
         supervisor: 'Warbucks Oliver',
@@ -108,8 +108,8 @@ export const testMore = {
     )
   },
 
-  'test salary': async (test) => {
-    const Employee = assert({
+  'test salary': async (assert) => {
+    const Employee = deduce({
       this: Object,
       name: String,
       salary: Number,
@@ -118,14 +118,14 @@ export const testMore = {
       Fact({ the: 'salary', of, is: salary }),
     ])
 
-    const NonPoorEmployees = assert({ name: String, salary: Number }).when(
+    const NonPoorEmployees = deduce({ name: String, salary: Number }).when(
       ({ name, salary }) => [
         Employee.match({ name, salary }),
         Data.greater({ this: salary, than: 30_000 }),
       ]
     )
 
-    test.deepEqual(await NonPoorEmployees().select({ from: testDB }), [
+    assert.deepEqual(await NonPoorEmployees().select({ from: testDB }), [
       { name: 'Bitdiddle Ben', salary: 60_000 },
       { name: 'Hacker Alyssa P', salary: 40_000 },
       { name: 'Fect Cy D', salary: 35_000 },
@@ -137,15 +137,15 @@ export const testMore = {
       Data.less({ this: employee.salary, than: 100_000 }),
     ])
 
-    test.deepEqual(await L2Employees().select({ from: testDB }), [
+    assert.deepEqual(await L2Employees().select({ from: testDB }), [
       { name: 'Bitdiddle Ben', salary: 60_000 },
       { name: 'Hacker Alyssa P', salary: 40_000 },
       { name: 'Fect Cy D', salary: 35_000 },
       { name: 'Scrooge Eben', salary: 75_000 },
     ])
   },
-  'test address': async (test) => {
-    const Employee = assert({
+  'test address': async (assert) => {
+    const Employee = deduce({
       this: Object,
       name: String,
       address: String,
@@ -154,7 +154,7 @@ export const testMore = {
       Fact({ the: 'address', of: employee.this, is: employee.address }),
     ])
 
-    const WhoLivesInCambridge = assert({
+    const WhoLivesInCambridge = deduce({
       name: String,
       address: String,
     }).when(({ name, address }) => [
@@ -162,13 +162,13 @@ export const testMore = {
       Text.includes({ this: address, slice: 'Campridge' }),
     ])
 
-    test.deepEqual(await WhoLivesInCambridge().select({ from: testDB }), [
+    assert.deepEqual(await WhoLivesInCambridge().select({ from: testDB }), [
       { name: 'Hacker Alyssa P', address: 'Campridge, Mass Ave 78' },
       { name: 'Fect Cy D', address: 'Campridge, Ames Street 3' },
     ])
   },
-  'test employee with non comp supervisor ': async (test) => {
-    const Employee = assert({
+  'test employee with non comp supervisor ': async (assert) => {
+    const Employee = deduce({
       this: Object,
       name: String,
       job: String,
@@ -177,7 +177,7 @@ export const testMore = {
       Fact({ the: 'job', of, is: job }),
     ])
 
-    const Query = assert({
+    const Query = deduce({
       employeeName: String,
       supervisorName: String,
     })
@@ -203,7 +203,7 @@ export const testMore = {
         Text.not({ this: $.supervisorJob, pattern: 'Computer*' }),
       ])
 
-    test.deepEqual(await Query().select({ from: testDB }), [
+    assert.deepEqual(await Query().select({ from: testDB }), [
       {
         employeeName: 'Bitdiddle Ben',
         supervisorName: 'Warbucks Oliver',

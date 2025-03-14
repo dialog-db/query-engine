@@ -1,6 +1,6 @@
 import { Memory } from 'datalogia'
 import { Task, Link } from 'datalogia'
-import { assert, Fact, Data, Text, UTF8, Math } from '../src/syntax.js'
+import { deduce, Fact, Data, Text, UTF8, Math } from '../src/syntax.js'
 
 const $ = Memory.entity
 
@@ -20,7 +20,7 @@ const db = Memory.create([
  * @type {import('entail').Suite}
  */
 export const testRelation = {
-  'test type relation': (test) =>
+  'test type relation': (assert) =>
     Task.spawn(function* () {
       const expert = /** @type {const} */ ({
         text: 'string',
@@ -35,7 +35,7 @@ export const testRelation = {
       })
 
       for (const [key, type] of Object.entries(expert)) {
-        const Query = assert({ type: String })
+        const Query = deduce({ type: String })
           .with({ q: Object })
           .when(({ type, q }) => [
             Fact({ the: key, of: $(1), is: q }),
@@ -44,25 +44,25 @@ export const testRelation = {
 
         const result = yield* Query().select({ from: db })
 
-        test.deepEqual(
+        assert.deepEqual(
           result,
           [{ type: type }],
           `Expected ${type} got ${result} `
         )
       }
 
-      const Query = assert({ type: String }).when(({ type }) => [
+      const Query = deduce({ type: String }).when(({ type }) => [
         Data.Type({ of: Infinity, is: type }),
       ])
 
-      test.deepEqual(
+      assert.deepEqual(
         yield* Query().select({ from: db }),
         [],
         'produces no frames'
       )
     }),
 
-  'reference relation': (test) =>
+  'reference relation': (assert) =>
     Task.spawn(function* () {
       const fixtures = [
         'hello',
@@ -76,17 +76,17 @@ export const testRelation = {
       ]
 
       for (const data of fixtures) {
-        const Query = assert({ link: Object }).when(({ link }) => [
+        const Query = deduce({ link: Object }).when(({ link }) => [
           Data.Reference({ of: data, is: link }),
         ])
 
-        test.deepEqual(yield* Query().select({ from: db }), [
+        assert.deepEqual(yield* Query().select({ from: db }), [
           { link: Link.of(data) },
         ])
       }
     }),
 
-  'test == relation': (test) =>
+  'test == relation': (assert) =>
     Task.spawn(function* () {
       const expert = {
         text: 'hello',
@@ -101,152 +101,152 @@ export const testRelation = {
       }
 
       for (const [key, value] of Object.entries(expert)) {
-        const Query = assert({ q: Object }).when(({ q }) => [
+        const Query = deduce({ q: Object }).when(({ q }) => [
           Fact({ the: key, of: $(1), is: q }),
           Data.same({ this: q, as: value }),
         ])
 
-        test.deepEqual(yield* Query().select({ from: db }), [
+        assert.deepEqual(yield* Query().select({ from: db }), [
           { q: /** @type {any} */ (value) },
         ])
       }
 
-      const AssignmentQuery = assert({ q: Number }).when(({ q }) => [
+      const AssignmentQuery = deduce({ q: Number }).when(({ q }) => [
         Data.same({ this: 5, as: q }),
       ])
 
-      test.deepEqual(
+      assert.deepEqual(
         yield* AssignmentQuery().select({ from: db }),
         [{ q: 5 }],
         'will perform assignment'
       )
     }),
 
-  'test text/concat': (test) =>
+  'test text/concat': (assert) =>
     Task.spawn(function* () {
-      const TwoPartsQuery = assert({ out: String })
+      const TwoPartsQuery = deduce({ out: String })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: 'hello', as: text }),
           Text.Concat({ of: [text, ' world'], is: out }),
         ])
 
-      test.deepEqual(yield* TwoPartsQuery().select({ from: db }), [
+      assert.deepEqual(yield* TwoPartsQuery().select({ from: db }), [
         { out: 'hello world' },
       ])
 
-      const ThreePartsQuery = assert({ out: String })
+      const ThreePartsQuery = deduce({ out: String })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: 'hello', as: text }),
           Text.Concat({ of: [text, ' world'], is: out }),
         ])
 
-      test.deepEqual(yield* ThreePartsQuery().select({ from: db }), [
+      assert.deepEqual(yield* ThreePartsQuery().select({ from: db }), [
         { out: 'hello world' },
       ])
     }),
 
-  'test text/words': (test) =>
+  'test text/words': (assert) =>
     Task.spawn(function* () {
-      const Word = assert({ word: String })
+      const Word = deduce({ word: String })
         .with({ text: String })
         .when(({ text, word }) => [
           Data.same({ this: 'hello world', as: text }),
           Text.Words({ of: text, is: word }),
         ])
 
-      test.deepEqual(yield* Word().select({ from: db }), [
+      assert.deepEqual(yield* Word().select({ from: db }), [
         { word: 'hello' },
         { word: 'world' },
       ])
     }),
 
-  'test text/lines': (test) =>
+  'test text/lines': (assert) =>
     Task.spawn(function* () {
-      const Lines = assert({ line: String })
+      const Lines = deduce({ line: String })
         .with({ text: String })
         .when(({ text, line }) => [
           Data.same({ this: 'hello,\nhow are you\r\n', as: text }),
           Text.Lines({ of: text, is: line }),
         ])
 
-      test.deepEqual(yield* Lines().select({ from: db }), [
+      assert.deepEqual(yield* Lines().select({ from: db }), [
         { line: 'hello,' },
         { line: 'how are you' },
         { line: '' },
       ])
     }),
 
-  'test text/case/upper': (test) =>
+  'test text/case/upper': (assert) =>
     Task.spawn(function* () {
-      const UpperCase = assert({ word: String })
+      const UpperCase = deduce({ word: String })
         .with({ text: String })
         .when(({ word, text }) => [
           Data.same({ this: 'hello', as: text }),
           Text.UpperCase({ of: text, is: word }),
         ])
 
-      test.deepEqual(yield* UpperCase().select({ from: db }), [
+      assert.deepEqual(yield* UpperCase().select({ from: db }), [
         { word: 'HELLO' },
       ])
     }),
 
-  'test text/case/lower': (test) =>
+  'test text/case/lower': (assert) =>
     Task.spawn(function* () {
-      const Query = assert({ word: String })
+      const Query = deduce({ word: String })
         .with({ text: String })
         .when(({ text, word }) => [
           Data.same({ this: 'Hello', as: text }),
           Text.LowerCase({ of: text, is: word }),
         ])
 
-      test.deepEqual(yield* Query().select({ from: db }), [{ word: 'hello' }])
+      assert.deepEqual(yield* Query().select({ from: db }), [{ word: 'hello' }])
     }),
 
-  'test string/trim': (test) =>
+  'test string/trim': (assert) =>
     Task.spawn(function* () {
-      const Query = assert({ out: String })
+      const Query = deduce({ out: String })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: '   Hello world!   ', as: text }),
           Text.Trim({ of: text, is: out }),
         ])
 
-      test.deepEqual(yield* Query().select({ from: db }), [
+      assert.deepEqual(yield* Query().select({ from: db }), [
         { out: 'Hello world!' },
       ])
     }),
 
-  'test text/trim/start': (test) =>
+  'test text/trim/start': (assert) =>
     Task.spawn(function* () {
-      const Query = assert({ out: String })
+      const Query = deduce({ out: String })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: '   Hello world!   ', as: text }),
           Text.TrimStart({ of: text, is: out }),
         ])
 
-      test.deepEqual(yield* Query().select({ from: db }), [
+      assert.deepEqual(yield* Query().select({ from: db }), [
         { out: 'Hello world!   ' },
       ])
     }),
-  'test string/trim/end': (test) =>
+  'test string/trim/end': (assert) =>
     Task.spawn(function* () {
-      const Query = assert({ out: String })
+      const Query = deduce({ out: String })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: '   Hello world!   ', as: text }),
           Text.TrimEnd({ of: text, is: out }),
         ])
 
-      test.deepEqual(yield* Query().select({ from: db }), [
+      assert.deepEqual(yield* Query().select({ from: db }), [
         { out: '   Hello world!' },
       ])
     }),
-  'test utf8/to/text': (test) =>
+  'test utf8/to/text': (assert) =>
     Task.spawn(function* () {
-      const Query = assert({ out: String })
+      const Query = deduce({ out: String })
         .with({ bytes: Uint8Array })
         .when(({ bytes, out }) => [
           Data.same({
@@ -256,40 +256,40 @@ export const testRelation = {
           UTF8.ToText({ of: bytes, is: out }),
         ])
 
-      test.deepEqual(yield* Query().select({ from: db }), [
+      assert.deepEqual(yield* Query().select({ from: db }), [
         { out: 'Hello world!' },
       ])
     }),
 
-  'test text/to/utf8': (test) =>
+  'test text/to/utf8': (assert) =>
     Task.spawn(function* () {
-      const Query = assert({ out: Uint8Array })
+      const Query = deduce({ out: Uint8Array })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: 'Hello world!', as: text }),
           UTF8.FromText({ of: text, is: out }),
         ])
 
-      test.deepEqual(yield* Query().select({ from: db }), [
+      assert.deepEqual(yield* Query().select({ from: db }), [
         { out: new TextEncoder().encode('Hello world!') },
       ])
     }),
 
-  'test text/length': (test) =>
+  'test text/length': (assert) =>
     Task.spawn(function* () {
-      const Query = assert({ out: Number })
+      const Query = deduce({ out: Number })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: 'Hello world!', as: text }),
           Text.Length({ of: text, is: out }),
         ])
 
-      test.deepEqual(yield* Query().select({ from: db }), [{ out: 12 }])
+      assert.deepEqual(yield* Query().select({ from: db }), [{ out: 12 }])
     }),
 
-  'test + operator': (test) =>
+  'test + operator': (assert) =>
     Task.spawn(function* () {
-      const TwoTermsQuery = assert({ c: Number })
+      const TwoTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number })
         .when(({ a, b, c }) => [
           Data.same({ this: 1, as: a }),
@@ -297,9 +297,9 @@ export const testRelation = {
           Math.Sum({ of: a, with: b, is: c }),
         ])
 
-      test.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 3 }])
+      assert.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 3 }])
 
-      const MultiTermsQuery = assert({ c: Number })
+      const MultiTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab10: Number })
         .when(({ a, b, ab, ab10, c }) => [
           Data.same({ this: 1, as: a }),
@@ -311,24 +311,30 @@ export const testRelation = {
           Math.Sum({ of: ab10, with: b, is: c }),
         ])
 
-      test.deepEqual(yield* MultiTermsQuery().select({ from: db }), [{ c: 15 }])
+      assert.deepEqual(yield* MultiTermsQuery().select({ from: db }), [
+        { c: 15 },
+      ])
 
-      const SingleTermQuery = assert({ c: Number }).when(({ c }) => [
+      const SingleTermQuery = deduce({ c: Number }).when(({ c }) => [
         Data.same({ this: 5, as: c }),
       ])
 
-      test.deepEqual(yield* SingleTermQuery().select({ from: db }), [{ c: 5 }])
+      assert.deepEqual(yield* SingleTermQuery().select({ from: db }), [
+        { c: 5 },
+      ])
 
-      const EmptyTermsQuery = assert({ c: Number }).when(({ c }) => [
+      const EmptyTermsQuery = deduce({ c: Number }).when(({ c }) => [
         Data.same({ this: 0, as: c }),
       ])
 
-      test.deepEqual(yield* EmptyTermsQuery().select({ from: db }), [{ c: 0 }])
+      assert.deepEqual(yield* EmptyTermsQuery().select({ from: db }), [
+        { c: 0 },
+      ])
     }),
 
-  'test - operator': (test) =>
+  'test - operator': (assert) =>
     Task.spawn(function* () {
-      const TwoTermsQuery = assert({ c: Number })
+      const TwoTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number })
         .when(({ a, b, c }) => [
           Data.same({ this: 10, as: a }),
@@ -336,9 +342,9 @@ export const testRelation = {
           Math.Subtraction({ of: a, by: b, is: c }),
         ])
 
-      test.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 8 }])
+      assert.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 8 }])
 
-      const MultiTermsQuery = assert({ c: Number })
+      const MultiTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab1: Number })
         .when(({ a, b, ab, ab1, c }) => [
           Data.same({ this: 10, as: a }),
@@ -349,24 +355,30 @@ export const testRelation = {
           Math.Subtraction({ of: ab1, by: b, is: c }),
         ])
 
-      test.deepEqual(yield* MultiTermsQuery().select({ from: db }), [{ c: 5 }])
+      assert.deepEqual(yield* MultiTermsQuery().select({ from: db }), [
+        { c: 5 },
+      ])
 
-      const EmptyTermsQuery = assert({ c: Number }).when(({ c }) => [
+      const EmptyTermsQuery = deduce({ c: Number }).when(({ c }) => [
         Data.same({ this: 0, as: c }),
       ])
 
-      test.deepEqual(yield* EmptyTermsQuery().select({ from: db }), [{ c: 0 }])
+      assert.deepEqual(yield* EmptyTermsQuery().select({ from: db }), [
+        { c: 0 },
+      ])
 
-      const SingleTermQuery = assert({ c: Number }).when(({ c }) => [
+      const SingleTermQuery = deduce({ c: Number }).when(({ c }) => [
         Data.same({ this: -6, as: c }),
       ])
 
-      test.deepEqual(yield* SingleTermQuery().select({ from: db }), [{ c: -6 }])
+      assert.deepEqual(yield* SingleTermQuery().select({ from: db }), [
+        { c: -6 },
+      ])
     }),
 
-  'test * operator': (test) =>
+  'test * operator': (assert) =>
     Task.spawn(function* () {
-      const TwoTermsQuery = assert({ c: Number })
+      const TwoTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number })
         .when(({ a, b, c }) => [
           Data.same({ this: 10, as: a }),
@@ -374,9 +386,9 @@ export const testRelation = {
           Math.Multiplication({ of: a, by: b, is: c }),
         ])
 
-      test.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 20 }])
+      assert.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 20 }])
 
-      const MultiTermsQuery = assert({ c: Number })
+      const MultiTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab3: Number })
         .when(({ a, b, c, ab, ab3 }) => [
           Data.same({ this: 10, as: a }),
@@ -387,29 +399,33 @@ export const testRelation = {
           Math.Multiplication({ of: ab3, by: b, is: c }),
         ])
 
-      test.deepEqual(yield* MultiTermsQuery().select({ from: db }), [
+      assert.deepEqual(yield* MultiTermsQuery().select({ from: db }), [
         { c: 120 },
       ])
 
-      const EmptyTermsQuery = assert({ c: Number }).when(({ c }) => [
+      const EmptyTermsQuery = deduce({ c: Number }).when(({ c }) => [
         Data.same({ this: 1, as: c }),
       ])
 
-      test.deepEqual(yield* EmptyTermsQuery().select({ from: db }), [{ c: 1 }])
+      assert.deepEqual(yield* EmptyTermsQuery().select({ from: db }), [
+        { c: 1 },
+      ])
 
-      const SingleTermQuery = assert({ c: Number })
+      const SingleTermQuery = deduce({ c: Number })
         .with({ a: Number })
         .when(({ a, c }) => [
           Data.same({ this: 10, as: a }),
           Data.same({ this: a, as: c }),
         ])
 
-      test.deepEqual(yield* SingleTermQuery().select({ from: db }), [{ c: 10 }])
+      assert.deepEqual(yield* SingleTermQuery().select({ from: db }), [
+        { c: 10 },
+      ])
     }),
 
-  'test / operator': (test) =>
+  'test / operator': (assert) =>
     Task.spawn(function* () {
-      const TwoTermsQuery = assert({ c: Number })
+      const TwoTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number })
         .when(({ a, b, c }) => [
           Data.same({ this: 10, as: a }),
@@ -417,9 +433,9 @@ export const testRelation = {
           Math.Division({ of: a, by: b, is: c }),
         ])
 
-      test.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 5 }])
+      assert.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 5 }])
 
-      const MultiTermsQuery = assert({ c: Number })
+      const MultiTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab3: Number })
         .when(({ a, b, c, ab, ab3 }) => [
           Data.same({ this: 48, as: a }),
@@ -430,20 +446,22 @@ export const testRelation = {
           Math.Division({ of: ab3, by: b, is: c }),
         ])
 
-      test.deepEqual(yield* MultiTermsQuery().select({ from: db }), [{ c: 4 }])
+      assert.deepEqual(yield* MultiTermsQuery().select({ from: db }), [
+        { c: 4 },
+      ])
 
-      const SingleTermQuery = assert({ c: Number })
+      const SingleTermQuery = deduce({ c: Number })
         .with({ a: Number })
         .when(({ a, c }) => [
           Data.same({ this: 5, as: a }),
           Math.Division({ of: a, by: 2, is: c }),
         ])
 
-      test.deepEqual(yield* SingleTermQuery().select({ from: db }), [
+      assert.deepEqual(yield* SingleTermQuery().select({ from: db }), [
         { c: 2.5 },
       ])
 
-      const DivisionByZeroQuery = assert({ c: Number })
+      const DivisionByZeroQuery = deduce({ c: Number })
         .with({ a: Number })
         .when(({ a, c }) => [
           Data.same({ this: 5, as: a }),
@@ -451,16 +469,16 @@ export const testRelation = {
           Math.Division({ of: a, by: 0, is: c }),
         ])
 
-      test.deepEqual(
+      assert.deepEqual(
         yield* DivisionByZeroQuery().select({ from: db }),
         [],
         'division by zero not allowed'
       )
     }),
 
-  'test % operator': (test) =>
+  'test % operator': (assert) =>
     Task.spawn(function* () {
-      const Query = assert({ c: Number })
+      const Query = deduce({ c: Number })
         .with({ a: Number, b: Number })
         .when(({ a, b, c }) => [
           Data.same({ this: 9, as: a }),
@@ -468,24 +486,24 @@ export const testRelation = {
           Math.Modulo({ of: a, by: b, is: c }),
         ])
 
-      test.deepEqual(yield* Query().select({ from: db }), [{ c: 1 }])
+      assert.deepEqual(yield* Query().select({ from: db }), [{ c: 1 }])
     }),
 
-  'test ** operator': (test) =>
+  'test ** operator': (assert) =>
     Task.spawn(function* () {
-      const Query = assert({ c: Number })
+      const Query = deduce({ c: Number })
         .with({ b: Number })
         .when(({ b, c }) => [
           Data.same({ this: 3, as: b }),
           Math.Power({ of: 2, exponent: b, is: c }),
         ])
 
-      test.deepEqual(yield* Query().select({ from: db }), [{ c: 8 }])
+      assert.deepEqual(yield* Query().select({ from: db }), [{ c: 8 }])
     }),
 
-  'test math/absolute': (test) =>
+  'test math/absolute': (assert) =>
     Task.spawn(function* () {
-      const Query = assert({ c: Number, d: Number })
+      const Query = deduce({ c: Number, d: Number })
         .with({ a: Number, b: Number })
         .when(({ a, b, c, d }) => [
           Data.same({ this: 2, as: a }),
@@ -494,12 +512,12 @@ export const testRelation = {
           Math.Absolute({ of: b, is: d }),
         ])
 
-      test.deepEqual(yield* Query().select({ from: db }), [{ c: 2, d: 3 }])
+      assert.deepEqual(yield* Query().select({ from: db }), [{ c: 2, d: 3 }])
     }),
 
-  'test text/like': (test) =>
+  'test text/like': (assert) =>
     Task.spawn(function* () {
-      const WithResultQuery = assert({ out: String })
+      const WithResultQuery = deduce({ out: String })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: 'Hello World', as: text }),
@@ -507,20 +525,20 @@ export const testRelation = {
           Data.same({ this: text, as: out }),
         ])
 
-      test.deepEqual(yield* WithResultQuery().select({ from: db }), [
+      assert.deepEqual(yield* WithResultQuery().select({ from: db }), [
         { out: 'Hello World' },
       ])
 
-      const BooleanPatternQuery = assert({ text: String }).when(({ text }) => [
+      const BooleanPatternQuery = deduce({ text: String }).when(({ text }) => [
         Data.same({ this: 'Hello World', as: text }),
         Text.match({ this: text, pattern: 'Hello*' }),
       ])
 
-      test.deepEqual(yield* BooleanPatternQuery().select({ from: db }), [
+      assert.deepEqual(yield* BooleanPatternQuery().select({ from: db }), [
         { text: 'Hello World' },
       ])
 
-      const NoMatchQuery = assert({ out: String })
+      const NoMatchQuery = deduce({ out: String })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: 'Hello World', as: text }),
@@ -528,12 +546,12 @@ export const testRelation = {
           Data.same({ this: text, as: out }),
         ])
 
-      test.deepEqual(yield* NoMatchQuery().select({ from: db }), [])
+      assert.deepEqual(yield* NoMatchQuery().select({ from: db }), [])
     }),
 
-  'test text/includes': (test) =>
+  'test text/includes': (assert) =>
     Task.spawn(function* () {
-      const WithResultQuery = assert({ out: String })
+      const WithResultQuery = deduce({ out: String })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: 'Hello World', as: text }),
@@ -541,20 +559,20 @@ export const testRelation = {
           Data.same({ this: text, as: out }),
         ])
 
-      test.deepEqual(yield* WithResultQuery().select({ from: db }), [
+      assert.deepEqual(yield* WithResultQuery().select({ from: db }), [
         { out: 'Hello World' },
       ])
 
-      const BooleanQuery = assert({ text: String }).when(({ text }) => [
+      const BooleanQuery = deduce({ text: String }).when(({ text }) => [
         Data.same({ this: 'Hello World', as: text }),
         Text.includes({ this: text, slice: 'World' }),
       ])
 
-      test.deepEqual(yield* BooleanQuery().select({ from: db }), [
+      assert.deepEqual(yield* BooleanQuery().select({ from: db }), [
         { text: 'Hello World' },
       ])
 
-      const NoMatchQuery = assert({ out: String })
+      const NoMatchQuery = deduce({ out: String })
         .with({ text: String })
         .when(({ text, out }) => [
           Data.same({ this: 'Hello World', as: text }),
@@ -562,6 +580,6 @@ export const testRelation = {
           Data.same({ this: text, as: out }),
         ])
 
-      test.deepEqual(yield* NoMatchQuery().select({ from: db }), [])
+      assert.deepEqual(yield* NoMatchQuery().select({ from: db }), [])
     }),
 }
