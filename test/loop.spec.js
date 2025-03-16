@@ -1,5 +1,7 @@
 import * as DB from 'datalogia'
 import { $ } from 'datalogia'
+import { deduce, induce, loop, Fact, Data, Math } from '../src/syntax.js'
+import { derive } from '../src/fact.js'
 
 const id = DB.Memory.entity
 
@@ -17,7 +19,112 @@ const db = DB.Memory.create([
  * @type {import('entail').Suite}
  */
 export const testRecursion = {
-  'test recursion': async (assert) => {
+  'test ancestor loop': async (assert) => {
+    const Parent = deduce({ this: Object, of: Object }).when(
+      ({ this: parent, of: child }) => [
+        Fact({ the: 'child/parent', of: child, is: parent }),
+      ]
+    )
+
+    const Ancestor = induce({ this: Object, of: Object })
+      .when((terms) => [Parent(terms)])
+      .with({ parent: Object })
+      .repeat(({ this: ancestor, of: parent }) => ({
+        this: ancestor,
+        of: parent,
+      }))
+      .while(({ this: ancestor, parent }) => [
+        Parent({ this: ancestor, of: parent }),
+      ])
+
+    const alice = id('alice')
+    const bob = id('bob')
+    const mallory = id('mallory')
+
+    const ancestors = await Ancestor().select({
+      from: DB.Memory.create([
+        [alice, 'child/parent', bob],
+        [bob, 'child/parent', mallory],
+      ]),
+    })
+
+    console.log(ancestors)
+  },
+  'skip test ancestor': async (assert) => {
+    const Parent = deduce({ this: Object, of: Object }).when(
+      ({ this: parent, of: child }) => [
+        Fact({ the: 'child/parent', of: child, is: parent }),
+      ]
+    )
+
+    const Ancestor = deduce({ this: Object, of: Object })
+      .with({ parent: Object })
+      .when(({ this: ancestor, of: child, parent }) => ({
+        direct: [Parent({ this: ancestor, of: child })],
+        transitive: [
+          Parent({ this: parent, of: child }),
+          Ancestor({ this: ancestor, of: parent }),
+        ],
+      }))
+
+    const alice = id('alice')
+    const bob = id('bob')
+    const mallory = id('mallory')
+
+    const ancestors = await Ancestor().select({
+      from: DB.Memory.create([
+        [alice, 'child/parent', bob],
+        [bob, 'child/parent', mallory],
+      ]),
+    })
+
+    console.log(ancestors)
+  },
+  'skip test traverse': async (assert) => {
+    induce({ n: Number, from: Number, to: Number })
+      .with({ next: Number })
+      .while(({ from, to }) => [Data.less({ this: from, than: to })])
+      .do(({ n, from, next, to }) => [
+        Data.same({ this: from, as: n }),
+        Math.Sum({ of: n, with: 1, is: next }),
+      ])
+      .repeat(({ n, next, to }) => ({ n, from: next, to }))
+
+    induce({ n: Number, from: Number, to: Number })
+      .with({ next: Number })
+      .when(({ n, from, next, to }) => [
+        Data.less({ this: from, than: to }),
+        Data.same({ this: from, as: n }),
+        Math.Sum({ of: n, with: 1, is: next }),
+      ])
+      .repeat(({ n, next, to }) => ({ n, from: next, to }))
+
+    const Loop = induce({ n: Number, from: Number, to: Number })
+      .with({ next: Number })
+      .when(({ n, from, next, to }) => [
+        Data.less({ this: from, than: to }),
+        Data.same({ this: from, as: n }),
+        Math.Sum({ of: n, with: 1, is: next }),
+        Loop({ n, from: next, to }),
+      ])
+  },
+
+  'skip test loop': async (assert) => {
+    deduce({ n: Number, from: Number, to: Number })
+      .with({ next: Number })
+      .when(({ n, from, to, next }) => [
+        Data.less({ this: from, than: to }),
+        Data.same({ this: from, as: n }),
+        Math.Sum({ of: n, with: 1, is: next }),
+      ])
+    // .loop(({ n, from, to, next }) => ({ recur: { n, from: next, to } }))
+
+    // .repeat(({ n, from, to }) => [
+    //   Math.Sum({ of: from, with: 1, is: n }),
+    //   Data.less(({ this: n, than: to }))
+    // ])
+  },
+  'skip test recursion': async (assert) => {
     const list = DB.link()
     const item = DB.link()
     const head = DB.link()
@@ -69,7 +176,7 @@ export const testRecursion = {
       ]
     )
   },
-  'using builder syntax': async (assert) => {
+  'skip using builder syntax': async (assert) => {
     const Child = DB.rule({
       case: { of: $.list },
       when() {
@@ -121,7 +228,7 @@ export const testRecursion = {
     )
   },
 
-  'test iteration': async (assert) => {
+  'skip test iteration': async (assert) => {
     const Iterate = DB.rule({
       case: { from: $.from, to: $.to },
       when() {

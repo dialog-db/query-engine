@@ -862,7 +862,7 @@ export class DeductiveRule {
  * @template {Match} [Repeat=Match]
  * @implements {API.Induction<Match, Repeat>}
  */
-class InductiveRule {
+export class InductiveRule {
   /**
    * @template {API.Conclusion} Match
    * @template {Match} [Repeat=Match]

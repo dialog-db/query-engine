@@ -541,6 +541,17 @@ export type WhenBuilder<T extends RuleDescriptor> = (
   variables: InferRuleVariables<T> & { _: Variable<any> }
 ) => WhenView
 
+export type EveryBuilder<T extends RuleDescriptor> = (
+  variables: InferRuleVariables<T> & { _: Variable<any> }
+) => EveryView
+
+export type RepeatBuilder<
+  Variables extends RuleDescriptor,
+  Local extends RuleDescriptor,
+> = (
+  variables: InferRuleVariables<Local & Variables> & { _: Variable<any> }
+) => InferRuleTerms<Variables>
+
 export type WhenView = EveryView | SomeView
 export type EveryView = ConjunctView[]
 export type ConjunctView = Conjunct | MatchView<unknown> | void
@@ -1099,6 +1110,10 @@ export interface RuleDescriptor {
 }
 export type InferRuleVariables<T extends RuleDescriptor> = {
   [Key in keyof T]: Variable<InferDescriptorType<T[Key]>>
+}
+
+export type InferRuleTerms<T extends RuleDescriptor> = {
+  [Key in keyof T]: Term<InferDescriptorType<T[Key]>>
 }
 
 export type ArraySchema<Of> = {

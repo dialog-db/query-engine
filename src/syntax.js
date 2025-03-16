@@ -609,13 +609,19 @@ export class Math {
  * @template {API.RuleDescriptor} Descriptor
  * @param {Descriptor} descriptor
  */
-export const deduce = (descriptor) => new RuleBuilder(descriptor, {})
+export const deduce = (descriptor) => new Deduce(descriptor, {})
+
+/**
+ * @template {API.RuleDescriptor} Descriptor
+ * @param {Descriptor} descriptor
+ */
+export const induce = (descriptor) => new Induce(descriptor, {})
 
 /**
  * @template {API.RuleDescriptor} Descriptor
  * @template {API.RuleDescriptor} Locals
  */
-class RuleBuilder {
+class Deduce {
   /**
    * @param {Descriptor} descriptor
    * @param {Locals} locals
@@ -626,7 +632,7 @@ class RuleBuilder {
   }
 
   /**
-   * @returns {RuleBuilder<Descriptor, Locals>}
+   * @returns {Deduce<Descriptor, Locals>}
    */
   get this() {
     return this
@@ -647,36 +653,66 @@ class RuleBuilder {
   }
 
   /**
+   * @template {API.RuleDescriptor} Variables
+   * @param {Variables} variables
+   * @returns {API.InferRuleVariables<Variables> & {_: API.Variable}}
+   */
+  static buildVariables(variables) {
+    return Object.assign(this.buildMatch(variables), { _: $.$ })
+  }
+
+  /**
    * @template {Omit<API.RuleDescriptor, keyof Descriptor | keyof Locals>} Extension
    * @param {Extension} extension
-   * @returns {RuleBuilder<Descriptor, Locals & Extension>}
+   * @returns {Deduce<Descriptor, Locals & Extension>}
    */
   with(extension) {
-    return new RuleBuilder(this.descriptor, { ...extension, ...this.locals })
+    return new Deduce(this.descriptor, { ...extension, ...this.locals })
   }
   /**
    * @param {API.WhenBuilder<Descriptor & Locals>} derive
-   * @returns {Rule<Descriptor, Locals>}
+   * @returns {Deduction<Descriptor, Locals>}
    */
   when(derive) {
-    const variables = RuleBuilder.buildMatch({
-      ...this.locals,
-      ...this.descriptor,
-    })
+    return new Deduction(this.descriptor, this.locals, derive)
+  }
+}
 
-    const when = /** @type {Record<string, API.Every>} */ ({})
-    for (const [name, disjunct] of iterateDisjuncts(
-      derive({ ...variables, _: $._ })
-    )) {
-      const conjuncts = [...iterateConjuncts(disjunct)]
-      when[name] = /** @type {[API.Conjunct, ...API.Conjunct[]]} */ (conjuncts)
-    }
+/**
+ * @template {API.RuleDescriptor} Descriptor
+ * @template {API.RuleDescriptor} Locals
+ */
+class Induce {
+  /**
+   * @param {Descriptor} descriptor
+   * @param {Locals} locals
+   */
+  constructor(descriptor, locals) {
+    this.descriptor = descriptor
+    this.locals = locals
+  }
 
-    return new Rule(
-      this.descriptor,
-      this.locals,
-      /** @type {API.Some} */ (when)
-    )
+  /**
+   * @returns {Induce<Descriptor, Locals>}
+   */
+  get this() {
+    return this
+  }
+
+  /**
+   * @template {Omit<API.RuleDescriptor, keyof Descriptor | keyof Locals>} Extension
+   * @param {Extension} extension
+   * @returns {Induce<Descriptor, Locals & Extension>}
+   */
+  with(extension) {
+    return new Induce(this.descriptor, { ...extension, ...this.locals })
+  }
+  /**
+   * @param {API.EveryBuilder<Descriptor & Locals>} derive
+   * @returns {RepeatBuilder<Descriptor, Locals>}
+   */
+  when(derive) {
+    return new RepeatBuilder(this.descriptor, this.locals, derive)
   }
 }
 
@@ -713,15 +749,21 @@ function* iterateDisjuncts(source) {
 /**
  * @template {API.RuleDescriptor} Descriptor
  * @template {API.RuleDescriptor} Locals
- * @extends {Callable<(terms?: API.RuleBindings<API.InferRuleVariables<Descriptor>>) => Query<Descriptor>>}
+ * @extends {Callable<(terms?: API.RuleBindings<API.InferRuleVariables<Descriptor>>) => Query<Descriptor, Locals>>}
  */
-class Rule extends Callable {
+class Deduction extends Callable {
+  /** @type {API.Deduction<API.InferRuleVariables<Descriptor>>|undefined} */
+  #source
+  /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>|undefined} */
+  #form
+
   /**
    * @param {Descriptor} descriptor
    * @param {Locals} locals
-   * @param {API.Some} when
+   * @param {API.WhenBuilder<Descriptor & Locals>} buildWhen
+   * @param {Deduction<Descriptor, Locals>} [baseRule]
    */
-  constructor(descriptor, locals, when) {
+  constructor(descriptor, locals, buildWhen, baseRule) {
     super(
       /** @type {typeof this.match} */
       (terms) => this.match(terms)
@@ -729,43 +771,112 @@ class Rule extends Callable {
 
     this.locals = locals
     this.descriptor = descriptor
-
-    const source = {
-      match: RuleBuilder.buildMatch(descriptor),
-      when,
-    }
-    this.source = source
-    this.form = Analyzer.rule(source)
+    this.buildWhen = buildWhen
+    this.baseRule = baseRule
   }
 
   /**
-   * @param {API.WhenBuilder<Descriptor & Locals>} derive
-   * @returns {Rule<Descriptor, Locals>}
+   * @template {API.RuleDescriptor} Parameters
+   * @template {API.RuleDescriptor} Locals
+   * @param {object} source
+   * @param {Parameters} source.parameters
+   * @param {Locals} source.locals
+   * @param {API.WhenBuilder<Parameters & Locals>} source.buildWhen
+   * @param {Deduction<Parameters, Locals>} [source.baseRule]
+   * @returns {API.Deduction<API.InferRuleVariables<Parameters>>}
    */
-  when(derive) {
-    const variables = {
-      _: $._,
-      ...RuleBuilder.buildMatch({
-        ...this.locals,
-        ...this.descriptor,
-      }),
-    }
+  static compile({ parameters, locals, buildWhen, baseRule }) {
+    const match = Deduce.buildMatch(parameters)
+    const variables = Deduce.buildVariables({ ...locals, ...parameters })
 
-    const base = /** @type {API.Conjunct[]} */ ([...this.match(variables)])
+    const base = /** @type {API.Conjunct[]} */ (
+      baseRule ? [...baseRule.match(variables)] : []
+    )
 
     const when = /** @type {Record<string, API.Every>} */ ({})
-    for (const [name, disjunct] of iterateDisjuncts(derive(variables))) {
+    for (const [name, disjunct] of iterateDisjuncts(buildWhen(variables))) {
       when[name] = /** @type {[API.Conjunct, ...API.Conjunct[]]} */ ([
         ...base,
         ...iterateConjuncts(disjunct),
       ])
     }
 
-    return new Rule(
-      this.descriptor,
-      this.locals,
-      /** @type {API.Some} */ (when)
+    return {
+      match,
+      when: /** @type {API.Some} */ (when),
+    }
+  }
+
+  static compileVariables() {}
+
+  /**
+   * @template {API.RuleDescriptor} T
+   * @param {API.WhenBuilder<T>} build
+   * @param {API.InferRuleVariables<T> & {_: API.Variable<any>}} variables
+   * @param {{match: (terms: Partial<API.RuleBindings<API.InferRuleVariables<T>>>) => Iterable<API.Conjunct>}} [base]
+   */
+  static compileWhen(build, variables, base) {
+    const conjuncts = /** @type {API.Conjunct[]} */ (
+      base ? [...base.match(variables)] : []
     )
+
+    const when = /** @type {Record<string, API.Every>} */ ({})
+    for (const [name, disjunct] of iterateDisjuncts(build(variables))) {
+      when[name] = /** @type {[API.Conjunct, ...API.Conjunct[]]} */ ([
+        ...conjuncts,
+        ...iterateConjuncts(disjunct),
+      ])
+    }
+
+    return /** @type {API.Some} */ (when)
+  }
+
+  get source() {
+    const source = this.#source
+    if (source) {
+      return source
+    } else {
+      const source = Deduction.compile({
+        parameters: this.descriptor,
+        locals: this.locals,
+        buildWhen: this.buildWhen,
+        baseRule: this.baseRule,
+      })
+      this.#source = source
+      return source
+    }
+  }
+
+  get form() {
+    const form = this.#form
+    if (form) {
+      return form
+    } else {
+      const form = Analyzer.rule(this.source)
+      this.#form = form
+      return form
+    }
+  }
+
+  /**
+   * @template {Omit<API.RuleDescriptor, keyof Descriptor | keyof Locals>} Extension
+   * @param {Extension} extension
+   * @returns {Deduction<Descriptor, Locals & Extension>}
+   */
+  with(extension) {
+    return new Deduction(
+      this.descriptor,
+      { ...extension, ...this.locals },
+      this.buildWhen
+    )
+  }
+
+  /**
+   * @param {API.WhenBuilder<Descriptor & Locals>} derive
+   * @returns {Deduction<Descriptor, Locals>}
+   */
+  when(derive) {
+    return new Deduction(this.descriptor, this.locals, derive, this)
   }
 
   get $() {
@@ -774,7 +885,7 @@ class Rule extends Callable {
   /**
    * @template {Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>} Selection
    * @param {Selection} [terms]
-   * @returns {Query<{[K in keyof Selection]: Descriptor[K]}>}
+   * @returns {Query<{[K in keyof Selection]: Descriptor[K]}, Locals>}
    */
   match(terms) {
     const match =
@@ -788,7 +899,7 @@ class Rule extends Callable {
   /**
    * @template {Partial<API.RuleBindings<API.InferRuleVariables<Descriptor>>>} Selection
    * @param {Selection} [terms]
-   * @returns {Query<Descriptor>}
+   * @returns {Query<Descriptor, Locals>}
    */
   where(terms) {
     return this.match({ ...this.form.match, ...terms })
@@ -797,6 +908,159 @@ class Rule extends Callable {
 
 /**
  * @template {API.RuleDescriptor} Descriptor
+ * @template {API.RuleDescriptor} Locals
+ */
+class RepeatBuilder {
+  /**
+   * @param {Descriptor} descriptor
+   * @param {Locals} locals
+   * @param {API.EveryBuilder<Descriptor & Locals>} buildWhen
+   */
+  constructor(descriptor, locals, buildWhen) {
+    this.locals = locals
+    this.descriptor = descriptor
+    this.buildWhen = buildWhen
+  }
+
+  /**
+   * @template {Omit<API.RuleDescriptor, keyof Descriptor | keyof Locals>} Extension
+   * @param {Extension} extension
+   * @returns {RepeatBuilder<Descriptor, Locals & Extension>}
+   */
+  with(extension) {
+    return new RepeatBuilder(
+      this.descriptor,
+      { ...extension, ...this.locals },
+      this.buildWhen
+    )
+  }
+
+  /**
+   * @param {API.RepeatBuilder<Descriptor, Locals>} derive
+   * @returns {Repeat<Descriptor, Locals>}
+   */
+  repeat(derive) {
+    return new Repeat(this.descriptor, this.locals, this.buildWhen, derive)
+  }
+}
+
+/**
+ * @template {API.RuleDescriptor} Descriptor
+ * @template {API.RuleDescriptor} Locals
+ */
+class Repeat {
+  /**
+   * @param {Descriptor} descriptor
+   * @param {Locals} locals
+   * @param {API.EveryBuilder<Descriptor & Locals>} buildWhen
+   * @param {API.RepeatBuilder<Descriptor, Locals>} buildRepeat
+   */
+  constructor(descriptor, locals, buildWhen, buildRepeat) {
+    this.descriptor = descriptor
+    this.locals = locals
+    this.buildWhen = buildWhen
+    this.buildRepeat = buildRepeat
+  }
+
+  /**
+   * @param {API.WhenBuilder<Descriptor & Locals>} derive
+   * @returns {Induction<Descriptor, Locals>}
+   */
+  while(derive) {
+    return new Induction({
+      parameters: this.descriptor,
+      locals: this.locals,
+      when: this.buildWhen,
+      repeat: this.buildRepeat,
+      while: derive,
+    })
+  }
+}
+
+/**
+ * @template {API.RuleDescriptor} Parameters
+ * @template {API.RuleDescriptor} Locals
+ * @extends {Callable<(terms?: API.RuleBindings<API.InferRuleVariables<Parameters>>) => Query<Parameters, Locals>>}
+ */
+class Induction extends Callable {
+  /** @type {API.Induction<API.InferRuleVariables<Parameters>, API.InferRuleVariables<Parameters & Locals>>|undefined} */
+  #source
+  /** @type {Analyzer.InductiveRule<API.InferRuleVariables<Parameters>, API.InferRuleVariables<Parameters & Locals>>|undefined} */
+  #form
+
+  /**
+   * @param {object} model
+   * @param {Parameters} model.parameters
+   * @param {Locals} model.locals
+   * @param {API.EveryBuilder<Parameters & Locals>} model.when
+   * @param {API.RepeatBuilder<Parameters, Locals>} model.repeat
+   * @param {API.WhenBuilder<Parameters & Locals>} model.while
+   */
+  constructor(model) {
+    super(
+      /** @type {typeof this.match} */
+      (terms) => this.match(terms)
+    )
+
+    this.model = model
+  }
+
+  get source() {
+    const source = this.#source
+    if (source) {
+      return source
+    } else {
+      const { model } = this
+      const variables = Deduce.buildVariables({
+        ...model.locals,
+        ...model.parameters,
+      })
+
+      const source =
+        /** @type {API.Induction<API.InferRuleVariables<Parameters>, API.InferRuleVariables<Parameters & Locals>>} */ ({
+          match: Deduce.buildMatch(model.parameters),
+          when: /** @type {[API.Conjunct, ...API.Conjunct[]]} */ ([
+            ...iterateConjuncts(model.when(variables)),
+          ]),
+          repeat: model.repeat(variables),
+          while: Deduction.compileWhen(model.while, variables),
+        })
+
+      this.#source = source
+
+      return source
+    }
+  }
+
+  get form() {
+    const form = this.#form
+    if (form) {
+      return form
+    } else {
+      const form = Analyzer.loop(this.source)
+      this.#form = form
+      return form
+    }
+  }
+
+  /**
+   * @template {Partial<API.RuleBindings<API.InferRuleVariables<Parameters>>>} Selection
+   * @param {Selection} [terms]
+   * @returns {Query<{[K in keyof Selection]: Parameters[K]}, Locals>}
+   */
+  match(terms) {
+    const match =
+      /** @type {API.InferRuleVariables<{[K in keyof Selection & keyof Parameters]: Parameters[K]}>} */ (
+        terms ?? this.form.match
+      )
+
+    return new Query(match, this)
+  }
+}
+
+/**
+ * @template {API.RuleDescriptor} Descriptor
+ * @template {API.RuleDescriptor} Locals
  * @param {API.Every} where
  */
 class Query {
@@ -804,7 +1068,7 @@ class Query {
   #form
   /**
    * @param {API.InferRuleVariables<Descriptor>} match
-   * @param {Rule<Descriptor, {}>} rule
+   * @param {Deduction<Descriptor, Locals>|Induction<Descriptor, Locals>} rule
    */
   constructor(match, rule) {
     this.match = match
@@ -830,4 +1094,8 @@ class Query {
       rule: this.rule.source,
     }
   }
+}
+
+class InductionBuilder {
+  constructor() {}
 }
