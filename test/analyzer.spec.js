@@ -518,10 +518,10 @@ export const testAnalyzer = {
             match: { x: $.x, y: $.y },
             when: [{ match: { the: 'link', of: $.x, is: $.y } }],
             repeat: { x: $.x, y: $.z },
-            while: [{ match: { the: 'link', of: $.x, is: $.z } }],
+            while: [{ match: { the: 'link', of: $.x } }],
           },
         }),
-      /Rule case "while" does not bind variable \?y that rule matches as "y"/
+      /Rule case "while" does not bind variable \?z that rule matches as "y"/
     )
   },
 
@@ -1108,8 +1108,11 @@ export const testAnalyzer = {
             { match: { this: $.from, than: $.to }, operator: '<' },
             { match: { of: $.from, is: $.n }, operator: '==' },
           ],
-          repeat: { n: $.n, from: $.inc, to: $.to },
-          while: [{ match: { of: $.from, with: 1, is: $.inc }, operator: '+' }],
+          repeat: { n: $.inc, from: $.inc, to: $.to },
+          while: [
+            { match: { this: $.from, than: $.to }, operator: '<' },
+            { match: { of: $.from, with: 1, is: $.inc }, operator: '+' },
+          ],
         },
       })
 
@@ -1189,13 +1192,24 @@ export const testAnalyzer = {
   },
   'compares iteration rule cost to against scan cost': async (assert) => {
     const Between = Analyzer.loop({
-      match: { value: $.value, from: $.from, to: $.to },
+      match: {
+        value: $.value,
+        from: $.from,
+        to: $.to,
+      },
       when: [
         { match: { this: $.from, than: $.to }, operator: '<' },
         { match: { of: $.from, is: $.value }, operator: '==' },
       ],
-      repeat: { value: $.value, from: $.next, to: $.to },
-      while: [{ match: { of: $.from, with: 1, is: $.next }, operator: '+' }],
+      repeat: {
+        value: $.next,
+        from: $.next,
+        to: $.to,
+      },
+      while: [
+        { match: { this: $.from, than: $.to }, operator: '<' },
+        { match: { of: $.from, with: 1, is: $.next }, operator: '+' },
+      ],
     })
 
     const Scan = Analyzer.rule({

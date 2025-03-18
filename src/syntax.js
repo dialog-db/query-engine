@@ -3,7 +3,7 @@ import * as Analyzer from './analyzer.js'
 import $ from './$.js'
 import { Callable } from './schema/callable.js'
 
-export { loop } from './analyzer.js'
+export { loop, induction } from './analyzer.js'
 
 /**
  * @template Terms
@@ -754,6 +754,9 @@ function* iterateDisjuncts(source) {
 class Deduction extends Callable {
   /** @type {API.Deduction<API.InferRuleVariables<Descriptor>>|undefined} */
   #source
+
+  #compiling = false
+
   /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>|undefined} */
   #form
 
@@ -836,12 +839,14 @@ class Deduction extends Callable {
     if (source) {
       return source
     } else {
+      this.#compiling = true
       const source = Deduction.compile({
         parameters: this.descriptor,
         locals: this.locals,
         buildWhen: this.buildWhen,
         baseRule: this.baseRule,
       })
+      this.#compiling = false
       this.#source = source
       return source
     }
@@ -855,6 +860,24 @@ class Deduction extends Callable {
       const form = Analyzer.rule(this.source)
       this.#form = form
       return form
+    }
+  }
+
+  /**
+   * @param {API.InferRuleVariables<Descriptor>} match
+   * @returns {API.Conjunct}
+   */
+  apply(match) {
+    if (this.#compiling) {
+      return {
+        // @ts-expect-error
+        recur: match,
+      }
+    } else {
+      return {
+        match,
+        rule: this.source,
+      }
     }
   }
 
@@ -1037,8 +1060,11 @@ class Induction extends Callable {
     if (form) {
       return form
     } else {
-      const form = Analyzer.loop(this.source)
-      this.#form = form
+      const form = Analyzer.induction(this.source)
+      this.#form =
+        /** @type {Analyzer.InductiveRule<API.InferRuleVariables<Parameters>, API.InferRuleVariables<Parameters & Locals>>} */ (
+          form
+        )
       return form
     }
   }
@@ -1068,7 +1094,7 @@ class Query {
   #form
   /**
    * @param {API.InferRuleVariables<Descriptor>} match
-   * @param {Deduction<Descriptor, Locals>|Induction<Descriptor, Locals>} rule
+   * @param {Deduction<Descriptor, Locals>} rule
    */
   constructor(match, rule) {
     this.match = match
@@ -1077,7 +1103,10 @@ class Query {
 
   get form() {
     if (!this.#form) {
-      this.#form = this.rule.form.apply(this.match)
+      this.#form =
+        /** @type {Analyzer.RuleApplication<API.InferRuleVariables<Descriptor>>} */ (
+          this.rule.form.apply(this.match)
+        )
     }
     return this.#form
   }
@@ -1089,13 +1118,6 @@ class Query {
   }
 
   *[Symbol.iterator]() {
-    yield {
-      match: this.match,
-      rule: this.rule.source,
-    }
+    yield this.rule.apply(this.match)
   }
-}
-
-class InductionBuilder {
-  constructor() {}
 }

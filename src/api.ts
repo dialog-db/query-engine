@@ -486,6 +486,15 @@ export interface Deduction<Match extends Conclusion = Conclusion> {
 
   readonly repeat?: undefined
   readonly while?: undefined
+  readonly loop?: undefined
+}
+
+export interface Loop<Match extends Conclusion = Conclusion> {
+  readonly loop: Match
+  readonly when: When<Conjunct | Recur<Match>>
+
+  readonly repeat?: undefined
+  readonly while?: undefined
 }
 
 export type Induction<
@@ -496,6 +505,7 @@ export type Induction<
   readonly when: Every
   readonly repeat: Repeat
   readonly while: When
+  readonly loop?: undefined
 }
 
 // export type When =
@@ -529,13 +539,21 @@ export interface Negation {
 }
 
 export type Conjunct = Constraint | Negation
+export type Recur<Bindings extends Conclusion = Conclusion> = {
+  recur: Bindings
 
-export type Every = readonly [Conjunct, ...Conjunct[]]
-export interface Some {
-  readonly [Case: string]: Every
+  not?: undefined
+  match?: undefined
+  rule?: undefined
+  operator?: undefined
 }
 
-export type When = Some | Every
+export type Every<T extends Conjunct | Recur = Conjunct> = readonly [T, ...T[]]
+export interface Some<T extends Conjunct | Recur = Conjunct> {
+  readonly [Case: string]: Every<T>
+}
+
+export type When<T extends Conjunct | Recur = Conjunct> = Some<T> | Every<T>
 
 export type WhenBuilder<T extends RuleDescriptor> = (
   variables: InferRuleVariables<T> & { _: Variable<any> }
@@ -568,6 +586,8 @@ export interface MatchRule<Match extends Conclusion = Conclusion> {
   fact?: undefined
 
   not?: undefined
+
+  recur?: undefined
 }
 
 export type MatchFact = {
@@ -592,6 +612,8 @@ export type MatchFact = {
   not?: undefined
 
   operator?: undefined
+
+  recur?: undefined
 }
 
 export type Select = SelectByAttribute | SelectByEntity | SelectByValue
@@ -683,6 +705,7 @@ export type MatchOperator<Formula = unknown, Identifier = Formula> = {
   rule?: undefined
   not?: undefined
   fact?: undefined
+  recur?: undefined
 }
 
 export type InferFormulaMatch<F> =
@@ -897,6 +920,7 @@ export type Plan = Unplannable | EvaluationPlan
 export interface EvaluationContext {
   selection: MatchFrame[]
   source: Querier
+  self: EvaluationPlan
 }
 
 export interface Evaluator extends EvaluationContext {

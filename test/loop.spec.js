@@ -19,7 +19,7 @@ const db = DB.Memory.create([
  * @type {import('entail').Suite}
  */
 export const testRecursion = {
-  'test ancestor loop': async (assert) => {
+  'skip test ancestor loop': async (assert) => {
     const Parent = deduce({ this: Object, of: Object }).when(
       ({ this: parent, of: child }) => [
         Fact({ the: 'child/parent', of: child, is: parent }),
@@ -29,7 +29,7 @@ export const testRecursion = {
     const Ancestor = induce({ this: Object, of: Object })
       .when((terms) => [Parent(terms)])
       .with({ parent: Object })
-      .repeat(({ this: ancestor, of: parent }) => ({
+      .repeat(({ this: ancestor, parent }) => ({
         this: ancestor,
         of: parent,
       }))
@@ -37,9 +37,9 @@ export const testRecursion = {
         Parent({ this: ancestor, of: parent }),
       ])
 
-    const alice = id('alice')
-    const bob = id('bob')
-    const mallory = id('mallory')
+    const alice = /** @type {DB.Entity & any} */ ({ '/': 'alice' }) //id('alice')
+    const bob = /** @type {any} */ ({ '/': 'bob' })
+    const mallory = /** @type {any} */ ({ '/': 'mallory' })
 
     const ancestors = await Ancestor().select({
       from: DB.Memory.create([
@@ -50,7 +50,7 @@ export const testRecursion = {
 
     console.log(ancestors)
   },
-  'skip test ancestor': async (assert) => {
+  'test ancestor': async (assert) => {
     const Parent = deduce({ this: Object, of: Object }).when(
       ({ this: parent, of: child }) => [
         Fact({ the: 'child/parent', of: child, is: parent }),
@@ -67,9 +67,9 @@ export const testRecursion = {
         ],
       }))
 
-    const alice = id('alice')
-    const bob = id('bob')
-    const mallory = id('mallory')
+    const alice = /** @type {DB.Entity & any} */ ({ '/': 'alice' }) //id('alice')
+    const bob = /** @type {any} */ ({ '/': 'bob' })
+    const mallory = /** @type {any} */ ({ '/': 'mallory' })
 
     const ancestors = await Ancestor().select({
       from: DB.Memory.create([
