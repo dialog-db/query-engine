@@ -924,34 +924,38 @@ class Recur {
     for (const match of context.selection) {
       // Remap selection to match the variables defined in this.terms
       const bindings = new Map()
-      let parts = []
       for (const [key, variable] of Object.entries(from)) {
         const value = match.get(variable)
         if (value !== undefined) {
           bindings.set(to[key], value)
-          parts.push(`${key}:${Constant.toString(value)}`)
         }
       }
 
       // Create ID from remapped selection
-      const id = parts.sort().join(',')
+      const id = identifyMatch(match)
 
       if (!stack.has(id)) {
         stack.add(id)
-
+        // Create a new evaluation context with the mapped bindings
         const matches = yield* context.self.evaluate({
           ...context,
           selection: [bindings],
         })
 
+        // Process all results from this recursion step
         for (const output of matches) {
+          // Create a copy of the original match to avoid modifying it in place
+          const newMatch = new Map(match)
+
+          // Also ensure values from the original bindings are propagated back
           for (const [key, variable] of Object.entries(from)) {
-            const value = output.get(variable)
+            const value = output.get(to[key])
             if (value !== undefined) {
-              match.set(variable, value)
+              newMatch.set(variable, value)
             }
           }
-          selection.push(match)
+
+          selection.push(newMatch)
         }
       }
     }
