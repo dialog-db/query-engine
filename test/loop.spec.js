@@ -72,6 +72,7 @@ export const testRecursion = {
     const mallory = /** @type {any} */ ('mallory')
     const jack = /** @type {any} */ ('jack')
     const adam = /** @type {any} */ ('adam')
+    const eve = /** @type {any} */ ('eve')
 
     const ancestors = await Ancestor().select({
       from: DB.Memory.create([
@@ -79,20 +80,31 @@ export const testRecursion = {
         [bob, 'child/parent', mallory],
         [bob, 'child/parent', jack],
         [jack, 'child/parent', adam],
+        [jack, 'child/parent', eve],
       ]),
     })
 
     console.log(ancestors)
-    assert.deepEqual(ancestors, [
-      { this: bob, of: alice },
-      { this: mallory, of: bob },
-      { this: jack, of: bob },
-      { this: adam, of: jack },
-      { this: mallory, of: alice },
-      { this: jack, of: alice },
-      { this: adam, of: bob },
-      { this: adam, of: alice },
-    ])
+    assert.deepEqual(
+      JSON.stringify(ancestors, null, 2),
+      JSON.stringify(
+        [
+          { this: bob, of: alice },
+          { this: mallory, of: bob },
+          { this: jack, of: bob },
+          { this: adam, of: jack },
+          { this: eve, of: jack },
+          { this: mallory, of: alice },
+          { this: jack, of: alice },
+          { this: adam, of: alice },
+          { this: eve, of: alice },
+          { this: adam, of: bob },
+          { this: eve, of: bob },
+        ],
+        null,
+        2
+      )
+    )
   },
   'skip test traverse': async (assert) => {
     induce({ n: Number, from: Number, to: Number })
