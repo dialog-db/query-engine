@@ -476,9 +476,7 @@ export type Conclusion = Row<Variable> & {
   this?: Variable
 }
 
-export type Rule<Match extends Conclusion = Conclusion> =
-  | Deduction<Match>
-  | Induction<Match>
+export type Rule<Match extends Conclusion = Conclusion> = Deduction<Match>
 
 export interface Deduction<Match extends Conclusion = Conclusion> {
   readonly match: Match
@@ -917,10 +915,16 @@ export interface EvaluationPlan {
 
 export type Plan = Unplannable | EvaluationPlan
 
+export interface RulePlan extends EvaluationPlan {
+  match: Conclusion
+}
+
 export interface EvaluationContext {
   selection: MatchFrame[]
   source: Querier
-  self: EvaluationPlan
+  self: RulePlan
+
+  state: WeakMap<object, Set<string>>
 }
 
 export interface Evaluator extends EvaluationContext {

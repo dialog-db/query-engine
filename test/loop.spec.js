@@ -1,6 +1,6 @@
 import * as DB from 'datalogia'
 import { $ } from 'datalogia'
-import { deduce, induce, loop, Fact, Data, Math } from '../src/syntax.js'
+import { deduce, induce, Fact, Data, Math } from '../src/syntax.js'
 import { derive } from '../src/fact.js'
 
 const id = DB.Memory.entity
@@ -67,18 +67,32 @@ export const testRecursion = {
         ],
       }))
 
-    const alice = /** @type {DB.Entity & any} */ ({ '/': 'alice' }) //id('alice')
-    const bob = /** @type {any} */ ({ '/': 'bob' })
-    const mallory = /** @type {any} */ ({ '/': 'mallory' })
+    const alice = /** @type {DB.Entity & any} */ ('alice') //id('alice')
+    const bob = /** @type {any} */ ('bob')
+    const mallory = /** @type {any} */ ('mallory')
+    const jack = /** @type {any} */ ('jack')
+    const adam = /** @type {any} */ ('adam')
 
     const ancestors = await Ancestor().select({
       from: DB.Memory.create([
         [alice, 'child/parent', bob],
         [bob, 'child/parent', mallory],
+        [bob, 'child/parent', jack],
+        [jack, 'child/parent', adam],
       ]),
     })
 
     console.log(ancestors)
+    assert.deepEqual(ancestors, [
+      { this: bob, of: alice },
+      { this: mallory, of: bob },
+      { this: jack, of: bob },
+      { this: adam, of: jack },
+      { this: mallory, of: alice },
+      { this: jack, of: alice },
+      { this: adam, of: bob },
+      { this: adam, of: alice },
+    ])
   },
   'skip test traverse': async (assert) => {
     induce({ n: Number, from: Number, to: Number })

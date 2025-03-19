@@ -38,18 +38,6 @@ export const apply = (operator, match) =>
 
 /**
  * @template {API.Conclusion} Match
- * @param {API.Loop<Match>} source
- */
-export const loop = (source) => Loop.new(source)
-
-/**
- * @template {API.Conclusion} Match
- * @param {API.Induction<Match>} source
- */
-export const induction = (source) => InductiveRule.new(source)
-
-/**
- * @template {API.Conclusion} Match
  * @param {API.RuleApplication<Match>} application
  */
 export const plan = (application) =>
@@ -550,16 +538,13 @@ export class RuleApplication {
    */
   static new(circuit, source) {
     // Build the underlying rule first
-    const rule =
-      isInductive(source.rule) ? InductiveRule.new(source.rule)
-      : isLoop(source.rule) ? Loop.new(source.rule)
-      : DeductiveRule.new(source.rule)
+    const rule = DeductiveRule.new(source.rule)
 
     return this.apply(rule, source.match, circuit)
   }
   /**
    * @template {API.Conclusion} Match
-   * @param {DeductiveRule<Match>|InductiveRule<Match>|Loop<Match>} rule
+   * @param {DeductiveRule<Match>} rule
    * @param {Partial<API.RuleBindings<Match>>} terms
    * @param {Circuit} circuit
    */
@@ -604,7 +589,7 @@ export class RuleApplication {
   /**
    * @param {Circuit} circuit
    * @param {Partial<API.RuleBindings<Match>> & {}} match
-   * @param {DeductiveRule<Match>|InductiveRule<Match>|Loop<Match>} rule
+   * @param {DeductiveRule<Match>} rule
    * @param {Context} context
    * @param {Map<API.Variable, number>} cells
    */
@@ -866,136 +851,6 @@ export class DeductiveRule {
 
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
- * @implements {API.Loop<Match>}
- */
-export class Loop {
-  /**
-   * @template {API.Conclusion} Case
-   * @param {API.Loop<Case>} source
-   */
-  static new(source) {
-    const disjuncts =
-      Array.isArray(source.when) ? { when: source.when } : source.when ?? {}
-
-    let cells = new Map()
-    let total = 0
-    /** @type {Record<string, Join>} */
-    const when = {}
-    const bindings = ruleBindings(source.loop)
-
-    const entries = Object.entries(disjuncts)
-    for (const [name, conjuncts] of entries) {
-      const deduction = Join.from({
-        name,
-        conjuncts,
-        bindings,
-      }).ensureBindings(bindings)
-      total += deduction.cost
-      when[name] = deduction
-
-      for (const [variable, cost] of deduction.cells) {
-        const currentCost = cells.get(variable) ?? 0
-        cells.set(variable, currentCost + cost)
-      }
-    }
-
-    return new this(source.loop, cells, total, when)
-  }
-
-  /**
-   * @param {Match} loop - Pattern to match against
-   * @param {Map<API.Variable, number>} cells - Cost per variable when not bound
-   * @param {number} cost - Base execution cost
-   * @param {Record<string, Join>} when - Named deductive branches that must be evaluated
-   */
-  constructor(loop, cells, cost, when) {
-    this.loop = loop
-    this.cells = cells
-    this.cost = cost
-    this.disjuncts = when
-    this.match = loop
-  }
-
-  /** @type {API.When} */
-  get when() {
-    return /** @type {any} */ (this.disjuncts)
-  }
-
-  /**
-   * @param {Partial<API.RuleBindings<Match>>} terms
-   * @returns {RuleApplication<Match>}
-   */
-  apply(terms = this.loop) {
-    return RuleApplication.apply(this, terms, Circuit.new())
-  }
-
-  /**
-   * @param {Context} context
-   */
-  plan(context) {
-    /** @type {Record<string, ReturnType<typeof Join.prototype.plan>>} */
-    const when = {}
-    let cost = 0
-    const disjuncts = Object.entries(this.disjuncts)
-    for (const [name, disjunct] of disjuncts) {
-      const plan = disjunct.plan(context)
-      when[name] = plan
-      cost += plan.cost
-    }
-
-    // If we have no disjuncts there will be nothing raising problem if required
-    // cell is not bound, which can happen in rules like this one
-    // rule({ match: { this: $, as: $ } })
-    // Which is why we need to perform validation here in such a case.
-    if (disjuncts.length === 0) {
-      for (const [cell, cost] of this.cells) {
-        const variable = resolve(context, cell)
-        if (cost >= Infinity && !isBound(context, variable)) {
-          const reference =
-            cell !== variable ? `${cell} referring to ${variable}` : cell
-          throw new ReferenceError(
-            `Rule application requires binding for ${reference} variable`
-          )
-        }
-      }
-    }
-
-    return new LoopPlan(this.loop, when, cost)
-  }
-
-  toDebugString() {
-    const disjuncts = Object.entries(this.disjuncts)
-    const when = []
-    for (const [name, disjunct] of disjuncts) {
-      when.push(`${name}: ${toDebugString(disjunct)}`)
-    }
-    const body =
-      when.length === 1 ? when[0] : `when: { ${indent(when.join(',\n'))} }`
-
-    return `{
-  match: ${Terms.toDebugString(this.loop)},
-  ${body}}
-}`
-  }
-
-  /**
-   * @returns {{}}
-   */
-
-  form() {
-    /** @type {Record<string, object>} */
-    const form = {}
-
-    for (const [name, disjunct] of Object.entries(this.disjuncts)) {
-      form[name] = disjunct.form()
-    }
-
-    return form
-  }
-}
-
-/**
- * @template {API.Conclusion} [Match=API.Conclusion]
  */
 class Recur {
   /**
@@ -1054,179 +909,66 @@ class Recur {
    */
 
   *evaluate(context) {
-    return context.self.evaluate(context)
-  }
-}
-/**
- * @template {API.Conclusion} [Match=API.Conclusion]
- * @template {Match} [Repeat=Match]
- * @implements {API.Induction<Match, Repeat>}
- */
-export class InductiveRule {
-  /**
-   * @template {API.Conclusion} Match
-   * @template {Match} [Repeat=Match]
-   * @param {API.Induction<Match, Repeat>} source
-   */
-  static new(source) {
-    const bindings = ruleBindings(source.match)
-
-    // If `source.when` is not an array we throw an exception as it must be
-    // provided to form a base case.
-    if (!Array.isArray(source.when) || source.when.length === 0) {
-      throw new SyntaxError(
-        'Inductive rule must have "when" property establishing base case of recursion'
-      )
+    const from = this.terms
+    const to = context.self.match
+    // Get the current recursion stack for this specific recur instance
+    let stack = context.state.get(this)
+    if (!stack) {
+      // create one if it does not exist yet
+      stack = new Set()
+      context.state.set(this, stack)
     }
 
-    // Analyze conjuncts present of the base (non-recursive) branch.
-    const when = Join.from({
-      name: 'when',
-      conjuncts: source.when,
-      bindings,
-    }).ensureBindings(bindings)
+    // Remap selection and filter out match frames that we have already visited
+    const selection = []
+    for (const match of context.selection) {
+      // Remap selection to match the variables defined in this.terms
+      const bindings = new Map()
+      let parts = []
+      for (const [key, variable] of Object.entries(from)) {
+        const value = match.get(variable)
+        if (value !== undefined) {
+          bindings.set(to[key], value)
+          parts.push(`${key}:${Constant.toString(value)}`)
+        }
+      }
 
-    let cells = new Map(when.cells)
-    // Base const contains `when` cost
-    let total = when.cost
+      // Create ID from remapped selection
+      const id = parts.sort().join(',')
 
-    // Next we will analyze the disjuncts of the recursive branches which are
-    // meant to bind variables to recurse with.
-    const disjuncts =
-      Array.isArray(source.while) ? { while: source.while } : source.while
+      if (!stack.has(id)) {
+        stack.add(id)
 
-    /** @type {Record<string, Join>} */
-    const induction = {}
+        const matches = yield* context.self.evaluate({
+          ...context,
+          selection: [bindings],
+        })
 
-    // We add variables from the `source.repeat` as recursive branches need to
-    // bind them in order to drive the loop.
-    const repeat = ruleBindings(source.repeat)
-    for (const [variable, name] of repeat) {
-      bindings.set(variable, name)
-    }
-
-    // Variables in 'repeat' are the ones that need to be bound by recursive branches
-    // so they can be used for the next iteration.
-    const required = new Map()
-    for (const [variable, name] of repeat) {
-      required.set(variable, name)
-    }
-
-    for (const [name, conjuncts] of Object.entries(disjuncts)) {
-      const deduction = Join.from({
-        name,
-        conjuncts,
-        bindings,
-      }).ensureBindings(required)
-      total += deduction.cost ** 2
-      induction[name] = deduction
-
-      // And cost from the induction clause
-      for (const [variable, cost] of deduction.cells) {
-        const currentCost = cells.get(variable) ?? 0
-        cells.set(variable, currentCost + cost ** 2)
+        for (const output of matches) {
+          for (const [key, variable] of Object.entries(from)) {
+            const value = output.get(variable)
+            if (value !== undefined) {
+              match.set(variable, value)
+            }
+          }
+          selection.push(match)
+        }
       }
     }
 
-    // Ensure that repeat rebinds all variables in the match.
-    const matchKeys = Object.keys(source.match)
-    const repeatKeys = Object.keys(source.repeat)
-    for (const name of matchKeys) {
-      if (!repeatKeys.includes(name)) {
-        throw new ReferenceError(
-          `Rule has inconsistent bindings across repeat: ${Terms.toDebugString(
-            source.repeat
-          )} and match: ${Terms.toDebugString(
-            source.match
-          )}\n  - "${name}" is missing in repeat`
-        )
-      }
-    }
-
-    return new this(source.match, when, source.repeat, induction, cells, total)
-  }
-
-  /**
-   * @param {Match} match - Initial pattern to match
-   * @param {Join} when - Initial conditions that must be met
-   * @param {Repeat} repeat - Pattern to match in recursive iterations
-   * @param {Record<string, Join>} loop - Named branches for recursive conditions
-   * @param {Map<API.Variable, number>} cells - Cost per variable when not bound
-   * @param {number} cost - Base cost including initial conditions and exponentially weighted recursive costs.
-   */
-  constructor(match, when, repeat, loop, cells, cost) {
-    this.match = match
-    this.base = when
-    this.repeat = repeat
-    this.loop = loop
-    this.cells = cells
-    this.cost = cost
-  }
-
-  /** @type {API.Every} */
-  get when() {
-    return /** @type {any} */ (this.base)
-  }
-
-  /** @type {API.When} */
-  get while() {
-    return /** @type {any} */ (this.loop)
-  }
-  /**
-   * @param {API.RuleBindings<Match>} terms
-   * @returns {RuleApplication<Match>}
-   */
-  apply(terms) {
-    return RuleApplication.apply(this, terms, Circuit.new())
-  }
-
-  /**
-   * @param {Context} context
-   */
-  plan(context) {
-    const when = this.base.plan(context)
-    let cost = when.cost
-    /** @type {Record<string, ReturnType<typeof Join.prototype.plan>>} */
-    const loop = {}
-    for (const [name, deduction] of Object.entries(this.loop)) {
-      const plan = deduction.plan(context)
-      loop[name] = plan
-      cost += plan.cost ** 2
-    }
-
-    return new InductionPlan(when, loop, cost, this.match, this.repeat)
-  }
-
-  /**
-   * @returns {object}
-   */
-  form() {
-    /** @type {Record<string, object>} */
-    const loop = {}
-    for (const [name, disjunct] of Object.entries(this.loop)) {
-      loop[name] = disjunct.form()
-    }
-
-    return {
-      when: this.base.form(),
-      while: loop,
-    }
+    return selection
   }
 }
 
 /**
- * @template {API.Conclusion} [Match=API.Conclusion]
- * @param {API.Rule<Match>} rule
- * @returns {rule is API.Induction<Match>}
+ * @param {API.MatchFrame} frame
  */
-const isInductive = (rule) => rule.repeat !== undefined
+const identifyMatch = (frame) =>
+  [...frame]
+    .map(([variable, value]) => `${variable}:${Constant.toString(value)}`)
+    .sort()
+    .join(',')
 
-/**
- * @template {API.Conclusion} [Match=API.Conclusion]
- * @param {API.Rule<Match>|API.Loop<Match>} rule
- * @returns {rule is API.Loop<Match>}
- */
-const isLoop = (rule) => rule.loop != undefined
 class Join {
   /**
    * @param {object} source
@@ -1570,10 +1312,10 @@ class JoinPlan {
   /**
    * @param {API.EvaluationContext} context
    */
-  *evaluate({ source, self, selection }) {
+  *evaluate({ source, self, selection, state }) {
     // Execute binding steps in planned order
     for (const plan of this.assertion) {
-      selection = yield* plan.evaluate({ source, self, selection })
+      selection = yield* plan.evaluate({ source, self, selection, state })
     }
 
     return selection
@@ -1691,89 +1433,12 @@ class DeductivePlan extends DisjoinPlan {
       source,
       self: this,
       selection: [new Map()],
+      state: new WeakMap(),
     })
 
     return Selector.select(selector, frames)
   }
 
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  evaluate(context) {
-    return super.evaluate({ ...context, self: this })
-  }
-}
-
-/**
- * @template {API.Conclusion} [Match=API.Conclusion]
- */
-class LoopPlan extends DisjoinPlan {
-  /**
-   * @param {Match} match
-   * @param {Record<string, API.EvaluationPlan>} disjuncts
-   * @param {number} cost
-   */
-  constructor(match, disjuncts, cost) {
-    super(disjuncts, cost)
-    this.match = match
-  }
-  toJSON() {
-    const when = Object.entries(this.disjuncts).map(([name, plan]) => [
-      name,
-      toJSON(plan),
-    ])
-
-    return {
-      loop: this.match,
-      when: when.length === 1 ? when[0][1] : Object.fromEntries(when),
-    }
-  }
-
-  debug() {
-    const head = `${Object.keys(this.match)}`
-    let body = ['']
-    for (const [name, disjunct] of Object.entries(this.disjuncts)) {
-      body.push(`:${name}\n[${indent(`${debug(disjunct)}]`, ' ')}`)
-    }
-
-    return `(loop (${head})${indent(body.join('\n'))})`
-  }
-
-  toDebugString() {
-    const disjuncts = Object.entries(this.disjuncts)
-    const when = []
-    if (disjuncts.length === 1) {
-      const [[name, plan]] = disjuncts
-      when.push(indent(toDebugString(plan)))
-    } else {
-      when.push('{\n')
-      for (const [name, disjunct] of disjuncts) {
-        when.push(`  ${name}: ${toDebugString(disjunct)},\n`)
-      }
-      when.push('}')
-    }
-
-    return `{
-  loop: ${indent(Terms.toDebugString(this.match))},
-  when: ${indent(when.join(''))}
-}`
-  }
-
-  /**
-   * @param {object} input
-   * @param {API.Querier} input.source
-   */
-  *query({ source }) {
-    const { match: selector } = this
-
-    const frames = yield* this.evaluate({
-      source,
-      self: this,
-      selection: [new Map()],
-    })
-
-    return Selector.select(selector, frames)
-  }
   /**
    * @param {API.EvaluationContext} context
    */
@@ -1915,87 +1580,6 @@ export const toDebugString = (source) =>
 
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
- * @template {Match} [Repeat=Match]
- */
-class InductionPlan {
-  /**
-   * @param {API.EvaluationPlan} base
-   * @param {Record<string, API.EvaluationPlan>} disjuncts
-   * @param {number} cost
-   * @param {Match} match
-   * @param {Repeat} repeat
-   */
-  constructor(base, disjuncts, cost, match, repeat) {
-    this.base = base
-    this.disjuncts = disjuncts
-    this.cost = cost
-    this.match = match
-    this.repeat = repeat
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   * @returns
-   */
-  *evaluate(context) {
-    const { match, repeat } = this
-
-    const seen = new Set()
-    const results = []
-    const next = []
-    do {
-      const selection = []
-      // First run initial conditions to get base case results
-      for (const match of yield* this.base.evaluate(context)) {
-        const id = JSON.stringify(
-          Object.fromEntries(
-            [...match.entries()].map(([variable, value]) => [
-              variable.toString(),
-              value,
-            ])
-          )
-        )
-        // Add unique results to a selection and overall results
-        if (!seen.has(id)) {
-          seen.add(id)
-          results.push(match)
-          selection.push(match)
-        }
-      }
-
-      if (selection.length === 0) {
-        break
-      }
-      next.length = 0
-
-      // Apply the recursive branches (while clauses) with the transformed result
-      for (const plan of Object.values(this.disjuncts)) {
-        const frames = yield* plan.evaluate({
-          ...context,
-          selection,
-        })
-
-        // Process each result from the recursive branch
-        for (const frame of frames) {
-          // Remap variables as needed
-          for (const [key, variable] of Object.entries(repeat)) {
-            const value = frame.get(variable)
-            if (value !== undefined) {
-              frame.set(match[key], value)
-            }
-          }
-
-          next.push(frame)
-        }
-      }
-    } while (next.length > 0)
-
-    return results
-  }
-}
-
-/**
- * @template {API.Conclusion} [Match=API.Conclusion]
  */
 class RuleApplicationPlan {
   /**
@@ -2016,7 +1600,7 @@ class RuleApplicationPlan {
   /**
    * @param {API.EvaluationContext} context
    */
-  *evaluate({ source, self, selection }) {
+  *evaluate({ source, self, selection, state }) {
     const matches = []
     for (const input of selection) {
       // Copy constant bindings from the application context.
@@ -2038,6 +1622,7 @@ class RuleApplicationPlan {
         source,
         self,
         selection: [bindings],
+        state,
       })
 
       // Now we need to merge original `input` and data that is shared from
@@ -2082,6 +1667,7 @@ class RuleApplicationPlan {
       source,
       self: this.plan,
       selection: [new Map()],
+      state: new WeakMap(),
     })
 
     return Selector.select(/** @type {Match} */ (selector), frames)
@@ -2151,13 +1737,14 @@ class Negate {
   /**
    * @param {API.EvaluationContext} context
    */
-  *evaluate({ source, self, selection }) {
+  *evaluate({ source, self, selection, state }) {
     const matches = []
     for (const bindings of selection) {
       const excluded = yield* this.operand.evaluate({
         source,
         self,
         selection: [bindings],
+        state,
       })
 
       if (excluded.length === 0) {
