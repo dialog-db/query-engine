@@ -923,6 +923,7 @@ export interface EvaluationContext {
   selection: MatchFrame[]
   source: Querier
   self: RulePlan
+  recur: [MatchFrame, MatchFrame][]  // Array of pairs [nextBindings, originalContext] for recursive processing
 
   state: WeakMap<object, Set<string>>
 }

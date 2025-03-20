@@ -96,10 +96,10 @@ export const testRecursion = {
           { this: eve, of: jack },
           { this: mallory, of: alice },
           { this: jack, of: alice },
-          { this: adam, of: alice },
-          { this: eve, of: alice },
           { this: adam, of: bob },
           { this: eve, of: bob },
+          { this: adam, of: alice },
+          { this: eve, of: alice },
         ],
         null,
         2

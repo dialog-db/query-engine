@@ -788,7 +788,7 @@ export class DeductiveRule {
    * @param {Context} context
    */
   plan(context) {
-    /** @type {Record<string, ReturnType<typeof Join.prototype.plan>>} */
+    /** @type {Record<string, JoinPlan>} */
     const when = {}
     let cost = 0
     const disjuncts = Object.entries(this.disjuncts)
@@ -859,17 +859,13 @@ class Recur {
    */
   static new(terms) {
     const cells = new Map()
-
-    // Cost of omitting an input variable is Infinity meaning that we can not
-    // execute the operation without binding the variable.
+    // All variables in the rule need to be in the cells
     for (const variable of Terms.variables(terms)) {
-      // TODO: Should not set to 0 here
-      // cells.set(variable, Infinity)
       cells.set(variable, 0)
     }
-
     return new this(terms, cells)
   }
+
   /**
    * @param {Match} terms
    * @param {Map<API.Variable, number>} cells
@@ -904,74 +900,51 @@ class Recur {
   }
 
   /**
+   * Instead of direct recursion, we collect bindings to be processed later
+   * in a breadth-first fixed-point iteration.
    *
    * @param {API.EvaluationContext} context
    */
-
   *evaluate(context) {
     const from = this.terms
     const to = context.self.match
-    // Get the current recursion stack for this specific recur instance
-    let stack = context.state.get(this)
-    if (!stack) {
-      // create one if it does not exist yet
-      stack = new Set()
-      context.state.set(this, stack)
-    }
 
-    // Remap selection and filter out match frames that we have already visited
-    const selection = []
+    // For each match in our current selection
     for (const match of context.selection) {
-      // Remap selection to match the variables defined in this.terms
-      const bindings = new Map()
+      // Map variables from the current context to the recursive rule's variables
+      const nextIterationBindings = new Map()
       for (const [key, variable] of Object.entries(from)) {
         const value = match.get(variable)
         if (value !== undefined) {
-          bindings.set(to[key], value)
+          nextIterationBindings.set(to[key], value)
         }
       }
 
-      // Create ID from remapped selection
-      const id = identifyMatch(match)
-
-      if (!stack.has(id)) {
-        stack.add(id)
-        // Create a new evaluation context with the mapped bindings
-        const matches = yield* context.self.evaluate({
-          ...context,
-          selection: [bindings],
-        })
-
-        // Process all results from this recursion step
-        for (const output of matches) {
-          // Create a copy of the original match to avoid modifying it in place
-          const newMatch = new Map(match)
-
-          // Also ensure values from the original bindings are propagated back
-          for (const [key, variable] of Object.entries(from)) {
-            const value = output.get(to[key])
-            if (value !== undefined) {
-              newMatch.set(variable, value)
-            }
-          }
-
-          selection.push(newMatch)
-        }
-      }
+      // We store pairs of [nextIterationBindings, originalContextBindings]
+      // This allows us to combine results of recursive evaluation with the original context
+      context.recur.push([nextIterationBindings, new Map(match)])
     }
 
-    return selection
+    // Recur doesn't directly return matches - it schedules them for later
+    return []
   }
 }
 
 /**
+ * Generate a unique identifier for a match frame
+ * This is used for cycle detection in the fixed-point evaluation
+ *
  * @param {API.MatchFrame} frame
+ * @param {string} [context=''] - Optional context to differentiate matches in different evaluation contexts
  */
-const identifyMatch = (frame) =>
+const identifyMatch = (frame, context = '') =>
+  context +
+  '[' +
   [...frame]
     .map(([variable, value]) => `${variable}:${Constant.toString(value)}`)
     .sort()
-    .join(',')
+    .join(',') +
+  ']'
 
 class Join {
   /**
@@ -1099,7 +1072,7 @@ class Join {
 
   /**
    * @param {Context} context
-   * @returns {API.EvaluationPlan}
+   * @returns {JoinPlan}
    */
   plan(context) {
     // We create copy of the context because we will be modifying it as we
@@ -1316,10 +1289,16 @@ class JoinPlan {
   /**
    * @param {API.EvaluationContext} context
    */
-  *evaluate({ source, self, selection, state }) {
+  *evaluate({ source, self, selection, state, recur }) {
     // Execute binding steps in planned order
     for (const plan of this.assertion) {
-      selection = yield* plan.evaluate({ source, self, selection, state })
+      selection = yield* plan.evaluate({
+        source,
+        self,
+        selection,
+        state,
+        recur,
+      })
     }
 
     return selection
@@ -1377,7 +1356,7 @@ class DisjoinPlan {
 class DeductivePlan extends DisjoinPlan {
   /**
    * @param {Match} match
-   * @param {Record<string, API.EvaluationPlan>} disjuncts
+   * @param {Record<string, JoinPlan>} disjuncts
    * @param {number} cost
    */
   constructor(match, disjuncts, cost) {
@@ -1438,6 +1417,7 @@ class DeductivePlan extends DisjoinPlan {
       self: this,
       selection: [new Map()],
       state: new WeakMap(),
+      recur: [], // Array for pairs of [nextBindings, originalContext]
     })
 
     return Selector.select(selector, frames)
@@ -1588,7 +1568,7 @@ export const toDebugString = (source) =>
 class RuleApplicationPlan {
   /**
    * @param {Partial<API.RuleBindings<Match>>} match
-   * @param {API.EvaluationPlan} plan
+   * @param {DeductivePlan<Match>} plan
    * @param {Context} context
    */
   constructor(match, plan, context) {
@@ -1606,14 +1586,13 @@ class RuleApplicationPlan {
    */
   *evaluate({ source, self, selection, state }) {
     const matches = []
+    const allResults = new Set()
+
     for (const input of selection) {
-      // Copy constant bindings from the application context.
+      // Copy constant bindings from the application context
       const bindings = new Map(this.context.bindings)
-      // Also copy bindings for the references from the selected match
-      // (which is parent context). We need to copy only those in order
-      // for the scope isolation e.g. if we copied all or passed match as is
-      // some variables in the application body may appear bound even though
-      // they should not be.
+
+      // Copy bindings for the references from the selected match
       for (const [inner, outer] of this.context.references) {
         const value = input.get(outer)
         if (value !== undefined) {
@@ -1621,32 +1600,119 @@ class RuleApplicationPlan {
         }
       }
 
-      // Execute rule with isolated bindings
-      const output = yield* this.plan.evaluate({
+      // Create evaluation context with recur array for fixed-point iteration
+      /** @type {API.EvaluationContext} */
+      const context = {
         source,
         self,
         selection: [bindings],
         state,
-      })
+        recur: [], // Array to collect pairs of [nextIterationBindings, originalContextBindings]
+      }
 
-      // Now we need to merge original `input` and data that is shared from
-      // the `output`.
-      for (const out of output) {
-        const match = new Map(input)
-        // Copy bindings that were derived by the rule application.
-        for (const [inner, outer] of this.context.references) {
-          const value = out.get(outer)
-          if (value !== undefined) {
-            match.set(outer, value)
+      // Process bindings until we reach a fixed point
+      while (context.selection.length > 0) {
+        // Evaluate current selection
+        const output = yield* this.plan.evaluate(context)
+
+        // Process direct results from evaluation
+        for (const out of output) {
+          // Create result by combining the input with the output bindings
+          const match = new Map(input)
+
+          // Copy derived bindings
+          for (const [inner, outer] of this.context.references) {
+            const value = out.get(outer)
+            if (value !== undefined) {
+              match.set(outer, value)
+            }
+          }
+
+          // Copy constant bindings
+          for (const [variable, value] of this.context.bindings) {
+            match.set(variable, value)
+          }
+
+          // Create a unique identifier for this match
+          const matchId = identifyMatch(match)
+
+          // Only add unique matches
+          if (!allResults.has(matchId)) {
+            allResults.add(matchId)
+            matches.push(match)
           }
         }
 
-        // Copy constant bindings from the application context.
-        for (const [variable, value] of this.context.bindings) {
-          match.set(variable, value)
-        }
+        // Prepare for next iteration
+        if (context.recur.length > 0) {
+          // Need to process each recur pair separately to maintain the connection
+          // between the next iteration bindings and the original context
+          /** @type {typeof context.recur} */
+          const nextRecur = []
+          const nextSelection = []
 
-        matches.push(match)
+          for (const [next, current] of context.recur) {
+            // Process each individual recursive step's results
+            // We'll evaluate each nextBindings separately while preserving its originalContext
+            /** @type {API.EvaluationContext} */
+            const recursiveContext = {
+              source,
+              self,
+              selection: [next],
+              state,
+              recur: [], // New recur array for this recursive step
+            }
+
+            // Evaluate this recursive step
+            const output = yield* this.plan.evaluate(recursiveContext)
+
+            // Process results of this recursive step
+            for (const out of output) {
+              // Create transitive relation by combining originalContext with output
+              const transitiveMatch = new Map(current)
+
+              transitiveMatch.delete($.parent)
+
+              console.log('>>', out)
+
+              // Copy derived bindings from the recursive result
+              for (const [inner, outer] of this.context.references) {
+                const value = out.get(outer)
+                if (value !== undefined && !transitiveMatch.has(outer)) {
+                  transitiveMatch.set(outer, value)
+                }
+              }
+
+              console.log('<<', transitiveMatch)
+
+              // Create a unique identifier for this transitive match
+              const transitiveId = identifyMatch(transitiveMatch)
+
+              // Only add unique transitive matches
+              if (!allResults.has(transitiveId)) {
+                allResults.add(transitiveId)
+                matches.push(transitiveMatch)
+                console.log(transitiveMatch)
+              }
+            }
+
+            // Add any new recursive steps from this evaluation to our next selection
+            for (const [
+              newNextBindings,
+              newOriginalContext,
+            ] of recursiveContext.recur) {
+              nextSelection.push(newNextBindings)
+              nextRecur.push([newNextBindings, newOriginalContext])
+            }
+          }
+
+          // Set up next iteration with all recursive steps collected
+          context.selection = nextSelection
+          context.recur = nextRecur
+        } else {
+          // No more recursive steps to process
+          context.selection = []
+        }
       }
     }
 
@@ -1672,6 +1738,7 @@ class RuleApplicationPlan {
       self: this.plan,
       selection: [new Map()],
       state: new WeakMap(),
+      recur: [], // Array for pairs of [nextBindings, originalContext]
     })
 
     return Selector.select(/** @type {Match} */ (selector), frames)
@@ -1741,13 +1808,14 @@ class Negate {
   /**
    * @param {API.EvaluationContext} context
    */
-  *evaluate({ source, self, selection, state }) {
+  *evaluate({ source, self, selection, recur, state }) {
     const matches = []
     for (const bindings of selection) {
       const excluded = yield* this.operand.evaluate({
         source,
         self,
         selection: [bindings],
+        recur,
         state,
       })
 
