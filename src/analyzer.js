@@ -1695,7 +1695,7 @@ class RuleApplicationPlan {
         /** @type {API.EvaluationContext['recur']} */
         const nextRecur = []
 
-        for (const [nextBinding, parentContext] of currentRecur) {
+        for (const [nextBinding] of currentRecur) {
           // Create a context for this step's evaluation
           /** @type {API.EvaluationContext} */
           const recursiveContext = {
