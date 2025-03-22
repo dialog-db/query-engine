@@ -48,30 +48,37 @@ export const testRecursion = {
         [alice, 'child/parent', bob],
         [bob, 'child/parent', mallory],
         [mallory, 'child/parent', jack],
-        // [jack, 'child/parent', adam],
-        // [adam, 'child/parent', eve],
+        [jack, 'child/parent', adam],
+        [adam, 'child/parent', eve],
       ]),
     })
 
     console.log(ancestors)
     assert.deepEqual(
-      JSON.stringify(ancestors, null, 2),
-      JSON.stringify(
-        [
-          { this: bob, of: alice },
-          { this: mallory, of: bob },
-          { this: jack, of: mallory },
-          // { this: adam, of: jack },
-          // { this: eve, of: adam },
-          { this: mallory, of: alice },
-          { this: jack, of: bob },
-          { this: jack, of: alice },
-          // { this: adam, of: alice },
-          // { this: eve, of: alice },
-        ],
-        null,
-        2
-      )
+      ancestors
+        .map((row) => JSON.stringify(row))
+        .sort()
+        .join('\n'),
+      [
+        { this: bob, of: alice },
+        { this: mallory, of: bob },
+        { this: jack, of: mallory },
+        { this: adam, of: jack },
+        { this: mallory, of: alice },
+        { this: jack, of: bob },
+        { this: adam, of: mallory },
+        { this: jack, of: alice },
+        { this: adam, of: bob },
+        { this: adam, of: alice },
+        { this: eve, of: alice },
+        { this: eve, of: bob },
+        { this: eve, of: mallory },
+        { this: eve, of: jack },
+        { this: eve, of: adam },
+      ]
+        .map((row) => JSON.stringify(row))
+        .sort()
+        .join('\n')
     )
   },
 

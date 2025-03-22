@@ -1583,11 +1583,65 @@ class RuleApplicationPlan {
   }
 
   /**
+   * Helper function to create a full match combining input and output bindings
+   * @param {Map<API.Variable, API.Scalar>} inputBindings
+   * @param {Map<API.Variable, API.Scalar>} outputBindings
+   * @param {Context} context
+   * @returns {Map<API.Variable, API.Scalar>}
+   */
+  createFullMatch(inputBindings, outputBindings, context) {
+    // Create a new map starting with the input bindings
+    const match = new Map(inputBindings)
+
+    // Copy derived bindings from the output
+    for (const [inner, outer] of context.references) {
+      const value = outputBindings.get(outer)
+      if (value !== undefined) {
+        match.set(outer, value)
+      }
+    }
+
+    // Copy constant bindings from the context
+    for (const [variable, value] of context.bindings) {
+      match.set(variable, value)
+    }
+
+    return match
+  }
+
+  /**
+   * Helper to create a transitive match combining input with output
+   * @param {Map<API.Variable, API.Scalar>} originalContext
+   * @param {Map<API.Variable, API.Scalar>} output
+   * @returns {Map<API.Variable, API.Scalar>}
+   */
+  createTransitiveMatch(originalContext, output) {
+    const result = new Map(originalContext)
+
+    // The key is that we need to find the matching variables between
+    // recursive steps. In the ancestor case, we need to match 'this'
+    // with 'parent' to create the transitive relationship.
+
+    // For each "this: value" in output, we need to preserve the corresponding
+    // "of: outerValue" from the original context
+    const thisValue = output.get($.this)
+    const ofValue = originalContext.get($.of)
+
+    if (thisValue !== undefined && ofValue !== undefined) {
+      // Create the transitive relationship
+      result.set($.this, thisValue) // e.g., this: mallory
+      result.set($.of, ofValue) // e.g., of: alice
+    }
+
+    return result
+  }
+
+  /**
    * @param {API.EvaluationContext} context
    */
   *evaluate({ source, self, selection, state }) {
     const matches = []
-    const allResults = new Set()
+    const allResults = new Set() // Use to track unique results
 
     for (const input of selection) {
       // Copy constant bindings from the application context
@@ -1601,116 +1655,104 @@ class RuleApplicationPlan {
         }
       }
 
-      // Create evaluation context with recur array for fixed-point iteration
+      // Create evaluation context for the main evaluation
       /** @type {API.EvaluationContext} */
       const context = {
         source,
         self,
         selection: [bindings],
         state,
-        recur: [], // Array to collect pairs of [nextIterationBindings, originalContextBindings]
+        recur: [], // Array for recursive steps
       }
 
-      // Process bindings until we reach a fixed point
-      while (context.selection.length > 0) {
-        // Evaluate current selection
-        const output = yield* this.plan.evaluate(context)
+      // First evaluate the base case
+      const baseResults = yield* this.plan.evaluate(context)
 
-        // Process direct results from evaluation
-        for (const out of output) {
-          // Create result by combining the input with the output bindings
-          const match = new Map(input)
-          // Copy derived bindings
-          for (const [inner, outer] of this.context.references) {
-            const value = out.get(outer)
-            if (value !== undefined) {
-              match.set(outer, value)
-            }
-          }
+      // Process base results
+      for (const result of baseResults) {
+        const match = this.createFullMatch(input, result, this.context)
+        const matchId = identifyMatch(match)
 
-          // Copy constant bindings
-          for (const [variable, value] of this.context.bindings) {
-            match.set(variable, value)
-          }
-
-          // Create a unique identifier for this match
-          const matchId = identifyMatch(match)
-
-          // Only add unique matches
-          if (!allResults.has(matchId)) {
-            allResults.add(matchId)
-            matches.push(match)
-          }
+        if (!allResults.has(matchId)) {
+          allResults.add(matchId)
+          matches.push(match)
         }
+      }
 
-        // Prepare for next iteration
-        if (context.recur.length > 0) {
-          // Need to process each recur pair separately to maintain the connection
-          // between the next iteration bindings and the original context
-          /** @type {typeof context.recur} */
-          const nextRecur = []
-          const nextSelection = []
+      // Track all contexts to handle transitive relationships correctly
+      // Map from each binding to all its ancestor contexts
+      const contextChains = new Map()
 
-          for (const [next, current] of context.recur) {
-            // Process each individual recursive step's results
-            // We'll evaluate each nextBindings separately while preserving its originalContext
-            /** @type {API.EvaluationContext} */
-            const context = {
-              source,
-              self,
-              selection: [next],
-              state,
-              recur: [], // New recur array for this recursive step
+      // Initialize the context chains with the original recursive steps
+      for (const [nextBinding, originalContext] of context.recur) {
+        contextChains.set(nextBinding, [originalContext])
+      }
+
+      // Process recursion using breadth-first evaluation
+      let currentRecur = context.recur
+
+      while (currentRecur.length > 0) {
+        /** @type {API.EvaluationContext['recur']} */
+        const nextRecur = []
+
+        for (const [nextBinding, parentContext] of currentRecur) {
+          // Create a context for this step's evaluation
+          /** @type {API.EvaluationContext} */
+          const recursiveContext = {
+            source,
+            self,
+            selection: [nextBinding],
+            state,
+            recur: [],
+          }
+
+          // Evaluate this step
+          const stepResults = yield* this.plan.evaluate(recursiveContext)
+
+          // Process direct results
+          for (const stepResult of stepResults) {
+            // Create direct result from this step
+            const directMatch = this.createFullMatch(
+              nextBinding,
+              stepResult,
+              this.context
+            )
+            const directId = identifyMatch(directMatch)
+
+            if (!allResults.has(directId)) {
+              allResults.add(directId)
+              matches.push(directMatch)
             }
 
-            // Evaluate this recursive step
-            const output = yield* this.plan.evaluate(context)
+            // Create transitive relationships with all ancestor contexts
+            const ancestorContexts = contextChains.get(nextBinding) || []
+            for (const ancestorContext of ancestorContexts) {
+              const transitiveMatch = this.createTransitiveMatch(
+                ancestorContext,
+                stepResult
+              )
+              const transitiveId = identifyMatch(transitiveMatch)
 
-            // Process results of this recursive step
-            for (const out of output) {
-              // Create transitive relation by combining originalContext with output
-              const match = new Map(current)
-
-              // Copy derived bindings from the recursive result
-              for (const [inner, outer] of this.context.references) {
-                const value = out.get(outer)
-                if (value !== undefined && !match.has(outer)) {
-                  match.set(outer, value)
-                }
-              }
-
-              // Copy constant bindings
-              for (const [variable, value] of this.context.bindings) {
-                match.set(variable, value)
-              }
-
-              console.log('<<', match)
-
-              // Create a unique identifier for this transitive match
-              const transitiveId = identifyMatch(match)
-
-              // Only add unique transitive matches
               if (!allResults.has(transitiveId)) {
                 allResults.add(transitiveId)
-                matches.push(match)
-                console.log(match)
+                matches.push(transitiveMatch)
               }
-            }
-
-            // Add any new recursive steps from this evaluation to our next selection
-            for (const [select, bindings] of context.recur) {
-              nextSelection.push(select)
-              nextRecur.push([select, bindings])
             }
           }
 
-          // Set up next iteration with all recursive steps collected
-          context.selection = nextSelection
-          context.recur = nextRecur
-        } else {
-          // No more recursive steps to process
-          context.selection = []
+          // Process new recursive steps
+          for (const [newBinding, originalBinding] of recursiveContext.recur) {
+            // Track context chains for transitive relationships
+            const ancestorContexts = contextChains.get(nextBinding) || []
+            const newContexts = [nextBinding, ...ancestorContexts]
+            contextChains.set(newBinding, newContexts)
+
+            // Add to next batch
+            nextRecur.push([newBinding, nextBinding])
+          }
         }
+
+        currentRecur = nextRecur
       }
     }
 
