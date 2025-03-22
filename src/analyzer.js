@@ -863,6 +863,7 @@ class Recur {
     for (const variable of Terms.variables(terms)) {
       cells.set(variable, 0)
     }
+
     return new this(terms, cells)
   }
 
@@ -1619,7 +1620,6 @@ class RuleApplicationPlan {
         for (const out of output) {
           // Create result by combining the input with the output bindings
           const match = new Map(input)
-
           // Copy derived bindings
           for (const [inner, outer] of this.context.references) {
             const value = out.get(outer)
@@ -1655,7 +1655,7 @@ class RuleApplicationPlan {
             // Process each individual recursive step's results
             // We'll evaluate each nextBindings separately while preserving its originalContext
             /** @type {API.EvaluationContext} */
-            const recursiveContext = {
+            const context = {
               source,
               self,
               selection: [next],
@@ -1664,45 +1664,43 @@ class RuleApplicationPlan {
             }
 
             // Evaluate this recursive step
-            const output = yield* this.plan.evaluate(recursiveContext)
+            const output = yield* this.plan.evaluate(context)
 
             // Process results of this recursive step
             for (const out of output) {
               // Create transitive relation by combining originalContext with output
-              const transitiveMatch = new Map(current)
-
-              transitiveMatch.delete($.parent)
-
-              console.log('>>', out)
+              const match = new Map(current)
 
               // Copy derived bindings from the recursive result
               for (const [inner, outer] of this.context.references) {
                 const value = out.get(outer)
-                if (value !== undefined && !transitiveMatch.has(outer)) {
-                  transitiveMatch.set(outer, value)
+                if (value !== undefined && !match.has(outer)) {
+                  match.set(outer, value)
                 }
               }
 
-              console.log('<<', transitiveMatch)
+              // Copy constant bindings
+              for (const [variable, value] of this.context.bindings) {
+                match.set(variable, value)
+              }
+
+              console.log('<<', match)
 
               // Create a unique identifier for this transitive match
-              const transitiveId = identifyMatch(transitiveMatch)
+              const transitiveId = identifyMatch(match)
 
               // Only add unique transitive matches
               if (!allResults.has(transitiveId)) {
                 allResults.add(transitiveId)
-                matches.push(transitiveMatch)
-                console.log(transitiveMatch)
+                matches.push(match)
+                console.log(match)
               }
             }
 
             // Add any new recursive steps from this evaluation to our next selection
-            for (const [
-              newNextBindings,
-              newOriginalContext,
-            ] of recursiveContext.recur) {
-              nextSelection.push(newNextBindings)
-              nextRecur.push([newNextBindings, newOriginalContext])
+            for (const [select, bindings] of context.recur) {
+              nextSelection.push(select)
+              nextRecur.push([select, bindings])
             }
           }
 

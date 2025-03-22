@@ -19,6 +19,62 @@ const db = DB.Memory.create([
  * @type {import('entail').Suite}
  */
 export const testRecursion = {
+  'test ancestor': async (assert) => {
+    const Parent = deduce({ this: Object, of: Object }).when(
+      ({ this: parent, of: child }) => [
+        Fact({ the: 'child/parent', of: child, is: parent }),
+      ]
+    )
+
+    const Ancestor = deduce({ this: Object, of: Object })
+      .with({ parent: Object })
+      .when(({ this: ancestor, of: child, parent }) => ({
+        direct: [Parent({ this: ancestor, of: child })],
+        transitive: [
+          Parent({ this: parent, of: child }),
+          Ancestor({ this: ancestor, of: parent }),
+        ],
+      }))
+
+    const alice = /** @type {DB.Entity & any} */ ('alice') //id('alice')
+    const bob = /** @type {any} */ ('bob')
+    const mallory = /** @type {any} */ ('mallory')
+    const jack = /** @type {any} */ ('jack')
+    const adam = /** @type {any} */ ('adam')
+    const eve = /** @type {any} */ ('eve')
+
+    const ancestors = await Ancestor().select({
+      from: DB.Memory.create([
+        [alice, 'child/parent', bob],
+        [bob, 'child/parent', mallory],
+        [mallory, 'child/parent', jack],
+        // [jack, 'child/parent', adam],
+        // [adam, 'child/parent', eve],
+      ]),
+    })
+
+    console.log(ancestors)
+    assert.deepEqual(
+      JSON.stringify(ancestors, null, 2),
+      JSON.stringify(
+        [
+          { this: bob, of: alice },
+          { this: mallory, of: bob },
+          { this: jack, of: mallory },
+          // { this: adam, of: jack },
+          // { this: eve, of: adam },
+          { this: mallory, of: alice },
+          { this: jack, of: bob },
+          { this: jack, of: alice },
+          // { this: adam, of: alice },
+          // { this: eve, of: alice },
+        ],
+        null,
+        2
+      )
+    )
+  },
+
   'skip test ancestor loop': async (assert) => {
     const Parent = deduce({ this: Object, of: Object }).when(
       ({ this: parent, of: child }) => [
@@ -50,7 +106,7 @@ export const testRecursion = {
 
     console.log(ancestors)
   },
-  'test ancestor': async (assert) => {
+  'skip test ancestor': async (assert) => {
     const Parent = deduce({ this: Object, of: Object }).when(
       ({ this: parent, of: child }) => [
         Fact({ the: 'child/parent', of: child, is: parent }),
