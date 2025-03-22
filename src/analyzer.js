@@ -914,6 +914,18 @@ class Recur {
     for (const match of context.selection) {
       // Map variables from the current context to the recursive rule's variables
       const nextIterationBindings = new Map()
+      
+      // First, get all variables from original rule 'to' pattern
+      // This ensures we maintain all variable bindings that should be preserved
+      for (const key of Object.keys(to)) {
+        const targetVar = to[key]
+        if (match.has(targetVar)) {
+          // Preserve the binding if it exists in current match
+          nextIterationBindings.set(targetVar, match.get(targetVar))
+        }
+      }
+      
+      // Then, map variables from this recursive call's pattern
       for (const [key, variable] of Object.entries(from)) {
         const value = match.get(variable)
         if (value !== undefined) {
@@ -1618,12 +1630,19 @@ class RuleApplicationPlan {
   createTransitiveMatch(originalContext, output) {
     const result = new Map(originalContext)
 
+    // Copy all values from output that also exist in originalContext
+    // This ensures we preserve variable bindings across recursive steps
+    for (const [key, value] of output.entries()) {
+      if (originalContext.has(key) || value !== undefined) {
+        result.set(key, value)
+      }
+    }
+
     // The key is that we need to find the matching variables between
     // recursive steps. In the ancestor case, we need to match 'this'
     // with 'parent' to create the transitive relationship.
 
-    // For each "this: value" in output, we need to preserve the corresponding
-    // "of: outerValue" from the original context
+    // Special handling for typical transitive relationship patterns (ancestor case)
     const thisValue = output.get($.this)
     const ofValue = originalContext.get($.of)
 
