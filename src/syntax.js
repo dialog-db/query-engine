@@ -656,7 +656,7 @@ class Deduce {
    * @returns {API.InferRuleVariables<Variables> & {_: API.Variable}}
    */
   static buildVariables(variables) {
-    return Object.assign(this.buildMatch(variables), { _: $.$ })
+    return Object.assign(this.buildMatch(variables), { _: $._ })
   }
 
   /**

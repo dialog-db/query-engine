@@ -102,9 +102,9 @@ export const testDB = {
 
     assert.deepEqual(await Query().select({ from: moviesDB }), [
       { director: 'James Cameron', title: 'The Terminator' },
+      { director: 'James Cameron', title: 'Terminator 2: Judgment Day' },
       { director: 'John McTiernan', title: 'Predator' },
       { director: 'Mark L. Lester', title: 'Commando' },
-      { director: 'James Cameron', title: 'Terminator 2: Judgment Day' },
       {
         director: 'Jonathan Mostow',
         title: 'Terminator 3: Rise of the Machines',
@@ -158,16 +158,15 @@ export const testDB = {
         Fact({ the: 'supervisor', of: subordinate, is: manager }),
         Employee({ this: manager, name: supervisor }),
       ])
-
     assert.deepEqual(await Supervisor().select({ from: employeeDB }), [
-      { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
       { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
       { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
       { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
       { employee: 'Reasoner Louis', supervisor: 'Hacker Alyssa P' },
+      { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
       { employee: 'Scrooge Eben', supervisor: 'Warbucks Oliver' },
-      { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
       { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
+      { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
     ])
   },
 
@@ -249,21 +248,6 @@ export const testDB = {
   },
 
   'test negation': async (assert) => {
-    const ben = {
-      id: DB.link(),
-      name: 'Bitdiddle Ben',
-    }
-
-    const job = {
-      title: 'Computer programmer',
-    }
-
-    const employee = {
-      id: DB.link(),
-      name: DB.string(),
-      job: DB.string(),
-    }
-
     const Query = derive({ name: String })
       .with({ supervisor: Object, employee: Object })
       .when(({ name, supervisor, employee }) => [
