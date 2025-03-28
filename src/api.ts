@@ -569,8 +569,8 @@ export interface SomeView {
 }
 
 export interface MatchRule<Match extends Conclusion = Conclusion> {
-  readonly rule: Rule<Match>
   readonly match: Partial<RuleBindings<Match>>
+  readonly rule: Rule<Match>
 
   operator?: undefined
   fact?: undefined

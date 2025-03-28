@@ -541,7 +541,7 @@ export class RuleApplication {
   /**
    * @template {API.Conclusion} [Match=API.Conclusion]
    * @param {Circuit} circuit
-   * @param {API.RuleApplication<Match>} source
+   * @param {API.MatchRule<Match>} source
    * @returns {RuleApplication<Match>}
    */
   static new(circuit, source) {
