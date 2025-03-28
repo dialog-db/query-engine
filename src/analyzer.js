@@ -815,10 +815,14 @@ export class DeductiveRule {
     const when = {}
     let cost = 0
     const disjuncts = Object.entries(this.disjuncts)
+    let recursive = 0
     for (const [name, disjunct] of disjuncts) {
       const plan = disjunct.plan(context)
       when[name] = plan
       cost += plan.cost
+      if (disjunct.recurs) {
+        recursive++
+      }
     }
 
     // If we have no disjuncts there will be nothing raising problem if required
@@ -836,6 +840,14 @@ export class DeductiveRule {
           )
         }
       }
+    }
+
+    // If all branches are recursive raise an error because we need a base case
+    // to terminate.
+    if (recursive > 0 && recursive === disjuncts.length) {
+      throw new SyntaxError(
+        `Recursive rule must have at least one non-recursive branch`
+      )
     }
 
     // If recursive rule we inflate the cost by factor

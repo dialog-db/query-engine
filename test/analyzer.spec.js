@@ -506,24 +506,39 @@ export const testAnalyzer = {
     )
   },
 
-  'skip rule must have non-inductive branch': async (assert) => {
+  'recursive rule must have a non-recursive branch': async (assert) => {
     assert.throws(
       () =>
         Analyzer.plan({
           match: { x: $.who },
-          // @ts-expect-error - missing when branch
           rule: {
             match: { x: $.x },
-            repeat: { x: $.inc },
-            while: [
-              {
-                match: { of: $.x, with: 1, is: $.inc },
-                operator: '+',
-              },
-            ],
+            when: {
+              loop: [{ recur: { x: $.x } }],
+            },
           },
         }),
-      /Inductive rule must have "when" property establishing base case of recursion/
+      /Recursive rule must have at least one non-recursive branch/
+    )
+  },
+
+  'recursive rule must have non-recursive branch': async (assert) => {
+    assert.throws(
+      () =>
+        Analyzer.plan({
+          match: { x: 5 },
+          rule: {
+            match: { x: $.x },
+            when: {
+              other: [
+                { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+                { recur: { x: $.y } },
+              ],
+              loop: [{ recur: { x: $.x } }],
+            },
+          },
+        }),
+      /Recursive rule must have at least one non-recursive branch/
     )
   },
   'prefers efficient execution path based on bindings': async (assert) => {
@@ -770,23 +785,6 @@ export const testAnalyzer = {
           },
         }),
       /Rule case "where" does not bind variable \?y that rule matches as "y"/
-    )
-  },
-  'skip recursive rule must must have base case': (assert) => {
-    assert.throws(
-      () =>
-        // @ts-expect-error
-        Analyzer.loop({
-          match: { x: $.x },
-          repeat: { x: $.inc },
-          while: [
-            {
-              match: { of: $.x, with: 1, is: $.inc },
-              operator: '+',
-            },
-          ],
-        }),
-      /Recursive rule must have non-recursive branch/
     )
   },
   'recursive rule must have when that binds all variables': async (assert) => {
