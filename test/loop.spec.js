@@ -1,6 +1,6 @@
 import * as DB from 'datalogia'
 import { $ } from 'datalogia'
-import { deduce, induce, Fact, Data, Math } from '../src/syntax.js'
+import { deduce, Fact, Data, Math } from '../src/syntax.js'
 import { derive } from '../src/fact.js'
 
 const id = DB.Memory.entity

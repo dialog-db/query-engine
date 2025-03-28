@@ -553,20 +553,16 @@ export interface Some<T extends Conjunct | Recur = Conjunct> {
 
 export type When<T extends Conjunct | Recur = Conjunct> = Some<T> | Every<T>
 
-export type WhenBuilder<T extends RuleDescriptor> = (
-  variables: InferRuleVariables<T> & { _: Variable<any> }
-) => WhenView
+export type WhenBuilder<T extends RuleDescriptor> =
+  | SomeBuilder<T>
+  | EveryBuilder<T>
 
+export type SomeBuilder<T extends RuleDescriptor> = (
+  variables: InferRuleVariables<T> & { _: Variable<any> }
+) => SomeView
 export type EveryBuilder<T extends RuleDescriptor> = (
   variables: InferRuleVariables<T> & { _: Variable<any> }
 ) => EveryView
-
-export type RepeatBuilder<
-  Variables extends RuleDescriptor,
-  Local extends RuleDescriptor,
-> = (
-  variables: InferRuleVariables<Local & Variables> & { _: Variable<any> }
-) => InferRuleTerms<Variables>
 
 export type WhenView = EveryView | SomeView
 export type EveryView = ConjunctView[]
@@ -923,7 +919,7 @@ export interface EvaluationContext {
   selection: MatchFrame[]
   source: Querier
   self: RulePlan
-  recur: [MatchFrame, MatchFrame][]  // Array of pairs [nextBindings, originalContext] for recursive processing
+  recur: [MatchFrame, MatchFrame][] // Array of pairs [nextBindings, originalContext] for recursive processing
 
   state: WeakMap<object, Set<string>>
 }

@@ -552,6 +552,7 @@ export class RuleApplication {
     const application = new this(circuit, terms, rule)
     const { context, cells } = application
 
+    // Track all variables that need to be connected from inner to outer scope
     for (const [at, inner] of Object.entries(rule.match)) {
       const term = terms[at]
       const cost = rule.cells.get(inner) ?? 0
@@ -570,8 +571,11 @@ export class RuleApplication {
         // We combine costs as we may have same outer variable set to different
         // inner variables.
         cells.set(term, combineCosts(cells.get(term) ?? 0, cost))
+
+        // Connect the inner rule variable to the outer application variable
         redirect(context, inner, term)
 
+        // Make sure the outer term is tracked in the circuit
         circuit.open(term, application)
       }
       // If value for the term is provided we create a binding.
@@ -914,7 +918,7 @@ class Recur {
     for (const match of context.selection) {
       // Map variables from the current context to the recursive rule's variables
       const nextIterationBindings = new Map()
-      
+
       // First, get all variables from original rule 'to' pattern
       // This ensures we maintain all variable bindings that should be preserved
       for (const key of Object.keys(to)) {
@@ -924,7 +928,7 @@ class Recur {
           nextIterationBindings.set(targetVar, match.get(targetVar))
         }
       }
-      
+
       // Then, map variables from this recursive call's pattern
       for (const [key, variable] of Object.entries(from)) {
         const value = match.get(variable)

@@ -15,10 +15,13 @@ export const testMore = {
       ])
 
     const job = 'Computer programmer'
-    assert.deepEqual(await Employee.where({ job }).select({ from: testDB }), [
-      { job, name: 'Hacker Alyssa P' },
-      { job, name: 'Fect Cy D' },
-    ])
+    assert.deepEqual(
+      await Employee({ job, name: Employee.$.name }).select({ from: testDB }),
+      [
+        { job, name: 'Hacker Alyssa P' },
+        { job, name: 'Fect Cy D' },
+      ]
+    )
 
     const ComputerPeople = deduce({ name: String, job: String }).when(
       ({ name, job }) => [
