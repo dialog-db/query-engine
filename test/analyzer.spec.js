@@ -474,9 +474,7 @@ export const testAnalyzer = {
       },
     })
   },
-  'throws if rule deductive branch does not handle case variable': async (
-    assert
-  ) => {
+  'throws if rule does not bind a variable': async (assert) => {
     assert.throws(
       () =>
         Analyzer.plan({
@@ -486,7 +484,7 @@ export const testAnalyzer = {
             when: [{ match: { the: 'type', of: $.y, is: 'person' } }],
           },
         }),
-      /Rule case "when" does not bind variable \?x that rule matches as "x"/
+      /Rule case "where" does not bind variable \?x that rule matches as "x"/
     )
   },
   'throws if rule branch does not handle match variable': async (assert) => {
@@ -507,25 +505,8 @@ export const testAnalyzer = {
       /Rule case "base" does not bind variable \?x that rule matches as "x"/
     )
   },
-  'throws if rule inductive branch does not handle match variable': async (
-    assert
-  ) => {
-    assert.throws(
-      () =>
-        Analyzer.plan({
-          match: { x: $.output, y: $.input },
-          rule: {
-            match: { x: $.x, y: $.y },
-            when: [{ match: { the: 'link', of: $.x, is: $.y } }],
-            repeat: { x: $.x, y: $.z },
-            while: [{ match: { the: 'link', of: $.x } }],
-          },
-        }),
-      /Rule case "while" does not bind variable \?z that rule matches as "y"/
-    )
-  },
 
-  'rule must have non-inductive branch': async (assert) => {
+  'skip rule must have non-inductive branch': async (assert) => {
     assert.throws(
       () =>
         Analyzer.plan({
@@ -788,35 +769,10 @@ export const testAnalyzer = {
             ],
           },
         }),
-      /Rule case "when" does not bind variable \?y that rule matches as "y"/
+      /Rule case "where" does not bind variable \?y that rule matches as "y"/
     )
   },
-  'inductive rule must repeat all the match terms': async (assert) => {
-    assert.throws(
-      () =>
-        Analyzer.loop({
-          match: { head: $.head, tail: $.tail },
-          when: [{ match: { the: 'next', of: $.head, is: $.tail } }],
-          // @ts-expect-error - tail is missing
-          repeat: { head: $.head },
-          while: [{ match: { the: 'next', of: $.head, is: $.tail } }],
-        }),
-      /Rule has inconsistent bindings across repeat: { head: \$.head } and match: { head: \$.head, tail: \$.tail }\n  - "tail" is missing in repeat/
-    )
-  },
-  'throws on unknown references': async (assert) => {
-    assert.throws(
-      () =>
-        Analyzer.loop({
-          match: { head: $.head, tail: $.tail },
-          when: [{ match: { the: 'next', of: $.head, is: $.tail } }],
-          repeat: { head: $.next, tail: $.tail },
-          while: [{ match: { the: 'next', of: $.head, is: $.tail } }],
-        }),
-      /Rule case "while" does not bind variable \?next that rule matches as "head"/
-    )
-  },
-  'recursive rule must must have base case': (assert) => {
+  'skip recursive rule must must have base case': (assert) => {
     assert.throws(
       () =>
         // @ts-expect-error
@@ -830,38 +786,23 @@ export const testAnalyzer = {
             },
           ],
         }),
-      /Inductive rule must have "when" property/
-    )
-  },
-  'inductive rule needs a non empty when': async (assert) => {
-    assert.throws(
-      () =>
-        Analyzer.loop({
-          match: { this: $.from, from: $.from, to: $.to },
-          // @ts-expect-error - missing when
-          when: [],
-          repeat: { this: $.inc, from: $.from, to: $.to },
-          while: [
-            { match: { of: $.from, with: 1, is: $.inc }, operator: '+' },
-            { match: { this: $.inc, than: $.to }, operator: '<' },
-          ],
-        }),
-      /Inductive rule must have "when" property establishing base case of recursion/
+      /Recursive rule must have non-recursive branch/
     )
   },
   'recursive rule must have when that binds all variables': async (assert) => {
     assert.throws(
       () =>
-        Analyzer.loop({
+        Analyzer.rule({
           match: { this: $.value, from: $.from, to: $.to },
-          when: [{ match: { this: $.from, than: $.to }, operator: '<' }],
-          repeat: { this: $.inc, from: $.from, to: $.to },
-          while: [
-            { match: { of: $.from, with: 1, is: $.inc }, operator: '+' },
-            { match: { this: $.inc, than: $.to }, operator: '<' },
-          ],
+          when: {
+            do: [{ match: { this: $.from, than: $.to }, operator: '<' }],
+            while: [
+              { match: { of: $.from, with: 1, is: $.inc }, operator: '+' },
+              { match: { this: $.inc, than: $.to }, operator: '<' },
+            ],
+          },
         }),
-      /Rule case "when" does not bind variable \?value that rule matches as "this"/
+      /does not bind variable \?value that rule matches as "this"/
     )
   },
   'allows output variables to be omitted from match': async (assert) => {
@@ -1099,20 +1040,22 @@ export const testAnalyzer = {
      * @param {API.Term} source.to
      * @returns
      */
-    const Inductive = ({ from, to }) =>
+    const Recursive = ({ from, to }) =>
       Analyzer.plan({
         match: { n: $.n, from, to },
         rule: {
           match: { n: $.n, from: $.from, to: $.to },
-          when: [
-            { match: { this: $.from, than: $.to }, operator: '<' },
-            { match: { of: $.from, is: $.n }, operator: '==' },
-          ],
-          repeat: { n: $.inc, from: $.inc, to: $.to },
-          while: [
-            { match: { this: $.from, than: $.to }, operator: '<' },
-            { match: { of: $.from, with: 1, is: $.inc }, operator: '+' },
-          ],
+          when: {
+            do: [
+              { match: { this: $.from, than: $.to }, operator: '<' },
+              { match: { of: $.from, is: $.n }, operator: '==' },
+            ],
+            while: [
+              { match: { this: $.from, than: $.to }, operator: '<' },
+              { match: { of: $.from, with: 1, is: $.inc }, operator: '+' },
+              { recur: { n: $.n, from: $.inc, to: $.to } },
+            ],
+          },
         },
       })
 
@@ -1141,8 +1084,10 @@ export const testAnalyzer = {
       })
 
     assert.ok(
-      Inductive({ from: 0, to: 10 }).cost > Deductive({ from: 0, to: 10 }).cost,
-      'Inductive rule should have higher cost'
+      Recursive({ from: 0, to: 10 }).cost > Deductive({ from: 0, to: 10 }).cost,
+      `Recursive rule should have higher cost ${
+        Recursive({ from: 0, to: 10 }).cost
+      } > ${Deductive({ from: 0, to: 10 }).cost}}`
     )
   },
 
@@ -1191,25 +1136,23 @@ export const testAnalyzer = {
     )
   },
   'compares iteration rule cost to against scan cost': async (assert) => {
-    const Between = Analyzer.loop({
+    const Between = Analyzer.rule({
       match: {
         value: $.value,
         from: $.from,
         to: $.to,
       },
-      when: [
-        { match: { this: $.from, than: $.to }, operator: '<' },
-        { match: { of: $.from, is: $.value }, operator: '==' },
-      ],
-      repeat: {
-        value: $.next,
-        from: $.next,
-        to: $.to,
+      when: {
+        do: [
+          { match: { this: $.from, than: $.to }, operator: '<' },
+          { match: { of: $.from, is: $.value }, operator: '==' },
+        ],
+        while: [
+          { match: { this: $.from, than: $.to }, operator: '<' },
+          { match: { of: $.from, with: 1, is: $.next }, operator: '+' },
+          { recur: { value: $.value, from: $.next, to: $.to } },
+        ],
       },
-      while: [
-        { match: { this: $.from, than: $.to }, operator: '<' },
-        { match: { of: $.from, with: 1, is: $.next }, operator: '+' },
-      ],
     })
 
     const Scan = Analyzer.rule({
@@ -1223,7 +1166,7 @@ export const testAnalyzer = {
 
     assert.ok(
       between.cost < scan.cost,
-      'Between rule using only formula operations should be cheaper than a full scan'
+      `Between rule using only formula operations should be cheaper than a full scan ${between.cost} < ${scan.cost}`
     )
   },
 

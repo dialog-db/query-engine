@@ -480,11 +480,7 @@ export type Rule<Match extends Conclusion = Conclusion> = Deduction<Match>
 
 export interface Deduction<Match extends Conclusion = Conclusion> {
   readonly match: Match
-  readonly when?: When
-
-  readonly repeat?: undefined
-  readonly while?: undefined
-  readonly loop?: undefined
+  readonly when?: When<Conjunct | Recur>
 }
 
 export interface Loop<Match extends Conclusion = Conclusion> {

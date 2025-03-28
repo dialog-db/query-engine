@@ -89,6 +89,10 @@ class Select {
     this.context = context
   }
 
+  get recurs() {
+    return null
+  }
+
   get match() {
     return this.selector
   }
@@ -381,6 +385,10 @@ class FormulaApplication {
     this.to = to
     this.context = context
   }
+
+  get recurs() {
+    return null
+  }
   /**
    * Base execution cost of the formula application operation.
    */
@@ -611,6 +619,10 @@ export class RuleApplication {
     this.cells = cells
   }
 
+  get recurs() {
+    return null
+  }
+
   /**
    * @param {API.Variable} by
    * @returns {RuleRoute|null}
@@ -727,9 +739,10 @@ export class DeductiveRule {
    */
   static new(source) {
     const disjuncts =
-      Array.isArray(source.when) ? { when: source.when } : source.when ?? {}
+      Array.isArray(source.when) ? { where: source.when } : source.when ?? {}
 
     let cells = new Map()
+    let recurs = false
     let total = 0
     /** @type {Record<string, Join>} */
     const when = {}
@@ -749,6 +762,10 @@ export class DeductiveRule {
         const currentCost = cells.get(variable) ?? 0
         cells.set(variable, currentCost + cost)
       }
+
+      if (deduction.recurs) {
+        recurs = true
+      }
     }
 
     // If no disjuncts, all match variables are required inputs as they
@@ -759,19 +776,21 @@ export class DeductiveRule {
       }
     }
 
-    return new this(source.match, cells, total, when)
+    return new this(source.match, cells, total, recurs, when)
   }
 
   /**
    * @param {Match} match - Pattern to match against
    * @param {Map<API.Variable, number>} cells - Cost per variable when not bound
    * @param {number} cost - Base execution cost
+   * @param {boolean} recurs
    * @param {Record<string, Join>} when - Named deductive branches that must be evaluated
    */
-  constructor(match, cells, cost, when) {
+  constructor(match, cells, cost, recurs, when) {
     this.match = match
     this.cells = cells
-    this.cost = cost
+    this.cost = recurs ? cost ** 2 : cost
+    this.recurs = recurs
     this.disjuncts = when
   }
 
@@ -819,7 +838,10 @@ export class DeductiveRule {
       }
     }
 
-    return new DeductivePlan(this.match, when, cost)
+    // If recursive rule we inflate the cost by factor
+    cost = this.recurs ? cost ** 2 : cost
+
+    return new DeductivePlan(this.match, when, cost, this.recurs)
   }
 
   toDebugString() {
@@ -869,6 +891,10 @@ class Recur {
     }
 
     return new this(terms, cells)
+  }
+
+  get recurs() {
+    return this
   }
 
   /**
@@ -975,8 +1001,9 @@ class Join {
     const cells = new Map()
     /** @type {Map<API.Variable, number>} */
     const local = new Map()
+    // Whether this is a recursive branch or not
+    let recurs = false
     let total = 0
-    let exponent = 1
 
     const conjuncts = []
     const circuit = new Circuit(source.bindings)
@@ -992,16 +1019,15 @@ class Join {
     //    other conjuncts.
     for (const member of source.conjuncts) {
       const conjunct = circuit.create(member)
-      // if (conjunct instanceof Not) {
-      //   negation.push(conjunct)
-      // } else {
       conjuncts.push(conjunct)
-      // }
+
+      if (conjunct.recurs) {
+        recurs = true
+      }
 
       // Recur has cost of Infinity because it can not be measured, there
       // for if we encounter such case we inflate cost exponentially.
-      total = conjunct.cost == null ? total : total + conjunct.cost
-      exponent = conjunct.cost == null ? 2 : exponent
+      total = combineCosts(total, conjunct.cost)
 
       for (const [variable, cost] of conjunct.cells) {
         circuit.open(variable, conjunct)
@@ -1027,14 +1053,13 @@ class Join {
     for (const cost of Object.values(local)) {
       total += cost
     }
-    // Adjust total by the exponent
-    total = total ** exponent
 
     return new this(
       circuit.connect(),
       conjuncts,
       cells,
       total,
+      recurs,
       `${source.name}`
     )
   }
@@ -1077,14 +1102,16 @@ class Join {
    * @param {Conjunct[]} conjuncts
    * @param {Map<API.Variable, number>} cells
    * @param {number} cost
+   * @param {boolean} recurs
    * @param {string} name
    */
-  constructor(circuit, conjuncts, cells, cost, name) {
+  constructor(circuit, conjuncts, cells, cost, recurs, name) {
     this.circuit = circuit
     this.conjuncts = conjuncts
     this.cells = cells
     this.cost = cost
     this.name = name
+    this.recurs = recurs
   }
 
   /**
@@ -1139,7 +1166,9 @@ class Join {
       for (const current of ready) {
         const cost = estimate(current, local)
 
-        if (cost <= (top?.cost ?? Infinity)) {
+        if (!top) {
+          top = { cost, current }
+        } else if (cost < top.cost) {
           top = { cost, current }
         }
       }
@@ -1152,7 +1181,7 @@ class Join {
 
       ordered.push(top.current.plan(context))
       ready.delete(top.current)
-      cost += top.cost
+      cost = combineCosts(cost, top.cost)
 
       const unblocked = top.current.cells
       // Update local context so all the cells of the planned assertion will
@@ -1247,6 +1276,10 @@ class Not {
     return new this(circuit, operation, cells)
   }
 
+  get recurs() {
+    return null
+  }
+
   /**
    * @returns {{not: {}}}
    */
@@ -1293,12 +1326,12 @@ class Not {
 
 class JoinPlan {
   /**
-   * @param {API.EvaluationPlan[]} assertion - Ordered binding operations
+   * @param {API.EvaluationPlan[]} conjuncts - Ordered plans
    * @param {References} references - Variable references
    * @param {number} cost - Total cost of the plan
    */
-  constructor(assertion, references, cost) {
-    this.assertion = assertion
+  constructor(conjuncts, references, cost) {
+    this.conjuncts = conjuncts
     this.references = references
     this.cost = cost
   }
@@ -1308,7 +1341,7 @@ class JoinPlan {
    */
   *evaluate({ source, self, selection, state, recur }) {
     // Execute binding steps in planned order
-    for (const plan of this.assertion) {
+    for (const plan of this.conjuncts) {
       selection = yield* plan.evaluate({
         source,
         self,
@@ -1322,63 +1355,34 @@ class JoinPlan {
   }
 
   toJSON() {
-    return [...this.assertion.map(toJSON)]
+    return [...this.conjuncts.map(toJSON)]
   }
 
   debug() {
-    return [...this.assertion.map(($) => debug($))].join('\n')
+    return [...this.conjuncts.map(($) => debug($))].join('\n')
   }
 
   toDebugString() {
-    const body = [...this.assertion.map(($) => toDebugString($))]
+    const body = [...this.conjuncts.map(($) => toDebugString($))]
     return `[${indent(`\n${body.join(',\n')}`)}\n]`
-  }
-}
-
-class DisjoinPlan {
-  /**
-   * @param {Record<string, API.EvaluationPlan>} disjuncts
-   * @param {number} cost
-   */
-  constructor(disjuncts, cost) {
-    this.disjuncts = disjuncts
-    this.cost = cost
-  }
-
-  /**
-   *
-   * @param {API.EvaluationContext} context
-   * @returns
-   */
-  *evaluate(context) {
-    const matches = []
-    // Run each branch and combine results
-    for (const plan of Object.values(this.disjuncts)) {
-      const bindings = yield* plan.evaluate(context)
-      matches.push(...bindings)
-    }
-    return matches
-  }
-
-  toJSON() {
-    return Object.fromEntries(
-      Object.entries(this.disjuncts).map(([name, plan]) => [name, toJSON(plan)])
-    )
   }
 }
 
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
  */
-class DeductivePlan extends DisjoinPlan {
+class DeductivePlan {
   /**
    * @param {Match} match
    * @param {Record<string, JoinPlan>} disjuncts
    * @param {number} cost
+   * @param {boolean} recurs
    */
-  constructor(match, disjuncts, cost) {
-    super(disjuncts, cost)
+  constructor(match, disjuncts, cost, recurs) {
     this.match = match
+    this.disjuncts = disjuncts
+    this.cost = cost
+    this.recurs = recurs
   }
   toJSON() {
     const when = Object.entries(this.disjuncts).map(([name, plan]) => [
@@ -1441,10 +1445,18 @@ class DeductivePlan extends DisjoinPlan {
   }
 
   /**
+   *
    * @param {API.EvaluationContext} context
+   * @returns
    */
-  evaluate(context) {
-    return super.evaluate({ ...context, self: this })
+  *evaluate(context) {
+    const matches = []
+    // Run each branch and combine results
+    for (const plan of Object.values(this.disjuncts)) {
+      const bindings = yield* plan.evaluate(context)
+      matches.push(...bindings)
+    }
+    return matches
   }
 }
 

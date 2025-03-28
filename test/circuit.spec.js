@@ -12,7 +12,7 @@ export const testSyntax = {
     })
 
     assert.deepEqual(select.form(), {
-      when: [
+      where: [
         {
           match: {
             the: 'person/name',
@@ -37,7 +37,7 @@ export const testSyntax = {
     })
 
     assert.deepEqual(select.form(), {
-      when: [
+      where: [
         {
           match: {
             the: 'person/name',
@@ -105,7 +105,7 @@ export const testSyntax = {
     })
 
     assert.deepEqual(rule.form(), {
-      when: [
+      where: [
         {
           match: {
             of: 'port',

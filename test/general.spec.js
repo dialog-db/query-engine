@@ -13,7 +13,7 @@ export const testDB = {
     const Delegation = derive({
       this: Object,
       cid: String,
-      can: Object,
+      can: String,
       space: String,
     })
       .with({ capabilities: Object, capability: Object })
@@ -84,7 +84,7 @@ export const testDB = {
     const Movie = derive({
       this: Object,
       cast: Object,
-      director: String,
+      director: Object,
       title: String,
     }).when(({ this: movie, cast, title, director }) => [
       Fact({ the: 'movie/cast', of: movie, is: cast }),
@@ -100,16 +100,19 @@ export const testDB = {
         Person({ this: actor, name: 'Arnold Schwarzenegger' }),
       ])
 
-    assert.deepEqual(await Query().select({ from: moviesDB }), [
-      { director: 'James Cameron', title: 'The Terminator' },
-      { director: 'James Cameron', title: 'Terminator 2: Judgment Day' },
-      { director: 'John McTiernan', title: 'Predator' },
-      { director: 'Mark L. Lester', title: 'Commando' },
-      {
-        director: 'Jonathan Mostow',
-        title: 'Terminator 3: Rise of the Machines',
-      },
-    ])
+    assert.deepEqual(
+      new Set(await Query().select({ from: moviesDB })),
+      new Set([
+        { director: 'James Cameron', title: 'The Terminator' },
+        { director: 'James Cameron', title: 'Terminator 2: Judgment Day' },
+        { director: 'John McTiernan', title: 'Predator' },
+        { director: 'Mark L. Lester', title: 'Commando' },
+        {
+          director: 'Jonathan Mostow',
+          title: 'Terminator 3: Rise of the Machines',
+        },
+      ])
+    )
 
     const RefinedQuery = Query.when(({ director }) => [
       Data.same.not({ this: 'James Cameron', as: director }),
@@ -158,16 +161,19 @@ export const testDB = {
         Fact({ the: 'supervisor', of: subordinate, is: manager }),
         Employee({ this: manager, name: supervisor }),
       ])
-    assert.deepEqual(await Supervisor().select({ from: employeeDB }), [
-      { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
-      { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
-      { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
-      { employee: 'Reasoner Louis', supervisor: 'Hacker Alyssa P' },
-      { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
-      { employee: 'Scrooge Eben', supervisor: 'Warbucks Oliver' },
-      { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
-      { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
-    ])
+    assert.deepEqual(
+      new Set(await Supervisor().select({ from: employeeDB })),
+      new Set([
+        { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
+        { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
+        { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
+        { employee: 'Reasoner Louis', supervisor: 'Hacker Alyssa P' },
+        { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
+        { employee: 'Scrooge Eben', supervisor: 'Warbucks Oliver' },
+        { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
+        { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
+      ])
+    )
   },
 
   'test salary': async (assert) => {
