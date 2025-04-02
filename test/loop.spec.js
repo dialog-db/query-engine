@@ -6,9 +6,13 @@ import { derive } from '../src/fact.js'
 const id = DB.Memory.entity
 
 const db = DB.Memory.create([
+  // bafyr4ici7rzb7o6bolqjex5cplywohpcew5je4juqauzrmikcvukdcdffm
   [id(1), 'name', 'a'],
+  // bafyr4iflco7n6qxijoxa67dcy7owvcw2k4piqkn623vflaqx6a3bwxrf2a
   [id(2), 'name', 'b'],
+  // bafyr4ihb4dub23vdtmgprodp7vcasiibd5luadf4h53krilrsbvjxdlvau
   [id(3), 'name', 'c'],
+  // bafyr4ibnhlpn74i3mhyuzcdogwx2anttnxgypj2ne624cuicexiplexccm
   [id(0), 'data/type', 'list'],
   [id(0), 'list/next', id(1)],
   [id(1), 'list/next', id(2)],
@@ -242,89 +246,135 @@ export const testRecursion = {
         { from: 1, n: 4, to: 5 },
       ]
     )
-    // .with({ next: Number })
-    // .while(({ from, to }) => [Data.less({ this: from, than: to })])
-    // .do(({ n, from, next, to }) => [
-    //   Data.same({ this: from, as: n }),
-    //   Math.Sum({ of: n, with: 1, is: next }),
-    // ])
-    // .repeat(({ n, next, to }) => ({ n, from: next, to }))
-
-    // induce({ n: Number, from: Number, to: Number })
-    //   .with({ next: Number })
-    //   .when(({ n, from, next, to }) => [
-    //     Data.less({ this: from, than: to }),
-    //     Data.same({ this: from, as: n }),
-    //     Math.Sum({ of: n, with: 1, is: next }),
-    //   ])
-    //   .repeat(({ n, next, to }) => ({ n, from: next, to }))
-
-    // const Loop = induce({ n: Number, from: Number, to: Number })
-    //   .with({ next: Number })
-    //   .when(({ n, from, next, to }) => [
-    //     Data.less({ this: from, than: to }),
-    //     Data.same({ this: from, as: n }),
-    //     Math.Sum({ of: n, with: 1, is: next }),
-    //     Loop({ n, from: next, to }),
-    //   ])
   },
 
-  'skip test loop': async (assert) => {
-    deduce({ n: Number, from: Number, to: Number })
-      .with({ next: Number })
-      .when(({ n, from, to, next }) => [
-        Data.less({ this: from, than: to }),
-        Data.same({ this: from, as: n }),
-        Math.Sum({ of: n, with: 1, is: next }),
-      ])
-    // .loop(({ n, from, to, next }) => ({ recur: { n, from: next, to } }))
+  'only test recursion': async (assert) => {
+    // const list = DB.link()
+    // const item = DB.link()
+    // const head = DB.link()
+    // const Child = DB.rule({
+    //   case: { let: item, of: list },
+    //   when: [
+    //     DB.or(
+    //       // head of the list is the item
+    //       DB.match([list, 'list/next', item]),
+    //       // or item is a child of the head
+    //       DB.and(
+    //         DB.match([list, 'list/next', head]),
+    //         DB.recur({ let: item, of: head })
+    //       )
+    //     ),
+    //   ],
+    // })
 
-    // .repeat(({ n, from, to }) => [
-    //   Math.Sum({ of: from, with: 1, is: n }),
-    //   Data.less(({ this: n, than: to }))
-    // ])
-  },
-  'skip test recursion': async (assert) => {
-    const list = DB.link()
-    const item = DB.link()
-    const head = DB.link()
-    const Child = DB.rule({
-      case: { let: item, of: list },
-      when: [
-        DB.or(
-          // head of the list is the item
-          DB.match([list, 'list/next', item]),
-          // or item is a child of the head
-          DB.and(
-            DB.match([list, 'list/next', head]),
-            DB.recur({ let: item, of: head })
-          )
-        ),
-      ],
-    })
+    const Child = deduce({ of: Object, is: Object })
+      .with({ head: Object })
+      .when(({ of, is, head }) => ({
+        head: [Fact({ the: 'list/next', of, is })],
+        child: [
+          Fact({ the: 'list/next', of, is: head }),
+          Child({ of: head, is }),
+        ],
+      }))
 
-    const root = DB.link()
-    const each = DB.link()
-    const next = DB.variable()
+    const Implicit = deduce({
+      the: String,
+      of: Object,
+      is: Object,
+      default: { Null: {} },
+    }).when(({ the, of, is, default: implicit, _ }) => ({
+      explicit: [Fact({ the, of, is }), Data.Type({ of: implicit, is: _ })],
+      implicit: [Fact.not({ the, of }), Data.same({ this: implicit, as: is })],
+    }))
 
-    const name = DB.string()
+    // const test = await Implicit({
+    //   the: 'list/next',
+    //   of: id(3),
+    //   is: Implicit.$.is,
+    //   default: null,
+    // }).select({ from: db })
 
-    const matches = await DB.query(db, {
-      select: {
-        id: each,
-        name,
-        next,
+    const NestRecursive = deduce({
+      of: Object,
+      is: Object,
+      name: String,
+    }).where(({ of, is, name }) => [
+      Child({ of, is }),
+      Fact({ the: 'name', of: is, is: name }),
+    ])
+
+    const result = await NestRecursive().select({ from: db })
+
+    assert.deepEqual(result, [
+      {
+        of: id(0),
+        is: id(1),
+        name: 'a',
       },
-      where: [
-        DB.match([root, 'data/type', 'list']),
-        Child.match({ let: each, of: root }),
-        DB.match([each, 'name', name]),
-        DB.or(
-          DB.match([each, 'list/next', next]),
-          DB.not(DB.match([each, 'list/next', next]))
-        ),
-      ],
+      {
+        of: id(1),
+        is: id(2),
+        name: 'b',
+      },
+      {
+        of: id(2),
+        is: id(3),
+        name: 'c',
+      },
+    ])
+
+    return
+
+    const Query = deduce({
+      each: Object,
+      name: String,
+      // next: Object
     })
+      .with({ root: Object })
+      .where(
+        ({
+          each,
+          name,
+          // next,
+          root,
+        }) => [
+          Fact({ the: 'data/type', of: root, is: 'list' }),
+          Child({ of: root, is: each }),
+          Fact({ the: 'name', of: each, is: name }),
+          // Implicit({
+          //   the: 'list/next',
+          //   of: each,
+          //   is: next,
+          //   default: null,
+          // }),
+        ]
+      )
+
+    const matches = await Query().select({ from: db })
+    return console.log(matches)
+
+    // const root = DB.link()
+    // const each = DB.link()
+    // const next = DB.variable()
+
+    // const name = DB.string()
+
+    // const matches = await DB.query(db, {
+    //   select: {
+    //     id: each,
+    //     name,
+    //     next,
+    //   },
+    //   where: [
+    //     DB.match([root, 'data/type', 'list']),
+    //     Child.match({ let: each, of: root }),
+    //     DB.match([each, 'name', name]),
+    //     DB.or(
+    //       DB.match([each, 'list/next', next]),
+    //       DB.not(DB.match([each, 'list/next', next]))
+    //     ),
+    //   ],
+    // })
 
     assert.deepEqual(
       [...matches],
