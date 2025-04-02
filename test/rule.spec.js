@@ -30,25 +30,7 @@ export const testRules = {
     )
   },
 
-  'skip leaves near': async (assert) => {
-    // const employee = {
-    //   id: DB.link(),
-    //   name: DB.string(),
-    //   address: DB.string(),
-    //   city: DB.string(),
-    // }
-
-    // const coworker = {
-    //   id: DB.link(),
-    //   name: DB.string(),
-    //   address: DB.string(),
-    //   city: DB.string(),
-    // }
-
-    // const Same = rule({
-    //   case: { as: $ },
-    // })
-
+  'leaves near': async (assert) => {
     const Address = deduce({ of: Object, is: String }).where(({ of, is }) => [
       Fact({ the: 'address', of, is }),
     ])
@@ -63,130 +45,48 @@ export const testRules = {
       address: String,
     }).where(($) => [
       Address({ of: $.this, is: $.address }),
-      // Fact({ the: 'name', of: $.this, is: $.name }),
-      // Fact({ the: 'address', of: $.this, is: $.address }),
       Name({ of: $.this, is: $.name }),
     ])
 
-    const Q1 = deduce({ name: String })
-      .with({ this: Object, address: String })
-      .where(($) => [
-        Address({ of: $.this, is: $.address }),
-        Name({ of: $.this, is: $.name }),
-      ])
-
-    // assert.deepEqual(
-    //   new Set(await Q1().select({ from: db })),
-    //   new Set([
-    //     { name: 'Bitdiddle Ben' },
-    //     { name: 'Hacker Alyssa P' },
-    //     { name: 'Fect Cy D' },
-    //     { name: 'Tweakit Lem E' },
-    //     { name: 'Reasoner Louis' },
-    //     { name: 'Warbucks Oliver' },
-    //     { name: 'Scrooge Eben' },
-    //     { name: 'Cratchet Robert' },
-    //     { name: 'Aull DeWitt' },
-    //   ])
-    // )
-
-    const Q2 = deduce({ name: String })
-      .with({ address: String, this: Object })
-      .where(($) => [Employee($)])
-
-    console.log(Analyzer.toDebugString(Q2.source))
-
-    console.log(await Q2().select({ from: db }))
-
-    return assert.deepEqual(
-      new Set(await Q2().select({ from: db })),
-      new Set([
-        { name: 'Bitdiddle Ben' },
-        { name: 'Hacker Alyssa P' },
-        { name: 'Fect Cy D' },
-        { name: 'Tweakit Lem E' },
-        { name: 'Reasoner Louis' },
-        { name: 'Warbucks Oliver' },
-        { name: 'Scrooge Eben' },
-        { name: 'Cratchet Robert' },
-        { name: 'Aull DeWitt' },
-      ])
-    )
-
-    // const LivesNear = deduce({
-    //   employee: String,
-    //   // coworker: String,
-    // })
-    //   .with({
-    //     employeeEntity: Object,
-    //     employeeAddress: String,
-    //     // coworkerEntity: Object,
-    //     // coworkerAddress: String,
-    //     // word: String,
-    //     // pattern: String,
-    //   })
-    //   .where(
-    //     ({
-    //       employee,
-    //       employeeEntity,
-    //       employeeAddress,
-    //       // coworker,
-    //       // coworkerEntity,
-    //       // word,
-    //       // coworkerAddress,
-    //       // pattern,
-    //     }) => [
-    //       Employee({
-    //         this: employeeEntity,
-    //         address: employeeAddress,
-    //         name: employee,
-    //       }),
-    //       // Employee({
-    //       //   this: coworkerEntity,
-    //       //   address: coworkerAddress,
-    //       //   name: coworker,
-    //       // }),
-
-    //       // Text.Words({ of: employeeAddress, is: word }),
-    //       // Text.Concat({ of: [word, '*'], is: pattern }),
-    //       // Text.match({ this: coworkerAddress, pattern }),
-    //       // Data.same.not({ this: employee, as: coworker }),
-    //     ]
-    //   )
-
-    // const LivesNear = rule({
-    //   case: {
-    //     the: employee.id,
-    //     by: coworker.id,
-    //     city: employee.city,
-    //   },
-    //   when: [
-    //     DB.match([employee.id, 'address', employee.address]),
-    //     DB.match([coworker.id, 'address', coworker.address]),
-    //     { Match: [employee.address, 'text/words', employee.city] },
-    //     { Match: [[employee.city, '*'], 'text/concat', $.pattern] },
-    //     {
-    //       Match: [{ text: coworker.address, pattern: $.pattern }, 'text/like'],
-    //     },
-    //     DB.not(Same.match({ this: employee.id, as: coworker.id })),
-    //   ],
-    // })
-
-    // const matches = await DB.query(db, {
-    //   select: {
-    //     employee: employee.name,
-    //     coworker: coworker.name,
-    //   },
-    //   where: [
-    //     DB.match([employee.id, 'name', employee.name]),
-    //     DB.match([coworker.id, 'name', coworker.name]),
-    //     LivesNear.match({
-    //       the: employee.id,
-    //       by: coworker.id,
-    //       city: employee.city,
-    //     }),
-    //   ],
-    // })
+    const LivesNear = deduce({
+      employee: String,
+      coworker: String,
+    })
+      .with({
+        employeeEntity: Object,
+        employeeAddress: String,
+        coworkerEntity: Object,
+        coworkerAddress: String,
+        word: String,
+        pattern: String,
+      })
+      .where(
+        ({
+          employee,
+          employeeEntity,
+          employeeAddress,
+          coworker,
+          coworkerEntity,
+          word,
+          coworkerAddress,
+          pattern,
+        }) => [
+          Employee.match({
+            this: employeeEntity,
+            address: employeeAddress,
+            name: employee,
+          }),
+          Employee.match({
+            this: coworkerEntity,
+            address: coworkerAddress,
+            name: coworker,
+          }),
+          Text.Words({ of: employeeAddress, is: word }),
+          Text.Concat({ of: [word, '*'], is: pattern }),
+          Text.match({ this: coworkerAddress, pattern }),
+          Data.same.not({ this: employee, as: coworker }),
+        ]
+      )
 
     const matches = await LivesNear().select({ from: db })
 

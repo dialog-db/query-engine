@@ -332,6 +332,7 @@ export const testAnalyzer = {
       'Verify both negations run after their dependencies'
     )
   },
+
   'plans operations requiring shared variables': async (assert) => {
     const plan = Analyzer.plan({
       match: { x: $.x, user: $.user },
@@ -474,6 +475,7 @@ export const testAnalyzer = {
       },
     })
   },
+
   'throws if rule does not bind a variable': async (assert) => {
     assert.throws(
       () =>
@@ -487,6 +489,7 @@ export const testAnalyzer = {
       /Rule case "where" does not bind variable \?x that rule matches as "x"/
     )
   },
+
   'throws if rule branch does not handle match variable': async (assert) => {
     assert.throws(
       () =>
@@ -541,6 +544,7 @@ export const testAnalyzer = {
       /Recursive rule must have at least one non-recursive branch/
     )
   },
+
   'prefers efficient execution path based on bindings': async (assert) => {
     /**
      * @param {API.Term} x
@@ -613,6 +617,7 @@ export const testAnalyzer = {
 
     assert.ok(plan($.who).cost > plan('Alice').cost)
   },
+
   'ensures rule scope is independent from outer scope': async (assert) => {
     /**
      * @param {API.Term} result
@@ -752,6 +757,7 @@ export const testAnalyzer = {
       'output cell can be omitted'
     )
   },
+
   'errors if rule branch references undefined variable': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
@@ -770,6 +776,7 @@ export const testAnalyzer = {
       /Unbound \?z variable referenced from/
     )
   },
+
   'errors if deductive branch does not handle case variable': async (
     assert
   ) => {
@@ -787,6 +794,7 @@ export const testAnalyzer = {
       /Rule case "where" does not bind variable \?y that rule matches as "y"/
     )
   },
+
   'recursive rule must have when that binds all variables': async (assert) => {
     assert.throws(
       () =>
@@ -803,6 +811,7 @@ export const testAnalyzer = {
       /does not bind variable \?value that rule matches as "this"/
     )
   },
+
   'allows output variables to be omitted from match': async (assert) => {
     const plan = Analyzer.plan({
       // @ts-expect-error
@@ -815,6 +824,7 @@ export const testAnalyzer = {
 
     assert.ok(plan, 'Should allow omitting output variables')
   },
+
   'detects cycles between branches': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
@@ -858,6 +868,7 @@ export const testAnalyzer = {
       'resolves cycle through y'
     )
   },
+
   'resoles cycles from application': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
@@ -1133,6 +1144,7 @@ export const testAnalyzer = {
       /Rule application requires binding for \?this referring to \?q variable/
     )
   },
+
   'compares iteration rule cost to against scan cost': async (assert) => {
     const Between = Analyzer.rule({
       match: {
@@ -1369,6 +1381,7 @@ export const testAnalyzer = {
       'Should successfully create a plan with reused wildcard variables'
     )
   },
+
   'formula input is required': (assert) => {
     assert.throws(() => {
       const plan = Analyzer.plan({

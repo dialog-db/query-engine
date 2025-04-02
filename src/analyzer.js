@@ -16,8 +16,7 @@ export { $ }
 /**
  * @param {API.Select} selector
  */
-export const select = (selector) =>
-  Select.new(Circuit.new(), { match: selector })
+export const select = (selector) => Select.from({ match: selector })
 
 /**
  * @template {API.Conclusion} Match
@@ -31,59 +30,66 @@ export const rule = (source) => DeductiveRule.new(source)
  * @param {Source['match']} match
  */
 export const apply = (operator, match) =>
-  FormulaApplication.new(
-    Circuit.new(),
-    /** @type {Source} */ ({ operator, match })
-  )
+  FormulaApplication.from(/** @type {Source} */ ({ operator, match }))
+
+/**
+ * @param {API.Conjunct|API.Recur} source
+ */
+export const from = (source) => {
+  if (source.not) {
+    return Not.from(source)
+  } else if (source.rule) {
+    return RuleApplication.from(source)
+  } else if (source.operator) {
+    return FormulaApplication.from(source)
+  } else if (source.recur) {
+    return RuleRecursion.from(source)
+  } else {
+    return Select.from(source)
+  }
+}
 
 /**
  * @template {API.Conclusion} Match
  * @param {API.RuleApplication<Match>} application
  */
-export const plan = (application) =>
-  RuleApplication.new(Circuit.new(), application).plan()
+export const plan = (application) => RuleApplication.from(application).plan()
 
 /**
  * @implements {API.MatchFact}
  */
 class Select {
   /**
-   * @param {Circuit} circuit
    * @param {API.MatchFact} source
    */
-  static new(circuit, { match }) {
+  static from({ match }) {
     const { of, the, is } = match
     const cells = new Map()
-    const select = new this(circuit, match, cells)
+    const select = new this(match, cells)
 
     // Entity is variable
     if (Variable.is(of)) {
       cells.set(of, 500)
-      circuit.open(of, select)
     }
 
     // Attribute is a variable
     if (Variable.is(the)) {
       cells.set(the, 200)
-      circuit.open(the, select)
     }
 
     // Value is a variable
     if (Variable.is(is)) {
       cells.set(is, 300)
-      circuit.open(is, select)
     }
 
     return select
   }
   /**
-   * @param {Circuit} circuit
    * @param {API.Select} selector
    * @param {Map<API.Variable, number>} cells
    * @param {Context} context
    */
-  constructor(circuit, selector, cells, context = ContextView.free) {
-    this.circuit = circuit
+  constructor(selector, cells, context = ContextView.free) {
     this.cells = cells
     this.selector = selector
     this.context = context
@@ -105,35 +111,6 @@ class Select {
   }
 
   /**
-   * @param {API.Variable} by
-   * @returns {SelectRoute|null}
-   */
-  address(by) {
-    /** @type {SelectRoute['match']} */
-    const match = {}
-    let distance = 0
-    let found = false
-    for (const [key, term] of Object.entries(this.selector)) {
-      if (term == by) {
-        found = true
-        match[key] = ROUTE_TARGET
-      } else if (Variable.is(term)) {
-        const route = this.circuit.address(term)
-        if (route) {
-          match[key] = route
-          distance += route.distance
-        } else {
-          return null
-        }
-      } else {
-        match[key] = term
-      }
-    }
-
-    return found ? { match, fact: {}, distance } : null
-  }
-
-  /**
    * @template {API.Scalar} T
    * @param {Context} context
    * @param {API.Term<T>} term
@@ -151,7 +128,7 @@ class Select {
    * @param {Context} context
    */
   plan(context) {
-    return new Select(this.circuit, this.selector, this.cells, context)
+    return new Select(this.selector, this.cells, context)
   }
 
   /**
@@ -237,51 +214,6 @@ class Select {
   }
 
   /**
-   *
-   * @returns
-   */
-  form() {
-    const { circuit, selector } = this
-    const { the, of, is } = selector
-    const match = {}
-    if (the) {
-      match.the = address(the, circuit)
-    }
-
-    if (of !== undefined) {
-      match.of = address(of, circuit)
-    }
-
-    if (is !== undefined) {
-      match.is = address(is, circuit)
-    }
-
-    return { match, fact: {} }
-  }
-
-  refer() {
-    const { circuit, selector } = this
-    const { the, of, is } = selector
-    const match = {}
-    if (the !== undefined) {
-      match.the = circuit.resolve(the)
-    }
-
-    if (of !== undefined) {
-      match.of = circuit.resolve(of)
-    }
-
-    if (is !== undefined) {
-      match.is = circuit.resolve(is)
-    }
-
-    return Link.of({
-      match: match,
-      fact: {},
-    })
-  }
-
-  /**
    * @param {Select} other
    */
   compare(other) {
@@ -302,33 +234,11 @@ class Select {
   }
 }
 
-/**
- * @typedef {object} Address
- * @property {API.Variable} the
- * @property {API.Scalar|Route} as
- *
- * @param {API.Term} term
- * @param {Circuit} circuit
- * @returns {Address|API.Scalar}
- */
-const address = (term, circuit) => {
-  if (Variable.is(term)) {
-    const address = circuit.resolve(term)
-    return {
-      the: term,
-      as: toJSON(/** @type {{}} */ (address)),
-    }
-  } else {
-    return term
-  }
-}
-
 class FormulaApplication {
   /**
-   * @param {Circuit} circuit
    * @param {API.SystemOperator} source
    */
-  static new(circuit, source) {
+  static from(source) {
     const { match } = source
 
     const { of, is, ...rest } =
@@ -343,13 +253,12 @@ class FormulaApplication {
     const to = is ? { is } : {}
 
     const cells = new Map()
-    const application = new this(circuit, source, cells, from, to)
+    const application = new this(source, cells, from, to)
 
     for (const variable of Terms.variables(from)) {
       // Cost of omitting an input variable is Infinity meaning that we can not
       // execute the operation without binding the variable.
       cells.set(variable, Infinity)
-      circuit.open(variable, application)
     }
 
     for (const variable of Terms.variables(to)) {
@@ -362,23 +271,19 @@ class FormulaApplication {
       // Cost of omitting an output variable is 0 meaning that we can execute
       // the operation without binding the variable.
       cells.set(variable, 0)
-
-      circuit.open(variable, application)
     }
 
     return application
   }
 
   /**
-   * @param {Circuit} circuit
    * @param {API.SystemOperator} source
    * @param {Map<API.Variable, number>} cells
    * @param {Record<string, API.Term>|API.Term} from
    * @param {Record<string, API.Term>} to
    * @param {Context} context
    */
-  constructor(circuit, source, cells, from, to, context = ContextView.free) {
-    this.circuit = circuit
+  constructor(source, cells, from, to, context = ContextView.free) {
     this.cells = cells
     this.source = source
     this.from = from
@@ -401,7 +306,6 @@ class FormulaApplication {
    */
   plan(context) {
     return new FormulaApplication(
-      this.circuit,
       this.source,
       this.cells,
       this.from,
@@ -472,47 +376,6 @@ class FormulaApplication {
     }
   }
 
-  /**
-   * @param {API.Variable} by
-   * @returns {FormulaRoute|null}
-   */
-  address(by) {
-    /** @type {FormulaRoute['match']} */
-    const match = {}
-    let found = false
-    let distance = 0
-    for (const [key, term] of Object.entries(this.source.match)) {
-      if (term === by) {
-        found = true
-        match[key] = ROUTE_TARGET
-      } else if (Variable.is(term)) {
-        const route = this.circuit.address(term)
-        if (route) {
-          match[key] = route
-          distance += route.distance
-        } else {
-          return null
-        }
-      } else {
-        match[key] = term
-      }
-    }
-
-    return found ? { match, operator: this.source.operator, distance } : null
-  }
-  form() {
-    /** @type {Record<string, Address|API.Scalar>} */
-    const match = {}
-    for (const [key, term] of Object.entries(this.source.match)) {
-      match[key] = address(term, this.circuit)
-    }
-
-    return {
-      match,
-      operator: this.source.operator,
-    }
-  }
-
   toDebugString() {
     const { match, operator } = this.source
 
@@ -540,24 +403,22 @@ class FormulaApplication {
 export class RuleApplication {
   /**
    * @template {API.Conclusion} [Match=API.Conclusion]
-   * @param {Circuit} circuit
    * @param {API.MatchRule<Match>} source
    * @returns {RuleApplication<Match>}
    */
-  static new(circuit, source) {
+  static from(source) {
     // Build the underlying rule first
     const rule = DeductiveRule.new(source.rule)
 
-    return this.apply(rule, source.match, circuit)
+    return this.apply(rule, source.match)
   }
   /**
    * @template {API.Conclusion} Match
    * @param {DeductiveRule<Match>} rule
    * @param {Partial<API.RuleBindings<Match>>} terms
-   * @param {Circuit} circuit
    */
-  static apply(rule, terms, circuit) {
-    const application = new this(circuit, terms, rule)
+  static apply(rule, terms) {
+    const application = new this(terms, rule)
     const { context, cells } = application
 
     // Track all variables that need to be connected from inner to outer scope
@@ -582,9 +443,6 @@ export class RuleApplication {
 
         // Connect the inner rule variable to the outer application variable
         redirect(context, inner, term)
-
-        // Make sure the outer term is tracked in the circuit
-        circuit.open(term, application)
       }
       // If value for the term is provided we create a binding.
       else if (term !== undefined) {
@@ -599,20 +457,12 @@ export class RuleApplication {
     return application
   }
   /**
-   * @param {Circuit} circuit
    * @param {Partial<API.RuleBindings<Match>> & {}} match
    * @param {DeductiveRule<Match>} rule
    * @param {Context} context
    * @param {Map<API.Variable, number>} cells
    */
-  constructor(
-    circuit,
-    match,
-    rule,
-    context = ContextView.new(),
-    cells = new Map()
-  ) {
-    this.circuit = circuit
+  constructor(match, rule, context = ContextView.new(), cells = new Map()) {
     this.match = match
     this.rule = rule
     this.context = context
@@ -621,47 +471,6 @@ export class RuleApplication {
 
   get recurs() {
     return null
-  }
-
-  /**
-   * @param {API.Variable} by
-   * @returns {RuleRoute|null}
-   */
-  address(by) {
-    let found = false
-    /** @type {RuleRoute['match']} */
-    const match = {}
-    let distance = 0
-    for (const [name, term] of Object.entries(this.match)) {
-      if (term === by) {
-        match[name] = ROUTE_TARGET
-        found = true
-      } else if (Variable.is(term)) {
-        const route = this.circuit.address(term)
-        if (route) {
-          match[name] = route
-          distance += route.distance
-        } else {
-          return null
-        }
-      } else {
-        match[name] = /** @type {API.Scalar} */ (term)
-      }
-    }
-
-    return found ? { match, rule: this.rule.form(), distance } : null
-  }
-  form() {
-    /** @type {Record<string, Address|API.Scalar>} */
-    const match = {}
-    for (const [name, term] of Object.entries(this.match)) {
-      match[name] = address(/** @type {API.Scalar} */ (term), this.circuit)
-    }
-
-    return {
-      match: {},
-      rule: this.rule.form(),
-    }
   }
 
   get cost() {
@@ -716,6 +525,9 @@ export class RuleApplication {
 }
 
 /**
+ * Creates map of variables as keys and string identifiers
+ * corresponding to their names in the definition.
+ *
  * @param {API.Conclusion} match
  * @returns {Map<API.Variable, string>}
  */
@@ -728,6 +540,7 @@ const ruleBindings = (match) => {
   }
   return bindings
 }
+
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
  * @implements {API.Deduction<Match>}
@@ -804,7 +617,7 @@ export class DeductiveRule {
    * @returns {RuleApplication<Match>}
    */
   apply(terms = this.match) {
-    return RuleApplication.apply(this, terms, Circuit.new())
+    return RuleApplication.apply(this, terms)
   }
 
   /**
@@ -862,40 +675,24 @@ export class DeductiveRule {
     for (const [name, disjunct] of disjuncts) {
       when.push(`${name}: ${toDebugString(disjunct)}`)
     }
-    const body =
-      when.length === 1 ? when[0] : `when: { ${indent(when.join(',\n'))} }`
+    const body = `when: { ${indent(when.join(',\n'))} }`
 
-    return `{
+    return indent(`{
   match: ${Terms.toDebugString(this.match)},
   ${body}}
-}`
-  }
-
-  /**
-   * @returns {{}}
-   */
-
-  form() {
-    /** @type {Record<string, object>} */
-    const form = {}
-
-    for (const [name, disjunct] of Object.entries(this.disjuncts)) {
-      form[name] = disjunct.form()
-    }
-
-    return form
+}`)
   }
 }
 
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
  */
-class Recur {
+class RuleRecursion {
   /**
    * @template {API.Conclusion} [Match=API.Conclusion]
-   * @param {Match} terms
+   * @param {API.Recur<Match>} source
    */
-  static new(terms) {
+  static from({ recur: terms }) {
     const cells = new Map()
     // All variables in the rule need to be in the cells
     for (const variable of Terms.variables(terms)) {
@@ -1018,7 +815,6 @@ class Join {
     let total = 0
 
     const conjuncts = []
-    const circuit = new Circuit(source.bindings)
 
     // Here we asses each conjunct of the join one by one and identify:
     // 1. Cost associated with each binding. If cost is Infinity it implies
@@ -1030,7 +826,7 @@ class Join {
     // 4. Which conjuncts are negations as those need to be planned after all
     //    other conjuncts.
     for (const member of source.conjuncts) {
-      const conjunct = circuit.create(member)
+      const conjunct = from(member)
       conjuncts.push(conjunct)
 
       if (conjunct.recurs) {
@@ -1042,7 +838,6 @@ class Join {
       total = combineCosts(total, conjunct.cost)
 
       for (const [variable, cost] of conjunct.cells) {
-        circuit.open(variable, conjunct)
         // Only track costs for variables exposed in rule match
         if (source.bindings.has(variable)) {
           const base = cells.get(variable)
@@ -1052,8 +847,11 @@ class Join {
           )
         }
         // Local variables contribute to base cost
+        // TODO: 🤔 Local rule variables fail `circuit.connect` because their
+        // names can not be derived from rules.
         else {
           const base = local.get(variable)
+
           local.set(
             variable,
             base === undefined ? cost : combineCosts(base, cost)
@@ -1066,21 +864,7 @@ class Join {
       total += cost
     }
 
-    return new this(
-      circuit.connect(),
-      conjuncts,
-      cells,
-      total,
-      recurs,
-      `${source.name}`
-    )
-  }
-
-  /**
-   * @returns {{}[]}
-   */
-  form() {
-    return [...this.conjuncts.map((conjunct) => conjunct.form())]
+    return new this(conjuncts, cells, total, recurs, `${source.name}`)
   }
 
   /**
@@ -1110,15 +894,13 @@ class Join {
   }
 
   /**
-   * @param {Circuit} circuit
    * @param {Conjunct[]} conjuncts
    * @param {Map<API.Variable, number>} cells
    * @param {number} cost
    * @param {boolean} recurs
    * @param {string} name
    */
-  constructor(circuit, conjuncts, cells, cost, recurs, name) {
-    this.circuit = circuit
+  constructor(conjuncts, cells, cost, recurs, name) {
     this.conjuncts = conjuncts
     this.cells = cells
     this.cost = cost
@@ -1265,16 +1047,15 @@ class Join {
 
 /**
  * @typedef {Select|FormulaApplication|RuleApplication} Constraint
- * @typedef {Select|FormulaApplication|RuleApplication|Not|Recur} Conjunct
+ * @typedef {Select|FormulaApplication|RuleApplication|Not|RuleRecursion} Conjunct
  */
 class Not {
   /**
-   * @param {Circuit} circuit
-   * @param {API.Constraint} constraint
+   * @param {API.Negation} source
    * @returns {Not}
    */
-  static new(circuit, constraint) {
-    const operation = /** @type {Constraint} */ (circuit.create(constraint))
+  static from({ not: constraint }) {
+    const operation = /** @type {Constraint} */ (from(constraint))
 
     // Not's cost includes underlying operation
     const cells = new Map()
@@ -1285,7 +1066,7 @@ class Not {
       cells.set(variable, Infinity)
     }
 
-    return new this(circuit, operation, cells)
+    return new this(operation, cells)
   }
 
   get recurs() {
@@ -1293,20 +1074,10 @@ class Not {
   }
 
   /**
-   * @returns {{not: {}}}
-   */
-  form() {
-    return {
-      not: this.constraint.form(),
-    }
-  }
-  /**
-   * @param {Circuit} circuit
    * @param {Constraint} constraint
    * @param {Map<API.Variable, number>} cells
    */
-  constructor(circuit, constraint, cells) {
-    this.circuit = circuit
+  constructor(constraint, cells) {
     this.constraint = constraint
     this.cells = cells
   }
@@ -1321,14 +1092,6 @@ class Not {
    */
   plan(context) {
     return new Negate(this.constraint.plan(context))
-  }
-
-  /**
-   * @param {API.Variable} by
-   */
-  address(by) {
-    // Return null because we don't want to address by the negation.
-    return null
   }
 
   toDebugString() {
@@ -1920,326 +1683,6 @@ class Negate {
 }
 
 export const NOTHING = Link.of({ '/': 'bafkqaaa' })
-export const ROUTE_TARGET = Link.of({ '?': NOTHING })
-
-/**
- * Connections represent some query expression containing a variable by which we
- * track a dependency. However, from the circuit perspective don't really care
- * about the expression itself, we just need a way to tokenize it in a way that
- * will allow us to derive a deterministic identifier. For this reason
- * connection simply needs to provide a method for iterating it's tokens. When
- * token is a variable it will be resolved to a trace to port in the circuit
- * allowing us to derive unique identifier for it.
- *
- * @typedef {object} Connection
- * @property {(cell: API.Variable) => Route|null} address
- */
-
-/**
- * Representation of the query as circuit of connections between logic variables
- * that underlying expressions use. It for dependency tracking and cycle
- * analysis. It is also used for assigning deterministic identifiers to the the
- * local variables which are in some ways derived from the ports of the circuit.
- */
-class Circuit {
-  static new() {
-    return new this(new Map())
-  }
-  /**
-   * Set of ports that this circuit can be connected to the outside world.
-   * Keys of the map are variables / cells representing ports while values are
-   * names assigned to them which usually correspond to the names in the rule's
-   * match clause.
-   *
-   * @param {Map<API.Variable, string>} ports
-   */
-  constructor(ports) {
-    /**
-     * Map is used to collect list of trace candidates for the cells. When we
-     * call connect we will try to resolve the shortest trace for each cell and
-     * migrate cell from `open` to `ready`.
-     *
-     * @type {Map<API.Variable, Set<Connection>>}
-     */
-    this.opened = new Map()
-
-    /**
-     * Map of cell traces, representing a shortest serializable path to the
-     * circuit port.
-     *
-     * @type {Map<API.Variable, Route|PortRoute>}
-     */
-    this.ready = new Map()
-
-    /**
-     * We create a traces for each port circuit port, so that we don't have to
-     * differentiate between circuit ports and cells that are connected.
-     */
-    for (const [port, id] of ports) {
-      this.ready.set(port, { port: id, distance: 0 })
-    }
-
-    // Special handling for discard variable - always consider it connected
-    this.ready.set($._, { port: '_', distance: 0 })
-  }
-
-  /**
-   * This is used to simply capture a connection between a cell and expression
-   * it appears in. This is used to add connection to possible trace candidates
-   * for the cell.
-   *
-   * @param {API.Variable} port
-   * @param {Connection} connection
-   */
-  open(port, connection) {
-    // If port is already connected we skip this connection as we already have
-    // an established trace for it. Otherwise we add connection to the list of
-    // trace candidates.
-    if (!this.ready.has(port)) {
-      const connections = this.opened.get(port)
-      if (connections) {
-        connections.add(connection)
-      } else {
-        this.opened.set(port, new Set([connection]))
-      }
-    }
-  }
-
-  /**
-   * Connect method is used to resolve every cell traces in the circuit. If some
-   * cell trace can not be resolved it means that underlying expression is not
-   * connected to the circuit which indicates potential error in the query as
-   * some variable in it is either redundant or some expression connecting it to
-   * the circuit is missing.
-   */
-  connect() {
-    const { ready, opened } = this
-    let size = -1
-
-    // Keep attempting to resolving traces until we reach a fixed point and are
-    // unable to make any more progress.
-    while (size !== ready.size) {
-      size = ready.size
-      for (const [cell, connections] of opened) {
-        // We should not encounter a port in the ready list if it appears in the
-        // opened list, however we still check just in case.
-        if (!ready.has(cell)) {
-          const route = connect(cell, connections)
-
-          // If we managed to resolve a trace for this cell we add it to the
-          // ready set and remove it from the open set.
-          if (route) {
-            opened.delete(cell)
-            ready.set(cell, route)
-          }
-        }
-      }
-    }
-
-    // If we have reached a fixed point but still have cells that are not
-    // connected we have a bad circuit and we need to raise an error.
-    if (opened.size > 0) {
-      const reasons = []
-      for (const [port, connections] of opened) {
-        for (const connection of connections) {
-          reasons.push(
-            `Reference ${Variable.toDebugString(port)} in ${toDebugString(
-              connection
-            )}`
-          )
-        }
-      }
-
-      throw new ReferenceError(
-        reasons.length === 1 ?
-          `Unable to resolve ${reasons[0]}`
-        : `Unable to resolve:${indent(`\n${reasons.map(li).join('\n')}`)}`
-      )
-    }
-
-    return this
-  }
-
-  /**
-   * @param {API.Conjunct} source
-   */
-  create(source) {
-    if (source.not) {
-      return Not.new(this, source.not)
-    } else if (source.rule) {
-      return RuleApplication.new(this, source)
-    } else if (source.operator) {
-      return FormulaApplication.new(this, source)
-    } else if (source.recur) {
-      return Recur.new(source.recur)
-    } else {
-      return Select.new(this, source)
-    }
-  }
-
-  /**
-   *
-   * @param {API.Term} term
-   */
-  resolve(term) {
-    if (Variable.is(term)) {
-      return this.ready.get(term)
-    } else {
-      return term
-    }
-  }
-
-  /**
-   * @param {API.Variable} cell
-   * @returns {Route|null}
-   */
-  address(cell) {
-    return /** @type {any} */ (this.ready.get(cell))
-  }
-}
-
-/**
- * Attempts to establish a trace from a given cell to one of the `ready`
- * connections by considering each of the candidate connections. When multiple
- * traces can be resolved they are compared to pick the winner. The winner is
- * usually the shortest trace, but sometimes there could be traces with the same
- * frame count in which case frames are compared to determine the winner.
- *
- * @param {API.Variable} cell
- * @param {Set<Connection>} connections
- */
-const connect = (cell, connections) => {
-  /** @type {Route|null} */
-  let route = null
-  // Consider each candidate connection, to see if all of their dependency cells
-  // are already resolved. Note that if dependency can not be resolved it
-  // implies that corresponding trace will be longer than the one for which
-  // all dependencies can be resolved so we can pick the winner without having
-  // to resolve such a trace.
-  for (const connection of connections) {
-    const candidate = connection.address(cell)
-
-    // We choose between previously found trace and this candidate trace based
-    // on which sorts lower.
-    if (candidate) {
-      route =
-        route == null || compareRoutes(route, candidate) > 0 ? candidate : route
-    }
-  }
-
-  // We return a trace if we were able to resolve one, otherwise we return null
-  // to indicate that trace can not be resolved yet.
-  return route
-}
-
-/**
- * @param {Route} base
- * @param {Route} candidate
- * @returns {-1|0|1}
- */
-const compareRoutes = (base, candidate) => {
-  if (base.distance < candidate.distance) {
-    return -1
-  } else if (candidate.distance < base.distance) {
-    return 1
-  } else if ('port' in base) {
-    if ('port' in candidate) {
-      return /** @type {-1|0|1} */ (base.port.localeCompare(candidate.port))
-    } else {
-      return -1
-    }
-  } else if ('fact' in base) {
-    if ('fact' in candidate) {
-      let delta = compareRouteMember(base.match.the, candidate.match.the)
-      if (delta !== 0) {
-        return delta
-      }
-      delta = compareRouteMember(base.match.of, candidate.match.of)
-      if (delta !== 0) {
-        return delta
-      }
-      return compareRouteMember(base.match.is, candidate.match.is)
-    } else {
-      return 'port' in candidate ? 1 : -1
-    }
-  } else if ('operator' in base) {
-    if ('operator' in candidate) {
-      let delta = compareMatch(base.match, candidate.match)
-      if (delta !== 0) {
-        return delta
-      }
-      return /** @type {-1|0|1} */ (
-        base.operator.localeCompare(candidate.operator)
-      )
-    } else {
-      return (
-        'port' in candidate ? 1
-        : 'fact' in candidate ? 1
-        : -1
-      )
-    }
-  } else if ('rule' in base) {
-    if ('rule' in candidate) {
-      let delta = compareMatch(base.match, candidate.match)
-      if (delta !== 0) {
-        return delta
-      }
-
-      return /** @type {-1|0|1} */ (
-        JSON.stringify(base.rule).localeCompare(JSON.stringify(candidate.rule))
-      )
-    } else {
-      return 1
-    }
-  } else {
-    throw new RangeError('Unknown route type')
-  }
-}
-
-/**
- *
- * @param {Record<string, API.Scalar|Route>} base
- * @param {Record<string, API.Scalar|Route>} candidate
- * @returns {-1|0|1}
- */
-const compareMatch = (base, candidate) => {
-  let keys = new Set([...Object.keys(base), ...Object.keys(candidate)])
-  for (const key of keys) {
-    const delta = compareRouteMember(base[key], candidate[key])
-    if (delta !== 0) {
-      return delta
-    }
-  }
-  return 0
-}
-
-/**
- *
- * @param {Route|API.Scalar|undefined} base
- * @param {Route|API.Scalar|undefined} candidate
- * @returns {-1|0|1}
- */
-const compareRouteMember = (base = NOTHING, candidate = NOTHING) => {
-  if (Constant.is(base)) {
-    if (Constant.is(candidate)) {
-      return Constant.compare(base, candidate)
-    } else {
-      return -1
-    }
-  } else if (Constant.is(candidate)) {
-    return 1
-  } else {
-    return compareRoutes(base, candidate)
-  }
-}
-
-/**
- * @typedef {{port: string, distance: 0}} PortRoute
- * @typedef {{match: Record<string, API.Scalar|Route>, fact:{}, distance: number}} SelectRoute
- * @typedef {{match: Record<string, API.Scalar|Route>, operator:string, distance: number}} FormulaRoute
- * @typedef {{match: Record<string, API.Scalar|Route>, rule:{}, distance:number}} RuleRoute
- * @typedef {SelectRoute|FormulaRoute|RuleRoute|PortRoute} Route
- */
 
 /**
  *
