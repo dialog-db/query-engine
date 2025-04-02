@@ -6,10 +6,14 @@ import { derive } from '../src/fact.js'
 const id = DB.Memory.entity
 
 const db = DB.Memory.create([
-  [id(1), 'name', 'a'],
-  [id(2), 'name', 'b'],
-  [id(3), 'name', 'c'],
+  // bafyr4ibnhlpn74i3mhyuzcdogwx2anttnxgypj2ne624cuicexiplexccm
   [id(0), 'data/type', 'list'],
+  // bafyr4ici7rzb7o6bolqjex5cplywohpcew5je4juqauzrmikcvukdcdffm
+  [id(1), 'name', 'a'],
+  // bafyr4iflco7n6qxijoxa67dcy7owvcw2k4piqkn623vflaqx6a3bwxrf2a
+  [id(2), 'name', 'b'],
+  // bafyr4ihb4dub23vdtmgprodp7vcasiibd5luadf4h53krilrsbvjxdlvau
+  [id(3), 'name', 'c'],
   [id(0), 'list/next', id(1)],
   [id(1), 'list/next', id(2)],
   [id(2), 'list/next', id(3)],
@@ -302,21 +306,12 @@ export const testRecursion = {
     const result = await NestRecursive().select({ from: db })
 
     assert.deepEqual(result, [
-      {
-        of: id(0),
-        is: id(1),
-        name: 'a',
-      },
-      {
-        of: id(1),
-        is: id(2),
-        name: 'b',
-      },
-      {
-        of: id(2),
-        is: id(3),
-        name: 'c',
-      },
+      { of: id(0), is: id(1), name: 'a' },
+      { of: id(1), is: id(2), name: 'b' },
+      { of: id(0), is: id(2), name: 'b' },
+      { of: id(2), is: id(3), name: 'c' },
+      { of: id(1), is: id(3), name: 'c' },
+      { of: id(0), is: id(3), name: 'c' },
     ])
 
     return
