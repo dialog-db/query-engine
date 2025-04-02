@@ -50,12 +50,6 @@ export const from = (source) => {
 }
 
 /**
- * @template {API.Conclusion} Match
- * @param {API.RuleApplication<Match>} application
- */
-export const plan = (application) => RuleApplication.from(application).plan()
-
-/**
  * @implements {API.MatchFact}
  */
 class Select {
@@ -613,7 +607,7 @@ export class DeductiveRule {
   }
 
   /**
-   * @param {Partial<API.RuleBindings<Match>>} terms
+   * @param {API.RuleBindings<Match>} terms
    * @returns {RuleApplication<Match>}
    */
   apply(terms = this.match) {

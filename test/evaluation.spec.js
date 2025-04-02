@@ -9,75 +9,74 @@ export const testEvaluation = {
   'plans negation last': async (assert) => {
     const db = DB.Memory.create([alice])
 
-    const plan = Analyzer.plan({
+    const plan = Analyzer.rule({
       match: {
+        manager: $.manager,
+        employee: $.employee,
+        managerName: $.managerName,
+        employeeName: $.employeeName,
+      },
+      when: [
+        {
+          match: {
+            name: $.managerName,
+            supervisor: $.manager,
+            report: $.employee,
+          },
+          rule: {
+            match: {
+              name: $.name,
+              supervisor: $.supervisor,
+              report: $.report,
+            },
+            when: [
+              {
+                match: {
+                  the: 'person/name',
+                  of: $.supervisor,
+                  is: $.name,
+                },
+              },
+              {
+                match: {
+                  the: 'work/report',
+                  of: $.supervisor,
+                  is: $.report,
+                },
+              },
+            ],
+          },
+        },
+        {
+          match: {
+            person: $.employee,
+            name: $.employeeName,
+          },
+          rule: {
+            match: {
+              name: $.name,
+              person: $.person,
+            },
+            when: [
+              {
+                match: {
+                  the: 'person/name',
+                  of: $.person,
+                  is: $.name,
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })
+      .apply({
         manager: $.$manager,
         employee: $.$employee,
         managerName: $.$managerName,
         employeeName: $.$employeeName,
-      },
-      rule: {
-        match: {
-          manager: $.manager,
-          employee: $.employee,
-          managerName: $.managerName,
-          employeeName: $.employeeName,
-        },
-        when: [
-          {
-            match: {
-              name: $.managerName,
-              supervisor: $.manager,
-              report: $.employee,
-            },
-            rule: {
-              match: {
-                name: $.name,
-                supervisor: $.supervisor,
-                report: $.report,
-              },
-              when: [
-                {
-                  match: {
-                    the: 'person/name',
-                    of: $.supervisor,
-                    is: $.name,
-                  },
-                },
-                {
-                  match: {
-                    the: 'work/report',
-                    of: $.supervisor,
-                    is: $.report,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            match: {
-              person: $.employee,
-              name: $.employeeName,
-            },
-            rule: {
-              match: {
-                name: $.name,
-                person: $.person,
-              },
-              when: [
-                {
-                  match: {
-                    the: 'person/name',
-                    of: $.person,
-                    is: $.name,
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    })
+      })
+      .plan()
 
     const result = await Task.perform(plan.query({ from: db }))
 

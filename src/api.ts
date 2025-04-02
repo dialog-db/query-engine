@@ -747,46 +747,7 @@ type SystemOperators = {
   '**': typeof MathOperators.power
   'math/absolute': typeof MathOperators.absolute
 }
-// /**
-//  * Conjuncts are a set of {@link Operation}s that must be evaluated sequentially
-//  * in an optimal order determined by interdependence of the operations.
-//  */
-// export type Conjuncts = readonly [Operation, ...Operation[]]
 
-// /**
-//  * Disjuncts are a named set of {@link Conclusions}s that can be
-//  * evaluated in parallel.
-//  */
-// export interface Disjuncts extends Record<string, Conjuncts> {}
-
-// Premise is an extension of the {@link Clause} with additional variant for
-// the recursive rule application.
-// export type Premise = Variant<{
-//   // and clause
-//   And: Clause[]
-//   // or clause
-//   Or: Clause[]
-//   // negation
-//   Not: Clause
-//   // pattern match a fact
-//   Case: Pattern
-
-//   // rule application
-//   Rule: RuleApplication
-//   // recursive application of the rule
-//   Recur: RuleRecursion
-//   // assign bindings
-//   Is: Is
-
-//   Match: Formula
-// }>
-
-// export interface RuleRecursion<Case extends Conclusion = Conclusion> {
-//   match: RuleBindings<Case>
-//   when: Conjuncts
-// }
-
-type T = MatchOperator<SystemOperators['data/type'], 'data/type'>['match']['is']
 export type RuleBindings<Case extends Conclusion = Conclusion> = {
   [Key in keyof Case]: Term<Scalar>
 }
