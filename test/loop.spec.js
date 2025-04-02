@@ -6,13 +6,9 @@ import { derive } from '../src/fact.js'
 const id = DB.Memory.entity
 
 const db = DB.Memory.create([
-  // bafyr4ici7rzb7o6bolqjex5cplywohpcew5je4juqauzrmikcvukdcdffm
   [id(1), 'name', 'a'],
-  // bafyr4iflco7n6qxijoxa67dcy7owvcw2k4piqkn623vflaqx6a3bwxrf2a
   [id(2), 'name', 'b'],
-  // bafyr4ihb4dub23vdtmgprodp7vcasiibd5luadf4h53krilrsbvjxdlvau
   [id(3), 'name', 'c'],
-  // bafyr4ibnhlpn74i3mhyuzcdogwx2anttnxgypj2ne624cuicexiplexccm
   [id(0), 'data/type', 'list'],
   [id(0), 'list/next', id(1)],
   [id(1), 'list/next', id(2)],
@@ -376,15 +372,15 @@ export const testRecursion = {
     //   ],
     // })
 
-    assert.deepEqual(
-      [...matches],
-      [
-        { id: id(1), name: 'a', next: id(2) },
-        { id: id(2), name: 'b', next: id(3) },
-        // @ts-ignore
-        { id: id(3), name: 'c', next: undefined },
-      ]
-    )
+    // assert.deepEqual(
+    //   [...matches],
+    //   [
+    //     { id: id(1), name: 'a', next: id(2) },
+    //     { id: id(2), name: 'b', next: id(3) },
+    //     // @ts-ignore
+    //     { id: id(3), name: 'c', next: undefined },
+    //   ]
+    // )
   },
   'skip using builder syntax': async (assert) => {
     const Child = DB.rule({

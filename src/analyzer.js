@@ -748,10 +748,19 @@ class RuleRecursion {
     // For each match in our current selection
     for (const match of context.selection) {
       // Map variables from the current context to the recursive rule's variables
-      const nextIterationBindings = new Map(match) // Start with ALL existing bindings
+      const nextIterationBindings = new Map()
+
+      // First, get all variables from original rule 'to' pattern
+      // This ensures we maintain all variable bindings that should be preserved
+      for (const key of Object.keys(to)) {
+        const targetVar = to[key]
+        if (match.has(targetVar)) {
+          // Preserve the binding if it exists in current match
+          nextIterationBindings.set(targetVar, match.get(targetVar))
+        }
+      }
 
       // Then, map variables from this recursive call's pattern
-      // This establishes the bindings for the recursive step
       for (const [key, variable] of Object.entries(from)) {
         const value = match.get(variable)
         if (value !== undefined) {
@@ -761,7 +770,6 @@ class RuleRecursion {
 
       // We store pairs of [nextIterationBindings, originalContextBindings]
       // This allows us to combine results of recursive evaluation with the original context
-      // Passing the complete match ensures all variables are preserved
       context.recur.push([nextIterationBindings, new Map(match)])
     }
 
@@ -779,15 +787,12 @@ class RuleRecursion {
  */
 const identifyMatch = (frame, context = '') => {
   // A more reliable identifier that preserves the shape of objects
-  const mappedEntries = [...frame]
-    .map(([variable, value]) => {
-      const varStr = variable ? variable.toString() : 'undefined'
-      const valueStr =
-        value === undefined ? 'undefined' : Constant.toString(value)
-      return `${varStr}:${valueStr}`
-    })
-    .sort()
-
+  const mappedEntries = [...frame].map(([variable, value]) => {
+    const varStr = variable ? variable.toString() : 'undefined'
+    const valueStr = value === undefined ? 'undefined' : Constant.toString(value)
+    return `${varStr}:${valueStr}`
+  }).sort()
+  
   return context + '[' + mappedEntries.join(',') + ']'
 }
 
@@ -1406,31 +1411,35 @@ class RuleApplicationPlan {
   }
 
   /**
-   * Helper to create a transitive match combining ancestor context, original input, and recursive output
-   * @param {Map<API.Variable, API.Scalar>} ancestorContext - The context from an ancestor recursion step
-   * @param {Map<API.Variable, API.Scalar>} output - The output from the current recursion step
-   * @param {Map<API.Variable, API.Scalar>} [originalInput] - The original input bindings (to preserve all variables)
+   * Helper to create a transitive match combining input with output
+   * @param {Map<API.Variable, API.Scalar>} originalContext
+   * @param {Map<API.Variable, API.Scalar>} output
    * @returns {Map<API.Variable, API.Scalar>}
    */
-  createTransitiveMatch(ancestorContext, output, originalInput) {
-    // Start with a copy of ancestor context (from previous recursion step)
-    const result = new Map(ancestorContext)
-    
-    // First, add all bindings from the original input
-    // This is critical to maintain properties like 'name' across the recursion chain
-    if (originalInput) {
-      for (const [key, value] of originalInput.entries()) {
-        if (value !== undefined && !result.has(key)) {
-          result.set(key, value)
-        }
-      }
+  createTransitiveMatch(originalContext, output) {
+    const result = new Map(originalContext)
+
+    // First, preserve all bindings from the original context
+    // This is critical to maintain properties like 'name'
+    for (const [key, value] of originalContext.entries()) {
+      result.set(key, value)
     }
 
-    // Then carefully merge bindings from the output of the current step
+    // Then carefully merge bindings from the output
     for (const [key, value] of output.entries()) {
       // Only override if the value is defined
+      // This prevents undefined values from overriding existing values
       if (value !== undefined) {
-        result.set(key, value)
+        // For keys that exist in both contexts, we need to be careful
+        if (originalContext.has(key)) {
+          const originalValue = originalContext.get(key)
+          // Only override if original was undefined or values are the same
+          if (originalValue === undefined || Constant.equal(originalValue, value)) {
+            result.set(key, value)
+          }
+        } else {
+          result.set(key, value)
+        }
       }
     }
 
@@ -1440,7 +1449,7 @@ class RuleApplicationPlan {
 
     // Special handling for typical transitive relationship patterns (ancestor case)
     const thisValue = output.get($.this)
-    const ofValue = ancestorContext.get($.of)
+    const ofValue = originalContext.get($.of)
 
     if (thisValue !== undefined && ofValue !== undefined) {
       // Create the transitive relationship
@@ -1486,8 +1495,15 @@ class RuleApplicationPlan {
       // Process base results
       for (const result of baseResults) {
         const match = this.createFullMatch(input, result, this.context)
+        
+        // Skip results with undefined required properties
+        // This prevents the problematic undefined 'name' entries
+        if (Object.values(this.match).some(v => 
+            Variable.is(v) && match.get(v) === undefined)) {
+          continue
+        }
+        
         const matchId = identifyMatch(match)
-
         if (!allResults.has(matchId)) {
           allResults.set(matchId, match)
           matches.push(match)
@@ -1527,13 +1543,18 @@ class RuleApplicationPlan {
           // Process direct results
           for (const stepResult of stepResults) {
             // Create direct result from this step
-            // Use the original input bindings to ensure all variables are preserved
             const directMatch = this.createFullMatch(
-              input,  // Use original input instead of nextBinding to preserve all bindings
+              nextBinding,
               stepResult,
               this.context
             )
-
+            
+            // Skip results with undefined required properties
+            if (Object.values(this.match).some(v => 
+                Variable.is(v) && directMatch.get(v) === undefined)) {
+              continue
+            }
+            
             const directId = identifyMatch(directMatch)
             if (!allResults.has(directId)) {
               allResults.set(directId, directMatch)
@@ -1545,10 +1566,15 @@ class RuleApplicationPlan {
             for (const ancestorContext of ancestorContexts) {
               const transitiveMatch = this.createTransitiveMatch(
                 ancestorContext,
-                stepResult,
-                input  // Pass original input to preserve all variables
+                stepResult
               )
-
+              
+              // Skip results with undefined required properties
+              if (Object.values(this.match).some(v => 
+                  Variable.is(v) && transitiveMatch.get(v) === undefined)) {
+                continue
+              }
+              
               const transitiveId = identifyMatch(transitiveMatch)
               if (!allResults.has(transitiveId)) {
                 allResults.set(transitiveId, transitiveMatch)
@@ -1559,13 +1585,6 @@ class RuleApplicationPlan {
 
           // Process new recursive steps
           for (const [newBinding, originalBinding] of recursiveContext.recur) {
-            // Ensure we preserve all bindings from the original context
-            for (const [key, value] of origContext.entries()) {
-              if (!newBinding.has(key) && value !== undefined) {
-                newBinding.set(key, value)
-              }
-            }
-
             // Track context chains for transitive relationships
             const ancestorContexts = contextChains.get(nextBinding) || []
             const newContexts = [origContext, ...ancestorContexts]
