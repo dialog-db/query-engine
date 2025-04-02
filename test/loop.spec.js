@@ -248,7 +248,7 @@ export const testRecursion = {
     )
   },
 
-  'only test recursion': async (assert) => {
+  'test recursion': async (assert) => {
     // const list = DB.link()
     // const item = DB.link()
     // const head = DB.link()
@@ -327,20 +327,20 @@ export const testRecursion = {
 
     const Query = deduce({
       each: Object,
-      name: String,
+      // name: String,
       // next: Object
     })
       .with({ root: Object })
       .where(
         ({
           each,
-          name,
+          // name,
           // next,
           root,
         }) => [
           Fact({ the: 'data/type', of: root, is: 'list' }),
           Child({ of: root, is: each }),
-          Fact({ the: 'name', of: each, is: name }),
+          // Fact({ the: 'name', of: each, is: name }),
           // Implicit({
           //   the: 'list/next',
           //   of: each,
