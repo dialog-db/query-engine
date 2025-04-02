@@ -714,23 +714,25 @@ class RuleRecursion {
   }
 
   /**
-   * @param {API.Variable} by
-   */
-  address(by) {
-    // Return null because we don't want to address by the recur.
-    return null
-  }
-
-  form() {
-    return { recur: this.terms }
-  }
-
-  /**
    * @param {Context} context
    * @returns {API.EvaluationPlan}
    */
   plan(context) {
     return this
+  }
+
+  toJSON() {
+    return {
+      recur: this.terms,
+    }
+  }
+
+  toDebugString() {
+    return indent(
+      `{ recur: ${indent(
+        Terms.toDebugString(/** @type {{}} */ (this.terms))
+      )} }`
+    )
   }
 
   /**
@@ -1184,7 +1186,7 @@ class DeductivePlan {
     } else {
       when.push('{\n')
       for (const [name, disjunct] of disjuncts) {
-        when.push(`  ${name}: ${toDebugString(disjunct)},\n`)
+        when.push(`  ${name}: ${indent(toDebugString(disjunct))},\n`)
       }
       when.push('}')
     }
@@ -1673,6 +1675,10 @@ class Negate {
 
   toJSON() {
     return { not: toJSON(this.operand) }
+  }
+
+  toDebugString() {
+    return `{ not: ${toDebugString(this.operand)} }`
   }
 }
 
