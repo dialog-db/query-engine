@@ -877,8 +877,6 @@ export interface EvaluationContext {
   source: Querier
   self: RulePlan
   recur: [MatchFrame, MatchFrame][] // Array of pairs [nextBindings, originalContext] for recursive processing
-
-  state: WeakMap<object, Set<string>>
 }
 
 export interface Evaluator extends EvaluationContext {
