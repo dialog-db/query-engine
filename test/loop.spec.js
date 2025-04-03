@@ -314,7 +314,20 @@ export const testRecursion = {
       { of: id(0), is: id(3), name: 'c' },
     ])
 
-    return
+    return 'seems to enter infinite loop'
+
+    const RootedRecursion = deduce({
+      node: Object,
+      name: String,
+    })
+      .with({ root: Object })
+      .where(({ node, name, root }) => [
+        Fact({ the: 'data/type', of: root, is: 'list' }),
+        Child({ of: root, is: node }),
+        Fact({ the: 'name', of: node, is: name }),
+      ])
+
+    console.log(await RootedRecursion().select({ from: db }))
 
     const Query = deduce({
       each: Object,
@@ -376,6 +389,31 @@ export const testRecursion = {
     //     { id: id(3), name: 'c', next: undefined },
     //   ]
     // )
+  },
+
+  'test recursion termination': async (assert) => {
+    const Child = deduce({ of: Object, is: Object })
+      .with({ head: Object })
+      .when(({ of, is, head }) => ({
+        head: [Fact({ the: 'list/next', of, is })],
+        child: [
+          Fact({ the: 'list/next', of, is: head }),
+          Child({ of: head, is }),
+        ],
+      }))
+
+    const RootedRecursion = deduce({
+      node: Object,
+      name: String,
+    })
+      .with({ root: Object })
+      .where(({ node, name, root }) => [
+        Fact({ the: 'data/type', of: root, is: 'list' }),
+        Child({ of: root, is: node }),
+        Fact({ the: 'name', of: node, is: name }),
+      ])
+
+    console.log(await RootedRecursion().select({ from: db }))
   },
   'skip using builder syntax': async (assert) => {
     const Child = DB.rule({

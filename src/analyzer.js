@@ -81,7 +81,7 @@ class Select {
   /**
    * @param {API.Select} selector
    * @param {Map<API.Variable, number>} cells
-   * @param {Context} context
+   * @param {API.Context} context
    */
   constructor(selector, cells, context = ContextView.free) {
     this.cells = cells
@@ -106,7 +106,7 @@ class Select {
 
   /**
    * @template {API.Scalar} T
-   * @param {Context} context
+   * @param {API.Context} context
    * @param {API.Term<T>} term
    * @returns {API.Term<T>}
    */
@@ -119,7 +119,7 @@ class Select {
   }
   /**
    *
-   * @param {Context} context
+   * @param {API.Context} context
    */
   plan(context) {
     return new Select(this.selector, this.cells, context)
@@ -275,7 +275,7 @@ class FormulaApplication {
    * @param {Map<API.Variable, number>} cells
    * @param {Record<string, API.Term>|API.Term} from
    * @param {Record<string, API.Term>} to
-   * @param {Context} context
+   * @param {API.Context} context
    */
   constructor(source, cells, from, to, context = ContextView.free) {
     this.cells = cells
@@ -296,7 +296,7 @@ class FormulaApplication {
   }
 
   /**
-   * @param {Context} context
+   * @param {API.Context} context
    */
   plan(context) {
     return new FormulaApplication(
@@ -453,7 +453,7 @@ export class RuleApplication {
   /**
    * @param {Partial<API.RuleBindings<Match>> & {}} match
    * @param {DeductiveRule<Match>} rule
-   * @param {Context} context
+   * @param {API.Context} context
    * @param {Map<API.Variable, number>} cells
    */
   constructor(match, rule, context = ContextView.new(), cells = new Map()) {
@@ -472,7 +472,7 @@ export class RuleApplication {
   }
 
   /**
-   * @param {Context} context
+   * @param {API.Context} context
    */
   plan(context = ContextView.free) {
     // create a copy of the context for this application.
@@ -615,7 +615,7 @@ export class DeductiveRule {
   }
 
   /**
-   * @param {Context} context
+   * @param {API.Context} context
    */
   plan(context) {
     /** @type {Record<string, JoinPlan>} */
@@ -660,7 +660,7 @@ export class DeductiveRule {
     // If recursive rule we inflate the cost by factor
     cost = this.recurs ? cost ** 2 : cost
 
-    return new DeductivePlan(this.match, when, cost, this.recurs)
+    return new DeductivePlan(this.match, context, when, cost, this.recurs)
   }
 
   toDebugString() {
@@ -714,7 +714,7 @@ class RuleRecursion {
   }
 
   /**
-   * @param {Context} context
+   * @param {API.Context} context
    * @returns {API.EvaluationPlan}
    */
   plan(context) {
@@ -741,36 +741,43 @@ class RuleRecursion {
    *
    * @param {API.EvaluationContext} context
    */
-  *evaluate(context) {
-    const to = context.self.match
+  *evaluate({ self, selection, recur }) {
+    const to = self.match
     const from = this.terms
 
     // For each match in our current selection
-    for (const match of context.selection) {
+    for (const match of selection) {
       // Map variables from the current context to the recursive rule's variables
-      const terms = new Map()
-
-      // First, get all variables from original rule 'to' pattern
-      // This ensures we maintain all variable bindings that should be preserved
-      for (const key of Object.keys(to)) {
-        const targetVar = to[key]
-        if (match.has(targetVar)) {
-          // Preserve the binding if it exists in current match
-          terms.set(targetVar, match.get(targetVar))
+      const bindings = new Map()
+      for (const [name, term] of Object.entries(from)) {
+        const value = match.get(term)
+        const variable = to[name]
+        if (value !== undefined && variable !== undefined) {
+          write(self.context, variable, value, bindings)
         }
       }
 
-      // Then, map variables from this recursive call's pattern
-      for (const [key, variable] of Object.entries(from)) {
-        const value = match.get(variable)
-        if (value !== undefined) {
-          terms.set(to[key], value)
-        }
-      }
+      // // First, get all variables from original rule 'to' pattern
+      // // This ensures we maintain all variable bindings that should be preserved
+      // for (const key of Object.keys(to)) {
+      //   const targetVar = to[key]
+      //   if (match.has(targetVar)) {
+      //     // Preserve the binding if it exists in current match
+      //     terms.set(targetVar, match.get(targetVar))
+      //   }
+      // }
+
+      // // Then, map variables from this recursive call's pattern
+      // for (const [key, variable] of Object.entries(from)) {
+      //   const value = match.get(variable)
+      //   if (value !== undefined) {
+      //     terms.set(to[key], value)
+      //   }
+      // }
 
       // We store pairs of [nextIterationBindings, originalContextBindings]
       // This allows us to combine results of recursive evaluation with the original context
-      context.recur.push([terms, new Map(match)])
+      recur.push([bindings, new Map(match)])
     }
 
     // Recur doesn't directly return matches - it schedules them for later
@@ -910,7 +917,7 @@ class Join {
   }
 
   /**
-   * @param {Context} context
+   * @param {API.Context} context
    * @returns {JoinPlan}
    */
   plan(context) {
@@ -1088,7 +1095,7 @@ class Not {
   }
 
   /**
-   * @param {Context} context
+   * @param {API.Context} context
    * @returns {Negate}
    */
   plan(context) {
@@ -1149,12 +1156,14 @@ class JoinPlan {
 class DeductivePlan {
   /**
    * @param {Match} match
+   * @param {API.Context} context
    * @param {Record<string, JoinPlan>} disjuncts
    * @param {number} cost
    * @param {boolean} recurs
    */
-  constructor(match, disjuncts, cost, recurs) {
+  constructor(match, context, disjuncts, cost, recurs) {
     this.match = match
+    this.context = context
     this.disjuncts = disjuncts
     this.cost = cost
     this.recurs = recurs
@@ -1372,7 +1381,7 @@ class RuleApplicationPlan {
   /**
    * @param {Partial<API.RuleBindings<Match>>} match
    * @param {DeductivePlan<Match>} plan
-   * @param {Context} context
+   * @param {API.Context} context
    */
   constructor(match, plan, context) {
     this.match = match
@@ -1388,7 +1397,7 @@ class RuleApplicationPlan {
    * Helper function to create a full match combining input and output bindings
    * @param {Map<API.Variable, API.Scalar>} input
    * @param {Map<API.Variable, API.Scalar>} output
-   * @param {Context} context
+   * @param {API.Context} context
    * @returns {Map<API.Variable, API.Scalar>}
    */
   createFullMatch(input, output, context) {
@@ -1440,7 +1449,7 @@ class RuleApplicationPlan {
   /**
    * @param {API.EvaluationContext} context
    */
-  *evaluate({ source, selection, state }) {
+  *evaluate({ source, selection }) {
     const matches = []
     const allResults = new Map() // Map identity -> actual match for deduplication
 
@@ -1608,7 +1617,7 @@ class RuleApplicationPlan {
  * @param {object} operation
  * @param {number} [operation.cost]
  * @param {Map<API.Variable, number>} operation.cells
- * @param {Context} [context]
+ * @param {API.Context} [context]
  */
 const estimate = ({ cells, cost = 0 }, context) => {
   let total = cost
@@ -1702,15 +1711,9 @@ export const debug = (source) => {
  */
 
 /**
- * @typedef {object} Context
- * @property {Map<API.Variable, API.Variable>} references
- * @property {Map<API.Variable, API.Scalar>} bindings
- */
-
-/**
  * Returns true if the variable is bound in this context.
  *
- * @param {Context} context
+ * @param {API.Context} context
  * @param {API.Variable} variable
  */
 const isBound = (context, variable) => {
@@ -1719,7 +1722,7 @@ const isBound = (context, variable) => {
 
 /**
  *
- * @param {Context} context
+ * @param {API.Context} context
  * @param {API.Variable} variable
  * @param {API.Scalar} value
  */
@@ -1727,7 +1730,7 @@ const bind = (context, variable, value) =>
   write(context, variable, value, context.bindings)
 
 /**
- * @param {Context} context
+ * @param {API.Context} context
  * @param {API.Variable} variable
  * @param {API.Scalar} value
  * @param {API.MatchFrame} scope
@@ -1753,7 +1756,7 @@ const write = (context, variable, value, scope) => {
 
 /**
  *
- * @param {Context} context
+ * @param {API.Context} context
  * @param {API.Variable} variable
  * @param {API.MatchFrame} scope
  */
@@ -1762,7 +1765,7 @@ export const read = (context, variable, scope) =>
 
 /**
  *
- * @param {Context} context
+ * @param {API.Context} context
  * @param {API.Term} term
  * @param {API.Scalar} value
  * @param {API.MatchFrame} scope
@@ -1781,7 +1784,7 @@ const merge = (context, term, value, scope) => {
 
 /**
  *
- * @param {Context} context
+ * @param {API.Context} context
  * @param {API.Term} term
  * @param {API.MatchFrame} scope
  */
@@ -1793,7 +1796,7 @@ export const lookup = (context, term, scope) =>
  * it will return the variable it refers to, otherwise it will return this
  * variable essentially treating it as local.
  *
- * @param {Context} context
+ * @param {API.Context} context
  * @param {API.Variable} variable
  */
 const resolve = (context, variable) =>
@@ -1801,7 +1804,7 @@ const resolve = (context, variable) =>
 
 /**
  * Returns the value of the variable in this context.
- * @param {Context} context
+ * @param {API.Context} context
  * @param {API.Variable} variable
  * @returns {API.Scalar|undefined}
  */
@@ -1809,7 +1812,7 @@ const get = (context, variable) => read(context, variable, context.bindings)
 
 /**
  *
- * @param {Context} context
+ * @param {API.Context} context
  * @param {API.Variable} local
  * @param {API.Variable} remote
  */
@@ -1818,7 +1821,7 @@ const redirect = (context, local, remote) => {
 }
 /**
  *
- * @param {Context} context
+ * @param {API.Context} context
  */
 const scope = (context) => {
   return new ContextView(context.references, new Map(context.bindings))

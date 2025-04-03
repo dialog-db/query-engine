@@ -866,9 +866,15 @@ export interface EvaluationPlan {
   evaluate(context: EvaluationContext): Task<MatchFrame[], EvaluationError>
 }
 
+export interface Context {
+  references: Map<Variable, Variable>
+  bindings: Map<Variable, Scalar>
+}
+
 export type Plan = Unplannable | EvaluationPlan
 
 export interface RulePlan extends EvaluationPlan {
+  context: Context
   match: Conclusion
 }
 
