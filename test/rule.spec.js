@@ -30,7 +30,7 @@ export const testRules = {
     )
   },
 
-  'leaves near': async (assert) => {
+  'only leaves near': async (assert) => {
     const Address = deduce({ of: Object, is: String }).where(({ of, is }) => [
       Fact({ the: 'address', of, is }),
     ])
@@ -91,8 +91,8 @@ export const testRules = {
     const matches = await LivesNear().select({ from: db })
 
     assert.deepEqual(
-      new Set(matches),
-      new Set([
+      matches.map((match) => JSON.stringify(match)).sort(),
+      [
         { employee: 'Bitdiddle Ben', coworker: 'Reasoner Louis' },
         { employee: 'Bitdiddle Ben', coworker: 'Aull DeWitt' },
         { employee: 'Hacker Alyssa P', coworker: 'Fect Cy D' },
@@ -101,7 +101,9 @@ export const testRules = {
         { employee: 'Reasoner Louis', coworker: 'Aull DeWitt' },
         { employee: 'Aull DeWitt', coworker: 'Bitdiddle Ben' },
         { employee: 'Aull DeWitt', coworker: 'Reasoner Louis' },
-      ])
+      ]
+        .map(($) => JSON.stringify($))
+        .sort()
     )
   },
 

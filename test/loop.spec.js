@@ -391,7 +391,7 @@ export const testRecursion = {
     // )
   },
 
-  'test recursion termination': async (assert) => {
+  ' test recursion termination': async (assert) => {
     const Child = deduce({ of: Object, is: Object })
       .with({ head: Object })
       .when(({ of, is, head }) => ({

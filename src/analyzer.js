@@ -1454,16 +1454,31 @@ class RuleApplicationPlan {
     const allResults = new Map() // Map identity -> actual match for deduplication
 
     for (const input of selection) {
-      // Copy constant bindings from the application context
-      const bindings = new Map(this.context.bindings)
+      const bindings = new Map()
+      for (const [name, term] of Object.entries(this.match)) {
+        const value = lookup(
+          this.context,
+          /** @type {API.Term} */ (term),
+          input
+        )
 
-      // Copy bindings for the references from the selected match
-      for (const [inner, outer] of this.context.references.entries()) {
-        const value = input.get(outer)
-        if (value !== undefined) {
-          bindings.set(outer, value)
+        const variable = this.plan.match[name]
+
+        if (value !== undefined && variable !== undefined) {
+          write(this.context, variable, value, bindings)
         }
       }
+
+      // // Copy constant bindings from the application context
+      // const bindings = new Map(this.context.bindings)
+
+      // // Copy bindings for the references from the selected match
+      // for (const [inner, outer] of this.context.references.entries()) {
+      //   const value = input.get(outer)
+      //   if (value !== undefined) {
+      //     bindings.set(outer, value)
+      //   }
+      // }
 
       // Create evaluation context for the main evaluation
       /** @type {API.EvaluationContext} */
@@ -1835,10 +1850,10 @@ class ContextView {
 
   /**
    * @param {References} references
-   * @param {Frame} frame
+   * @param {Frame} bindings
    */
-  static new(references = new Map(), frame = new Map()) {
-    return new this(references, frame)
+  static new(references = new Map(), bindings = new Map()) {
+    return new this(references, bindings)
   }
   /**
    * @param {References} references
