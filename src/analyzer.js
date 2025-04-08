@@ -10,6 +10,7 @@ import { add } from './selector.js'
 import { indent, li } from './format.js'
 import * as Task from './task.js'
 import { _ } from './$.js'
+import * as Scope from './scope.js'
 
 export { $ }
 
@@ -22,7 +23,7 @@ export const select = (selector) => Select.from({ match: selector })
  * @template {API.Conclusion} Match
  * @param {API.Deduction<Match>} source
  */
-export const rule = (source) => DeductiveRule.new(source)
+export const rule = (source) => DeductiveRule.from(source)
 
 /**
  * @template {API.SystemOperator} Source
@@ -81,12 +82,12 @@ class Select {
   /**
    * @param {API.Select} selector
    * @param {Map<API.Variable, number>} cells
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    */
-  constructor(selector, cells, context = ContextView.free) {
+  constructor(selector, cells, scope = Scope.free) {
     this.cells = cells
     this.selector = selector
-    this.context = context
+    this.scope = scope
   }
 
   get recurs() {
@@ -106,20 +107,21 @@ class Select {
 
   /**
    * @template {API.Scalar} T
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    * @param {API.Term<T>} term
    * @returns {API.Term<T>}
    */
-  static resolve(context, term) {
+  static resolve(scope, term) {
     if (Variable.is(term)) {
-      return /** @type {API.Term<T>} */ (context.references.get(term)) ?? term
+      return /** @type {API.Term<T>} */ (scope.references.get(term)) ?? term
+      // return Scope.resolve(scope, term) ?? term
     } else {
       return term
     }
   }
   /**
    *
-   * @param {API.Context} context
+   * @param {API.Scope} context
    */
   plan(context) {
     return new Select(this.selector, this.cells, context)
@@ -133,7 +135,7 @@ class Select {
    */
   resolve(term, bindings) {
     if (Variable.is(term)) {
-      const reference = this.context ? resolve(this.context, term) : term
+      const reference = this.scope ? Scope.resolve(this.scope, term) : term
       return /** @type {API.Term<T>} */ (bindings.get(reference) ?? reference)
     } else {
       return term
@@ -145,7 +147,7 @@ class Select {
    */
   *evaluate({ source, selection }) {
     const matches = []
-    const { selector, context } = this
+    const { selector, scope } = this
     for (const bindings of selection) {
       const the = this.resolve(selector.the, bindings)
       const of = this.resolve(selector.of, bindings)
@@ -164,15 +166,15 @@ class Select {
           const match = new Map(bindings)
 
           if (Variable.is(the)) {
-            write(context, the, attribute, match)
+            Scope.write(scope, the, attribute, match)
           }
 
           if (Variable.is(of)) {
-            write(context, of, entity, match)
+            Scope.write(scope, of, entity, match)
           }
 
           if (Variable.is(is)) {
-            write(context, is, value, match)
+            Scope.write(scope, is, value, match)
           }
 
           matches.push(match)
@@ -275,14 +277,14 @@ class FormulaApplication {
    * @param {Map<API.Variable, number>} cells
    * @param {Record<string, API.Term>|API.Term} from
    * @param {Record<string, API.Term>} to
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    */
-  constructor(source, cells, from, to, context = ContextView.free) {
+  constructor(source, cells, from, to, scope = Scope.free) {
     this.cells = cells
     this.source = source
     this.from = from
     this.to = to
-    this.context = context
+    this.scope = scope
   }
 
   get recurs() {
@@ -296,15 +298,15 @@ class FormulaApplication {
   }
 
   /**
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    */
-  plan(context) {
+  plan(scope) {
     return new FormulaApplication(
       this.source,
       this.cells,
       this.from,
       this.to,
-      context
+      scope
     )
   }
 
@@ -316,13 +318,13 @@ class FormulaApplication {
    */
   resolve(terms, bindings) {
     return /** @type {API.InferTerms<Terms>} */ (
-      Term.is(terms) ? lookup(this.context, terms, bindings)
+      Term.is(terms) ? Scope.lookup(this.scope, terms, bindings)
       : Array.isArray(terms) ?
-        terms.map((term) => lookup(this.context, term, bindings))
+        terms.map((term) => Scope.lookup(this.scope, term, bindings))
       : Object.fromEntries(
           Object.entries(terms).map(([key, term]) => [
             key,
-            lookup(this.context, term, bindings),
+            Scope.lookup(this.scope, term, bindings),
           ])
         )
     )
@@ -352,7 +354,7 @@ class FormulaApplication {
           const extension = /** @type {Record<string, API.Scalar>} */ (out)
           try {
             for (const [key, cell] of cells) {
-              merge(this.context, cell, extension[key], match)
+              Scope.merge(this.scope, cell, extension[key], match)
             }
             matches.push(match)
           } catch {}
@@ -402,7 +404,7 @@ export class RuleApplication {
    */
   static from(source) {
     // Build the underlying rule first
-    const rule = DeductiveRule.new(source.rule)
+    const rule = DeductiveRule.from(source.rule)
 
     return this.apply(rule, source.match)
   }
@@ -413,7 +415,7 @@ export class RuleApplication {
    */
   static apply(rule, terms) {
     const application = new this(terms, rule)
-    const { context, cells } = application
+    const { scope, cells } = application
 
     // Track all variables that need to be connected from inner to outer scope
     for (const [at, inner] of Object.entries(rule.match)) {
@@ -436,11 +438,11 @@ export class RuleApplication {
         cells.set(term, combineCosts(cells.get(term) ?? 0, cost))
 
         // Connect the inner rule variable to the outer application variable
-        redirect(context, inner, term)
+        Scope.link(scope, inner, term)
       }
       // If value for the term is provided we create a binding.
       else if (term !== undefined) {
-        write(context, inner, term, context.bindings)
+        Scope.write(scope, inner, term, scope.bindings)
       }
       // Otherwise we create a reference to the `_` discarding variable.
       else {
@@ -453,13 +455,13 @@ export class RuleApplication {
   /**
    * @param {Partial<API.RuleBindings<Match>> & {}} match
    * @param {DeductiveRule<Match>} rule
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    * @param {Map<API.Variable, number>} cells
    */
-  constructor(match, rule, context = ContextView.new(), cells = new Map()) {
+  constructor(match, rule, scope = Scope.create(), cells = new Map()) {
     this.match = match
     this.rule = rule
-    this.context = context
+    this.scope = scope
     this.cells = cells
   }
 
@@ -472,28 +474,38 @@ export class RuleApplication {
   }
 
   /**
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    */
-  plan(context = ContextView.free) {
-    // create a copy of the context for this application.
-    const application = ContextView.new(
-      new Map(this.context.references),
-      new Map(this.context.bindings)
-    )
+  plan(scope = Scope.free) {
+    // create a copy of the provided scope for this application.
+    const application = Scope.clone(this.scope)
 
     // And copy bindings for the references into it.
     for (const [inner, outer] of application.references) {
-      const reference = resolve(context, outer)
-      let value = get(context, reference)
+      const reference = Scope.resolve(scope, outer)
+      let value = Scope.get(scope, reference)
       if (reference !== outer) {
-        value = value ?? get(context, inner)
-        redirect(application, inner, reference)
+        value = value ?? Scope.get(scope, inner)
+        Scope.link(application, inner, reference)
       }
 
       if (value !== undefined) {
-        bind(application, inner, value)
+        Scope.set(application, inner, value)
       }
     }
+    // for (const [local, remote] of application.references) {
+    //   // We resolve all remote variables so that all local variables
+    //   // are direct references as opposed to transitive ones.
+    //   // TODO: Figure out case where we actualy need this, because it
+    //   // seems to me that Scope.fork should do this.
+    //   Scope.link(application, local, Scope.resolve(scope, remote))
+
+    //   // If Variable is bound we also want assign it.
+    //   const value = Scope.get(scope, local)
+    //   if (value !== undefined) {
+    //     Scope.set(scope, local, value)
+    //   }
+    // }
 
     return new RuleApplicationPlan(
       this.match,
@@ -544,7 +556,7 @@ export class DeductiveRule {
    * @template {API.Conclusion} Case
    * @param {API.Deduction<Case>} source
    */
-  static new(source) {
+  static from(source) {
     const disjuncts =
       Array.isArray(source.when) ? { where: source.when } : source.when ?? {}
 
@@ -615,16 +627,16 @@ export class DeductiveRule {
   }
 
   /**
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    */
-  plan(context) {
+  plan(scope) {
     /** @type {Record<string, JoinPlan>} */
     const when = {}
     let cost = 0
     const disjuncts = Object.entries(this.disjuncts)
     let recursive = 0
     for (const [name, disjunct] of disjuncts) {
-      const plan = disjunct.plan(context)
+      const plan = disjunct.plan(scope)
       when[name] = plan
       cost += plan.cost
       if (disjunct.recurs) {
@@ -638,8 +650,8 @@ export class DeductiveRule {
     // Which is why we need to perform validation here in such a case.
     if (disjuncts.length === 0) {
       for (const [cell, cost] of this.cells) {
-        const variable = resolve(context, cell)
-        if (cost >= Infinity && !isBound(context, variable)) {
+        const variable = Scope.resolve(scope, cell)
+        if (cost >= Infinity && !Scope.isBound(scope, variable)) {
           const reference =
             cell !== variable ? `${cell} referring to ${variable}` : cell
           throw new ReferenceError(
@@ -660,7 +672,7 @@ export class DeductiveRule {
     // If recursive rule we inflate the cost by factor
     cost = this.recurs ? cost ** 2 : cost
 
-    return new DeductivePlan(this.match, context, when, cost, this.recurs)
+    return new DeductivePlan(this.match, scope, when, cost, this.recurs)
   }
 
   toDebugString() {
@@ -714,10 +726,10 @@ class RuleRecursion {
   }
 
   /**
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    * @returns {API.EvaluationPlan}
    */
-  plan(context) {
+  plan(scope) {
     return this
   }
 
@@ -753,7 +765,7 @@ class RuleRecursion {
         const value = match.get(term)
         const variable = to[name]
         if (value !== undefined && variable !== undefined) {
-          write(self.context, variable, value, bindings)
+          Scope.write(self.scope, variable, value, bindings)
         }
       }
 
@@ -917,13 +929,13 @@ class Join {
   }
 
   /**
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    * @returns {JoinPlan}
    */
-  plan(context) {
+  plan(scope) {
     // We create copy of the context because we will be modifying it as we
     // attempt to figure out execution order.
-    const local = scope(context)
+    const local = Scope.fork(scope)
     /** @type {Map<API.Variable, Set<typeof this.conjuncts[0]>>} */
     const blocked = new Map()
     /** @type {Set<typeof this.conjuncts[0]>} */
@@ -936,10 +948,10 @@ class Join {
       for (const [variable, cost] of conjunct.cells) {
         // We resolve the target of the cell as we may have multiple different
         // references to the same variable.
-        const reference = resolve(local, variable)
+        const reference = Scope.resolve(local, variable)
         if (
           cost >= Infinity &&
-          !isBound(local, reference)
+          !Scope.isBound(local, reference)
           // &&
           // If it is _ we don't actually need it perhaps
           // TODO: Evaluate if this is correct ❓
@@ -981,16 +993,16 @@ class Join {
         )
       }
 
-      ordered.push(top.current.plan(context))
+      ordered.push(top.current.plan(scope))
       ready.delete(top.current)
       cost = combineCosts(cost, top.cost)
 
       const unblocked = top.current.cells
-      // Update local context so all the cells of the planned assertion will
+      // Update local scope so all the cells of the planned assertion will
       // be bound.
       for (const [cell] of unblocked) {
-        if (!isBound(local, cell)) {
-          bind(local, cell, NOTHING)
+        if (!Scope.isBound(local, cell)) {
+          Scope.set(local, cell, NOTHING)
         }
       }
 
@@ -1000,7 +1012,7 @@ class Join {
         // We resolve a cell to a variable as all blocked operations are tracked
         // by resolved variables because multiple local variable may be bound to
         // same target variable.
-        const variable = resolve(local, cell)
+        const variable = Scope.resolve(local, cell)
         const waiting = blocked.get(variable)
         if (waiting) {
           for (const assertion of waiting) {
@@ -1008,10 +1020,10 @@ class Join {
             // Go over all the cells in this assertion that was blocked on this
             // variable and check if it can be planned now.
             for (const [cell, cost] of assertion.cells) {
-              const variable = resolve(local, cell)
+              const variable = Scope.resolve(local, cell)
               // If cell is required and is still not available, we can't
               // unblock it yet.
-              if (cost >= Infinity && !isBound(local, variable)) {
+              if (cost >= Infinity && !Scope.isBound(local, variable)) {
                 unblock = false
                 break
               }
@@ -1029,7 +1041,7 @@ class Join {
     if (blocked.size > 0) {
       const [[constraint]] = blocked.values()
       for (const [cell, cost] of constraint.cells) {
-        if (cost >= Infinity && !isBound(local, cell)) {
+        if (cost >= Infinity && !Scope.isBound(local, cell)) {
           throw new ReferenceError(
             `Unbound ${cell} variable referenced from ${toDebugString(
               constraint
@@ -1039,7 +1051,7 @@ class Join {
       }
     }
 
-    return new JoinPlan(ordered, context.references, cost)
+    return new JoinPlan(ordered, scope.references, cost)
   }
 
   toJSON() {
@@ -1095,11 +1107,11 @@ class Not {
   }
 
   /**
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    * @returns {Negate}
    */
-  plan(context) {
-    return new Negate(this.constraint.plan(context))
+  plan(scope) {
+    return new Negate(this.constraint.plan(scope))
   }
 
   toDebugString() {
@@ -1110,7 +1122,7 @@ class Not {
 class JoinPlan {
   /**
    * @param {API.EvaluationPlan[]} conjuncts - Ordered plans
-   * @param {References} references - Variable references
+   * @param {API.Cursor} references - Variable references
    * @param {number} cost - Total cost of the plan
    */
   constructor(conjuncts, references, cost) {
@@ -1156,14 +1168,14 @@ class JoinPlan {
 class DeductivePlan {
   /**
    * @param {Match} match
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    * @param {Record<string, JoinPlan>} disjuncts
    * @param {number} cost
    * @param {boolean} recurs
    */
-  constructor(match, context, disjuncts, cost, recurs) {
+  constructor(match, scope, disjuncts, cost, recurs) {
     this.match = match
-    this.context = context
+    this.scope = scope
     this.disjuncts = disjuncts
     this.cost = cost
     this.recurs = recurs
@@ -1381,12 +1393,12 @@ class RuleApplicationPlan {
   /**
    * @param {Partial<API.RuleBindings<Match>>} match
    * @param {DeductivePlan<Match>} plan
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    */
-  constructor(match, plan, context) {
+  constructor(match, plan, scope) {
     this.match = match
     this.plan = plan
-    this.context = context
+    this.scope = scope
   }
 
   get cost() {
@@ -1397,28 +1409,34 @@ class RuleApplicationPlan {
    * Helper function to create a full match combining input and output bindings
    * @param {Map<API.Variable, API.Scalar>} input
    * @param {Map<API.Variable, API.Scalar>} output
-   * @param {API.Context} context
+   * @param {API.Scope} scope
    * @returns {Map<API.Variable, API.Scalar>|null}
    */
-  createFullMatch(input, output, context) {
+  createFullMatch(input, output, scope) {
     // Create a new map starting with the input bindings
     const match = new Map(input)
 
     // Copy derived bindings from the output
-    for (const [inner, outer] of context.references) {
+    for (const [inner, outer] of scope.references) {
       const value = output.get(outer)
       if (value !== undefined) {
         try {
-          merge(context, outer, value, match)
+          Scope.merge(scope, outer, value, match)
         } catch {
           return null
         }
         //   match.set(outer, value)
+        // try {
+        //   merge(context, outer, value, match)
+        // } catch {
+        //   return null
+        // }
+        // match.set(outer, value)
       }
     }
 
     // Copy constant bindings from the context
-    for (const [variable, value] of context.bindings) {
+    for (const [variable, value] of scope.bindings) {
       match.set(variable, value)
     }
 
@@ -1461,8 +1479,8 @@ class RuleApplicationPlan {
     for (const input of selection) {
       const bindings = new Map()
       for (const [name, term] of Object.entries(this.match)) {
-        const value = lookup(
-          this.context,
+        const value = Scope.lookup(
+          this.scope,
           /** @type {API.Term} */ (term),
           input
         )
@@ -1470,7 +1488,7 @@ class RuleApplicationPlan {
         const variable = this.plan.match[name]
 
         if (value !== undefined && variable !== undefined) {
-          write(this.context, variable, value, bindings)
+          Scope.write(this.scope, variable, value, bindings)
         }
       }
 
@@ -1499,7 +1517,7 @@ class RuleApplicationPlan {
 
       // Process base results
       for (const result of base) {
-        const match = this.createFullMatch(input, result, this.context)
+        const match = this.createFullMatch(input, result, this.scope)
 
         if (match) {
           const matchId = identifyMatch(match)
@@ -1547,7 +1565,7 @@ class RuleApplicationPlan {
             const directMatch = this.createFullMatch(
               input,
               stepResult,
-              this.context
+              this.scope
             )
 
             if (directMatch) {
@@ -1641,12 +1659,12 @@ class RuleApplicationPlan {
  * @param {object} operation
  * @param {number} [operation.cost]
  * @param {Map<API.Variable, number>} operation.cells
- * @param {API.Context} [context]
+ * @param {API.Scope} [scope]
  */
-const estimate = ({ cells, cost = 0 }, context) => {
+const estimate = ({ cells, cost = 0 }, scope) => {
   let total = cost
   for (const [variable, cost] of cells) {
-    if (context && !isBound(context, variable)) {
+    if (scope && !Scope.isBound(scope, variable)) {
       total += cost
     }
   }
@@ -1719,180 +1737,4 @@ export const NOTHING = Link.of({ '/': 'bafkqaaa' })
 
 export const debug = (source) => {
   return source.debug ? source.debug() : JSON.stringify(source, null, 2)
-}
-
-/**
- * Represents a local variable references to a remote variables. This is n:1
- * relation meaning multiple local variables may point to the same remote one
- * but local variable can point to at most one remote variable.
- *
- * @typedef {Map<API.Variable, API.Variable>} References
- */
-
-/**
- * Represents set of bound variables.
- * @typedef {Map<API.Variable, API.Scalar>} Frame
- */
-
-/**
- * Returns true if the variable is bound in this context.
- *
- * @param {API.Context} context
- * @param {API.Variable} variable
- */
-const isBound = (context, variable) => {
-  return context.bindings.has(resolve(context, variable))
-}
-
-/**
- *
- * @param {API.Context} context
- * @param {API.Variable} variable
- * @param {API.Scalar} value
- */
-const bind = (context, variable, value) =>
-  write(context, variable, value, context.bindings)
-
-/**
- * @param {API.Context} context
- * @param {API.Variable} variable
- * @param {API.Scalar} value
- * @param {API.MatchFrame} scope
- */
-const write = (context, variable, value, scope) => {
-  // We ignore assignments to `_` because that is discard variable.
-  if (variable !== _) {
-    const reference = resolve(context, variable)
-    const current = scope.get(reference)
-    if (current === undefined) {
-      scope.set(reference, value)
-    } else if (!Constant.equal(current, value)) {
-      throw new RangeError(
-        `Can not bind ${Variable.toDebugString(
-          variable
-        )} to ${Constant.toDebugString(
-          value
-        )} because it is already bound to ${Constant.toDebugString(current)}`
-      )
-    }
-  }
-}
-
-/**
- *
- * @param {API.Context} context
- * @param {API.Variable} variable
- * @param {API.MatchFrame} scope
- */
-export const read = (context, variable, scope) =>
-  scope.get(resolve(context, variable))
-
-/**
- *
- * @param {API.Context} context
- * @param {API.Term} term
- * @param {API.Scalar} value
- * @param {API.MatchFrame} scope
- */
-const merge = (context, term, value, scope) => {
-  if (Variable.is(term)) {
-    write(context, term, value, scope)
-  } else if (!Constant.equal(term, value)) {
-    throw new RangeError(
-      `Can not unify ${Constant.toDebugString(
-        term
-      )} with ${Constant.toDebugString(value)}`
-    )
-  }
-}
-
-/**
- *
- * @param {API.Context} context
- * @param {API.Term} term
- * @param {API.MatchFrame} scope
- */
-export const lookup = (context, term, scope) =>
-  Variable.is(term) ? read(context, term, scope) : term
-
-/**
- * Attempts to resolve the variable in this context. If variable is a reference
- * it will return the variable it refers to, otherwise it will return this
- * variable essentially treating it as local.
- *
- * @param {API.Context} context
- * @param {API.Variable} variable
- */
-const resolve = (context, variable) =>
-  context.references.get(variable) ?? variable
-
-/**
- * Returns the value of the variable in this context.
- * @param {API.Context} context
- * @param {API.Variable} variable
- * @returns {API.Scalar|undefined}
- */
-const get = (context, variable) => read(context, variable, context.bindings)
-
-/**
- *
- * @param {API.Context} context
- * @param {API.Variable} local
- * @param {API.Variable} remote
- */
-const redirect = (context, local, remote) => {
-  context.references.set(local, remote)
-}
-/**
- *
- * @param {API.Context} context
- */
-const scope = (context) => {
-  return new ContextView(context.references, new Map(context.bindings))
-}
-
-class ContextView {
-  static free = new ContextView(
-    Object.freeze(new Map()),
-    Object.freeze(new Map())
-  )
-
-  /**
-   * @param {References} references
-   * @param {Frame} bindings
-   */
-  static new(references = new Map(), bindings = new Map()) {
-    return new this(references, bindings)
-  }
-  /**
-   * @param {References} references
-   * @param {Frame} bindings
-   */
-  constructor(references, bindings) {
-    this.references = references
-    this.bindings = bindings
-  }
-
-  /**
-   * @param {API.Variable} variable
-   */
-  resolve(variable) {
-    return resolve(this, variable)
-  }
-
-  /**
-   * @param {API.Variable} variable
-   * @returns {API.Scalar|undefined}
-   */
-  get(variable) {
-    return get(this, variable)
-  }
-
-  /**
-   * @param {API.Variable} variable
-   * @returns {boolean}
-   */
-  has(variable) {
-    return isBound(this, variable)
-  }
 }

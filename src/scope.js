@@ -183,7 +183,5 @@ export const merge = (scope, term, value, selection) => {
  * @param {API.Variable<T>} remote
  */
 export const link = (scope, local, remote) => {
-  if (local !== remote) {
-    scope.references.set(local, remote)
-  }
+  scope.references.set(local, remote)
 }
