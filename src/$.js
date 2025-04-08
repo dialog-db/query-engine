@@ -48,20 +48,20 @@ export class Variable {
 
 /** @type {API.Variable} */
 export const _ = new Variable(0, '_')
-const $ = new Variable(1, '$')
+const anonymous = new Variable(1, '$')
 
-class Scope {
+class Variables {
   /**
    * @param {Map<string|symbol, API.Variable<any>>} [vars]
-   * @returns {API.Scope}
+   * @returns {API.$}
    */
   static new(
     vars = new Map([
       ['_', _],
-      ['?', $],
+      ['?', anonymous],
     ])
   ) {
-    const scope = /** @type {API.Scope} */ (
+    const scope = /** @type {API.$} */ (
       new Proxy(
         /** @type {any} */ (
           Object.assign(function () {}, {
@@ -80,11 +80,11 @@ class Scope {
             },
           })
         ),
-        Scope
+        Variables
       )
     )
 
-    return /** @type {API.Scope} */ (scope)
+    return /** @type {API.$} */ (scope)
   }
 
   /**
@@ -125,22 +125,22 @@ class Scope {
   }
 
   /**
-   * @returns {API.Scope}
+   * @returns {API.$}
    */
   static construct() {
-    return Scope.new()
+    return Variables.new()
   }
 
   /**
    @param {{vars: Map<string|symbol, API.Variable<any>>}} scope
-   * @returns {API.Scope}
+   * @returns {API.$}
    */
   static apply({ vars }) {
-    return Scope.new(new Map(vars))
+    return Variables.new(new Map(vars))
   }
 }
 
-const global = Scope.new()
+const global = Variables.new()
 export default global
 
 /**
