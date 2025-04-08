@@ -1167,7 +1167,7 @@ export const testAnalyzer = {
 
     /**
      * @param {Omit<Required<API.Select>, 'this'>} terms
-     * @param {Partial<Analyzer.Context>} context
+     * @param {Partial<API.Context>} context
      */
     const testCost = (
       terms,
