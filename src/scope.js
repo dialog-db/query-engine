@@ -78,13 +78,13 @@ export const resolve = ({ references }, variable) =>
  * Gets a value associated with the given term in the given selection.
  *
  * @template {API.Scalar} T
- * @param {API.Scope} context
+ * @param {API.Scope} scope
  * @param {API.Term<T>} term
  * @param {API.MatchFrame} selection
  * @returns {T|undefined}
  */
-export const lookup = (context, term, selection) =>
-  Variable.is(term) ? read(context, term, selection) : term
+export const lookup = (scope, term, selection) =>
+  Variable.is(term) ? read(scope, term, selection) : term
 
 /**
  * Returns the value of the variable in this context.
@@ -110,7 +110,6 @@ export const set = (scope, variable, value) =>
   write(scope, variable, value, scope.bindings)
 
 /**
- *
  * @template {API.Scalar} T
  * @param {API.Scope} context
  * @param {API.Variable<T>} variable
@@ -152,7 +151,6 @@ export const write = (scope, variable, value, selection) => {
 }
 
 /**
- *
  * @param {API.Scope} scope
  * @param {API.Term} term
  * @param {API.Scalar} value

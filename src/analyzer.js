@@ -11,6 +11,7 @@ import { indent, li } from './format.js'
 import * as Task from './task.js'
 import { _ } from './$.js'
 import * as Scope from './scope.js'
+import * as Cursor from './cursor.js'
 
 export { $ }
 
@@ -82,12 +83,10 @@ class Select {
   /**
    * @param {API.Select} selector
    * @param {Map<API.Variable, number>} cells
-   * @param {API.Scope} scope
    */
-  constructor(selector, cells, scope = Scope.free) {
+  constructor(selector, cells) {
     this.cells = cells
     this.selector = selector
-    this.scope = scope
   }
 
   get recurs() {
@@ -104,85 +103,12 @@ class Select {
   get cost() {
     return 100
   }
-
-  /**
-   * @template {API.Scalar} T
-   * @param {API.Scope} scope
-   * @param {API.Term<T>} term
-   * @returns {API.Term<T>}
-   */
-  static resolve(scope, term) {
-    if (Variable.is(term)) {
-      return /** @type {API.Term<T>} */ (scope.references.get(term)) ?? term
-      // return Scope.resolve(scope, term) ?? term
-    } else {
-      return term
-    }
-  }
   /**
    *
-   * @param {API.Scope} context
+   * @param {API.Scope} scope
    */
-  plan(context) {
-    return new Select(this.selector, this.cells, context)
-  }
-
-  /**
-   * @template {API.Scalar} T
-   * @param {API.Term<T>|undefined} term
-   * @param {API.MatchFrame} bindings
-   * @returns {API.Term<T>|undefined}
-   */
-  resolve(term, bindings) {
-    if (Variable.is(term)) {
-      const reference = this.scope ? Scope.resolve(this.scope, term) : term
-      return /** @type {API.Term<T>} */ (bindings.get(reference) ?? reference)
-    } else {
-      return term
-    }
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *evaluate({ source, selection }) {
-    const matches = []
-    const { selector, scope } = this
-    for (const bindings of selection) {
-      const the = this.resolve(selector.the, bindings)
-      const of = this.resolve(selector.of, bindings)
-      const is = this.resolve(selector.is, bindings)
-
-      // Note: We expect that there will be LRUCache wrapping the db
-      // so calling scan over and over again will not actually cause new scans.
-      const facts = yield* source.scan({
-        entity: Variable.is(of) ? undefined : of,
-        attribute: Variable.is(the) ? undefined : the,
-        value: Variable.is(is) ? undefined : is,
-      })
-
-      for (const [entity, attribute, value] of facts) {
-        try {
-          const match = new Map(bindings)
-
-          if (Variable.is(the)) {
-            Scope.write(scope, the, attribute, match)
-          }
-
-          if (Variable.is(of)) {
-            Scope.write(scope, of, entity, match)
-          }
-
-          if (Variable.is(is)) {
-            Scope.write(scope, is, value, match)
-          }
-
-          matches.push(match)
-        } catch {}
-      }
-    }
-
-    return matches
+  plan({ references, bindings }) {
+    return new SelectPlan(this.selector, this.cells, references, bindings)
   }
 
   toJSON() {
@@ -227,6 +153,107 @@ class Select {
     }
 
     return Term.compare(is ?? Variable._, toIs ?? Variable._)
+  }
+}
+
+class SelectPlan {
+  /**
+   * @param {API.Select} selector
+   * @param {Map<API.Variable, number>} cells
+   * @param {API.Cursor} cursor
+   * @param {API.MatchFrame} parameters
+   */
+  constructor(selector, cells, cursor, parameters) {
+    this.selector = selector
+    this.cells = cells
+    this.cursor = cursor
+    this.parameters = parameters
+  }
+
+  get recurs() {
+    return null
+  }
+
+  /**
+   * @template {API.Scalar} T
+   * @param {API.Term<T>|undefined} term
+   * @param {API.MatchFrame} bindings
+   * @returns {API.Term<T>|undefined}
+   */
+  resolve(term, bindings) {
+    if (Variable.is(term)) {
+      const reference = Cursor.resolve(this.cursor, term)
+      return /** @type {API.Term<T>} */ (bindings.get(reference) ?? reference)
+    } else {
+      return term
+    }
+  }
+
+  /**
+   * @param {API.EvaluationContext} context
+   */
+  *evaluate({ source, selection }) {
+    const matches = []
+    const { selector, parameters, cursor } = this
+    for (const bindings of selection) {
+      const the = this.resolve(selector.the, bindings)
+      const of = this.resolve(selector.of, bindings)
+      const is = this.resolve(selector.is, bindings)
+
+      // Note: We expect that there will be LRUCache wrapping the db
+      // so calling scan over and over again will not actually cause new scans.
+      const facts = yield* source.scan({
+        entity: Variable.is(of) ? undefined : of,
+        attribute: Variable.is(the) ? undefined : the,
+        value: Variable.is(is) ? undefined : is,
+      })
+
+      for (const [entity, attribute, value] of facts) {
+        try {
+          const match = new Map(bindings)
+
+          if (Variable.is(the)) {
+            Cursor.set(match, cursor, the, attribute)
+          }
+
+          if (Variable.is(of)) {
+            Cursor.set(match, cursor, of, entity)
+          }
+
+          if (Variable.is(is)) {
+            Cursor.set(match, cursor, is, value)
+          }
+
+          matches.push(match)
+        } catch {}
+      }
+    }
+
+    return matches
+  }
+
+  toJSON() {
+    return {
+      match: this.selector,
+    }
+  }
+
+  toDebugString() {
+    const { of, the, is } = this.selector
+    const parts = []
+    if (the !== undefined) {
+      parts.push(`the: ${Term.toDebugString(the)}`)
+    }
+
+    if (of !== undefined) {
+      parts.push(`of: ${Term.toDebugString(of)}`)
+    }
+
+    if (is !== undefined) {
+      parts.push(`is: ${Term.toDebugString(is)}`)
+    }
+
+    return `{ match: { ${parts.join(', ')} } }`
   }
 }
 
@@ -277,19 +304,18 @@ class FormulaApplication {
    * @param {Map<API.Variable, number>} cells
    * @param {Record<string, API.Term>|API.Term} from
    * @param {Record<string, API.Term>} to
-   * @param {API.Scope} scope
    */
-  constructor(source, cells, from, to, scope = Scope.free) {
+  constructor(source, cells, from, to) {
     this.cells = cells
     this.source = source
     this.from = from
     this.to = to
-    this.scope = scope
   }
 
   get recurs() {
     return null
   }
+
   /**
    * Base execution cost of the formula application operation.
    */
@@ -301,14 +327,71 @@ class FormulaApplication {
    * @param {API.Scope} scope
    */
   plan(scope) {
-    return new FormulaApplication(
+    return new FormulaApplicationPlan(
       this.source,
       this.cells,
       this.from,
       this.to,
-      scope
+      scope.references,
+      scope.bindings
     )
   }
+
+  toJSON() {
+    return {
+      match: this.source.match,
+      operator: this.source.operator,
+    }
+  }
+
+  toDebugString() {
+    const { match, operator } = this.source
+
+    return `{ match: ${Terms.toDebugString(match)}, operator: "${operator}" }`
+  }
+
+  /**
+   * @param {FormulaApplication} other
+   */
+  compare({ source: to }) {
+    const { match, operator } = this.source
+    let order = Terms.compare(match, to.match)
+    if (order !== 0) {
+      return order
+    }
+
+    return Constant.compare(operator, to.operator)
+  }
+}
+
+class FormulaApplicationPlan {
+  /**
+   * @param {API.SystemOperator} source
+   * @param {Map<API.Variable, number>} cells
+   * @param {Record<string, API.Term>|API.Term} from
+   * @param {Record<string, API.Term>} to
+   * @param {API.Cursor} cursor
+   * @param {API.MatchFrame} parameters
+   */
+  constructor(source, cells, from, to, cursor, parameters) {
+    this.cells = cells
+    this.source = source
+    this.from = from
+    this.to = to
+    this.cursor = cursor
+    this.parameters = parameters
+  }
+
+  get recurs() {
+    return null
+  }
+
+  // /**
+  //  * Base execution cost of the formula application operation.
+  //  */
+  // get cost() {
+  //   return 5
+  // }
 
   /**
    * @template {API.Terms} Terms
@@ -318,13 +401,13 @@ class FormulaApplication {
    */
   resolve(terms, bindings) {
     return /** @type {API.InferTerms<Terms>} */ (
-      Term.is(terms) ? Scope.lookup(this.scope, terms, bindings)
+      Term.is(terms) ? Cursor.lookup(bindings, this.cursor, terms)
       : Array.isArray(terms) ?
-        terms.map((term) => Scope.lookup(this.scope, term, bindings))
+        terms.map((term) => Cursor.lookup(bindings, this.cursor, term))
       : Object.fromEntries(
           Object.entries(terms).map(([key, term]) => [
             key,
-            Scope.lookup(this.scope, term, bindings),
+            Cursor.lookup(bindings, this.cursor, term),
           ])
         )
     )
@@ -354,7 +437,7 @@ class FormulaApplication {
           const extension = /** @type {Record<string, API.Scalar>} */ (out)
           try {
             for (const [key, cell] of cells) {
-              Scope.merge(this.scope, cell, extension[key], match)
+              Cursor.merge(match, this.cursor, cell, extension[key])
             }
             matches.push(match)
           } catch {}
@@ -376,19 +459,6 @@ class FormulaApplication {
     const { match, operator } = this.source
 
     return `{ match: ${Terms.toDebugString(match)}, operator: "${operator}" }`
-  }
-
-  /**
-   * @param {FormulaApplication} other
-   */
-  compare({ source: to }) {
-    const { match, operator } = this.source
-    let order = Terms.compare(match, to.match)
-    if (order !== 0) {
-      return order
-    }
-
-    return Constant.compare(operator, to.operator)
   }
 }
 
@@ -933,7 +1003,7 @@ class Join {
    * @returns {JoinPlan}
    */
   plan(scope) {
-    // We create copy of the context because we will be modifying it as we
+    // We create copy of the scope because we will be modifying it as we
     // attempt to figure out execution order.
     const local = Scope.fork(scope)
     /** @type {Map<API.Variable, Set<typeof this.conjuncts[0]>>} */
@@ -1691,10 +1761,6 @@ class Negate {
    */
   constructor(operand) {
     this.operand = operand
-  }
-
-  get cost() {
-    return this.operand.cost
   }
 
   /**

@@ -862,19 +862,31 @@ export interface Unplannable extends Error {
 }
 
 export interface EvaluationPlan {
-  cost: number
+  // cost: number
   evaluate(context: EvaluationContext): Task<MatchFrame[], EvaluationError>
 }
 
-export interface Context {
-  references: Map<Variable, Variable>
-  bindings: Map<Variable, Scalar>
+/**
+ * Represents a local variable references to a remote variables. This is n:1
+ * relation meaning multiple local variables may point to the same remote one
+ * but local variable can point to at most one remote variable.
+ */
+export type Cursor = Map<Variable, Variable>
+
+/**
+ * Represents set of bound variables.
+ */
+export type QueryBindings = Map<Variable, Scalar>
+
+export interface Scope {
+  references: Cursor
+  bindings: QueryBindings
 }
 
 export type Plan = Unplannable | EvaluationPlan
 
 export interface RulePlan extends EvaluationPlan {
-  context: Context
+  scope: Scope
   match: Conclusion
 }
 
@@ -891,10 +903,10 @@ export interface Evaluator extends EvaluationContext {
 
 export interface EvaluationError extends Error {}
 
-export type Scope = Variable<any> &
+export type $ = Variable<any> &
   Record<PropertyKey, Variable<any>> & {
-    new (): Scope
-    (): Scope
+    new (): $
+    (): $
 
     name: Variable<string>
     length: Variable<number>
@@ -904,8 +916,6 @@ export type Scope = Variable<any> &
 export interface MatchFrame extends Map<Variable, Scalar> {
   parent?: MatchFrame
 }
-
-export interface Cursor extends Map<Variable, Variable> {}
 
 /**
  * Describes the effects that clause performs when evaluated.
