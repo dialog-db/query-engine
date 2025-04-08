@@ -1398,7 +1398,7 @@ class RuleApplicationPlan {
    * @param {Map<API.Variable, API.Scalar>} input
    * @param {Map<API.Variable, API.Scalar>} output
    * @param {API.Context} context
-   * @returns {Map<API.Variable, API.Scalar>}
+   * @returns {Map<API.Variable, API.Scalar>|null}
    */
   createFullMatch(input, output, context) {
     // Create a new map starting with the input bindings
@@ -1408,7 +1408,12 @@ class RuleApplicationPlan {
     for (const [inner, outer] of context.references) {
       const value = output.get(outer)
       if (value !== undefined) {
-        match.set(outer, value)
+        try {
+          merge(context, outer, value, match)
+        } catch {
+          return null
+        }
+        //   match.set(outer, value)
       }
     }
 
@@ -1496,10 +1501,12 @@ class RuleApplicationPlan {
       for (const result of base) {
         const match = this.createFullMatch(input, result, this.context)
 
-        const matchId = identifyMatch(match)
-        if (!allResults.has(matchId)) {
-          allResults.set(matchId, match)
-          matches.push(match)
+        if (match) {
+          const matchId = identifyMatch(match)
+          if (!allResults.has(matchId)) {
+            allResults.set(matchId, match)
+            matches.push(match)
+          }
         }
       }
 
@@ -1543,10 +1550,12 @@ class RuleApplicationPlan {
               this.context
             )
 
-            const directId = identifyMatch(directMatch)
-            if (!allResults.has(directId)) {
-              allResults.set(directId, directMatch)
-              matches.push(directMatch)
+            if (directMatch) {
+              const directId = identifyMatch(directMatch)
+              if (!allResults.has(directId)) {
+                allResults.set(directId, directMatch)
+                matches.push(directMatch)
+              }
             }
 
             // Create transitive relationships with all ancestor contexts

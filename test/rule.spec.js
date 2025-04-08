@@ -9,6 +9,23 @@ import { rule } from '../src/rule.js'
  * @type {import('entail').Suite}
  */
 export const testRules = {
+  'test basic': async (assert) => {
+    const Name = deduce({ of: Object, is: String }).where(({ of, is }) => [
+      Fact({ the: 'name', of, is }),
+    ])
+
+    const Alyssa = deduce({ of: Object, name: String }).where(
+      ({ of, name }) => [
+        Data.same({ this: 'Hacker Alyssa P', as: name }),
+        Name({ of, is: name }),
+      ]
+    )
+
+    assert.deepEqual(await Alyssa().select({ from: db }), [
+      { of: DB.Memory.entity(1), name: 'Hacker Alyssa P' },
+    ])
+  },
+
   'test wheel rule': async (assert) => {
     const Wheel = deduce({ this: Object })
       .with({ manager: Object, employee: Object })
@@ -30,7 +47,7 @@ export const testRules = {
     )
   },
 
-  'only leaves near': async (assert) => {
+  'leaves near': async (assert) => {
     const Address = deduce({ of: Object, is: String }).where(({ of, is }) => [
       Fact({ the: 'address', of, is }),
     ])

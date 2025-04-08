@@ -413,7 +413,20 @@ export const testRecursion = {
         Fact({ the: 'name', of: node, is: name }),
       ])
 
-    console.log(await RootedRecursion().select({ from: db }))
+    assert.deepEqual(await RootedRecursion().select({ from: db }), [
+      {
+        node: id(1),
+        name: 'a',
+      },
+      {
+        node: id(2),
+        name: 'b',
+      },
+      {
+        node: id(3),
+        name: 'c',
+      },
+    ])
   },
   'skip using builder syntax': async (assert) => {
     const Child = DB.rule({
