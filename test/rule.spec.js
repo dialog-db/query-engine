@@ -5,6 +5,20 @@ import * as Analyzer from '../src/analyzer.js'
 import { deduce, Fact, Text, Data } from '../src/syntax.js'
 import { rule } from '../src/rule.js'
 
+const mallory = {
+  'Person/name': 'Mallory',
+}
+
+const bob = {
+  'Person/name': 'Bob',
+  'Manages/employee': mallory,
+}
+
+const alice = {
+  'Person/name': 'Alice',
+  'Manages/employee': bob,
+}
+
 /**
  * @type {import('entail').Suite}
  */
@@ -154,5 +168,41 @@ export const testRules = {
       { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
       { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
     ])
+  },
+
+  'test composite facts': async (assert) => {
+    const Name = deduce({ of: Object, is: String }).where(({ of, is }) => [
+      Fact({ the: 'Person/name', of, is }),
+    ])
+
+    const Person = deduce({ this: Object, name: String }).where(
+      ({ this: person, name }) => [Name({ of: person, is: name })]
+    )
+
+    const Manages = deduce({
+      manager: String,
+      employee: String,
+    })
+      .with({ $employee: Object, $manager: Object })
+      .where(({ $manager, manager, $employee, employee }) => [
+        Person({ this: $employee, name: employee }),
+        Fact({ the: 'Manages/employee', of: $manager, is: $employee }),
+        Person({ this: $manager, name: manager }),
+      ])
+
+    assert.deepEqual(
+      await Manages().select({ from: DB.Memory.create([alice]) }),
+      [
+        { manager: 'Alice', employee: 'Bob' },
+        { manager: 'Bob', employee: 'Mallory' },
+      ]
+    )
+
+    assert.deepEqual(
+      await Manages({ employee: 'Bob', manager: $ }).select({
+        from: DB.Memory.create([alice]),
+      }),
+      [{ manager: 'Alice', employee: 'Bob' }]
+    )
   },
 }
