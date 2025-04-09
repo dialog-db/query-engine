@@ -719,14 +719,14 @@ export const testAnalyzer = {
 
   'handles unified variables in rule case': async (assert) => {
     const Same = Analyzer.rule({
-      match: { this: $, as: $ },
+      match: { this: $.a, as: $.a },
     })
 
     const same = Same.apply({ this: $.x, as: $.y })
 
     assert.throws(
       () => same.plan(),
-      /Rule application requires binding for \? referring to \?y variable/
+      /Rule application requires binding for \?a referring to \?y variable/
     )
   },
 

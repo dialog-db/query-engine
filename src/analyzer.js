@@ -401,13 +401,13 @@ class FormulaApplicationPlan {
    */
   resolve(terms, bindings) {
     return /** @type {API.InferTerms<Terms>} */ (
-      Term.is(terms) ? Cursor.lookup(bindings, this.cursor, terms)
+      Term.is(terms) ? Cursor.get(bindings, this.cursor, terms)
       : Array.isArray(terms) ?
-        terms.map((term) => Cursor.lookup(bindings, this.cursor, term))
+        terms.map((term) => Cursor.get(bindings, this.cursor, term))
       : Object.fromEntries(
           Object.entries(terms).map(([key, term]) => [
             key,
-            Cursor.lookup(bindings, this.cursor, term),
+            Cursor.get(bindings, this.cursor, term),
           ])
         )
     )
@@ -508,11 +508,11 @@ export class RuleApplication {
         cells.set(term, combineCosts(cells.get(term) ?? 0, cost))
 
         // Connect the inner rule variable to the outer application variable
-        Scope.link(scope, inner, term)
+        Cursor.link(scope.references, inner, term, true)
       }
       // If value for the term is provided we create a binding.
       else if (term !== undefined) {
-        Scope.write(scope, inner, term, scope.bindings)
+        Cursor.set(scope.bindings, scope.references, inner, term)
       }
       // Otherwise we create a reference to the `_` discarding variable.
       else {
@@ -548,15 +548,18 @@ export class RuleApplication {
    */
   plan(scope = Scope.free) {
     // create a copy of the provided scope for this application.
-    const application = Scope.clone(this.scope)
+    // const application = Scope.clone(this.scope)
+    const application = Scope.create(new Map(), new Map(this.scope.bindings))
 
     // And copy bindings for the references into it.
-    for (const [inner, outer] of application.references) {
-      const reference = Scope.resolve(scope, outer)
+    for (const [inner, outer] of this.scope.references) {
+      const reference = Cursor.resolve(scope.references, outer)
       let value = Scope.get(scope, reference)
       if (reference !== outer) {
         value = value ?? Scope.get(scope, inner)
-        Scope.link(application, inner, reference)
+        Cursor.link(application.references, inner, reference)
+      } else {
+        Cursor.link(application.references, inner, reference)
       }
 
       if (value !== undefined) {
@@ -720,7 +723,7 @@ export class DeductiveRule {
     // Which is why we need to perform validation here in such a case.
     if (disjuncts.length === 0) {
       for (const [cell, cost] of this.cells) {
-        const variable = Scope.resolve(scope, cell)
+        const variable = Cursor.resolve(scope.references, cell)
         if (cost >= Infinity && !Scope.isBound(scope, variable)) {
           const reference =
             cell !== variable ? `${cell} referring to ${variable}` : cell
@@ -835,7 +838,7 @@ class RuleRecursion {
         const value = match.get(term)
         const variable = to[name]
         if (value !== undefined && variable !== undefined) {
-          Scope.write(self.scope, variable, value, bindings)
+          Cursor.set(bindings, self.scope.references, variable, value)
         }
       }
 
@@ -1018,7 +1021,7 @@ class Join {
       for (const [variable, cost] of conjunct.cells) {
         // We resolve the target of the cell as we may have multiple different
         // references to the same variable.
-        const reference = Scope.resolve(local, variable)
+        const reference = Cursor.resolve(local.references, variable)
         if (
           cost >= Infinity &&
           !Scope.isBound(local, reference)
@@ -1048,7 +1051,7 @@ class Join {
 
       // Find lowest cost operation among ready ones
       for (const current of ready) {
-        const cost = estimate(current, local)
+        const cost = estimate(current, local.bindings, local.references)
 
         if (!top) {
           top = { cost, current }
@@ -1082,7 +1085,7 @@ class Join {
         // We resolve a cell to a variable as all blocked operations are tracked
         // by resolved variables because multiple local variable may be bound to
         // same target variable.
-        const variable = Scope.resolve(local, cell)
+        const variable = Cursor.resolve(local.references, cell)
         const waiting = blocked.get(variable)
         if (waiting) {
           for (const assertion of waiting) {
@@ -1090,7 +1093,7 @@ class Join {
             // Go over all the cells in this assertion that was blocked on this
             // variable and check if it can be planned now.
             for (const [cell, cost] of assertion.cells) {
-              const variable = Scope.resolve(local, cell)
+              const variable = Cursor.resolve(local.references, cell)
               // If cell is required and is still not available, we can't
               // unblock it yet.
               if (cost >= Infinity && !Scope.isBound(local, variable)) {
@@ -1479,19 +1482,20 @@ class RuleApplicationPlan {
    * Helper function to create a full match combining input and output bindings
    * @param {Map<API.Variable, API.Scalar>} input
    * @param {Map<API.Variable, API.Scalar>} output
-   * @param {API.Scope} scope
+   * @param {API.Cursor} references
+   * @param {API.MatchFrame} bindings
    * @returns {Map<API.Variable, API.Scalar>|null}
    */
-  createFullMatch(input, output, scope) {
+  createFullMatch(input, output, references, bindings) {
     // Create a new map starting with the input bindings
     const match = new Map(input)
 
     // Copy derived bindings from the output
-    for (const [inner, outer] of scope.references) {
+    for (const [inner, outer] of references) {
       const value = output.get(outer)
       if (value !== undefined) {
         try {
-          Scope.merge(scope, outer, value, match)
+          Cursor.merge(match, references, outer, value)
         } catch {
           return null
         }
@@ -1506,7 +1510,7 @@ class RuleApplicationPlan {
     }
 
     // Copy constant bindings from the context
-    for (const [variable, value] of scope.bindings) {
+    for (const [variable, value] of bindings) {
       match.set(variable, value)
     }
 
@@ -1549,16 +1553,16 @@ class RuleApplicationPlan {
     for (const input of selection) {
       const bindings = new Map()
       for (const [name, term] of Object.entries(this.match)) {
-        const value = Scope.lookup(
-          this.scope,
-          /** @type {API.Term} */ (term),
-          input
+        const value = Cursor.get(
+          input,
+          this.scope.references,
+          /** @type {API.Term} */ (term)
         )
 
         const variable = this.plan.match[name]
 
         if (value !== undefined && variable !== undefined) {
-          Scope.write(this.scope, variable, value, bindings)
+          Cursor.set(bindings, this.scope.references, variable, value)
         }
       }
 
@@ -1587,7 +1591,12 @@ class RuleApplicationPlan {
 
       // Process base results
       for (const result of base) {
-        const match = this.createFullMatch(input, result, this.scope)
+        const match = this.createFullMatch(
+          input,
+          result,
+          this.scope.references,
+          this.scope.bindings
+        )
 
         if (match) {
           const matchId = identifyMatch(match)
@@ -1635,7 +1644,8 @@ class RuleApplicationPlan {
             const directMatch = this.createFullMatch(
               input,
               stepResult,
-              this.scope
+              this.scope.references,
+              this.scope.bindings
             )
 
             if (directMatch) {
@@ -1729,12 +1739,13 @@ class RuleApplicationPlan {
  * @param {object} operation
  * @param {number} [operation.cost]
  * @param {Map<API.Variable, number>} operation.cells
- * @param {API.Scope} [scope]
+ * @param {API.MatchFrame} bindings
+ * @param {API.Cursor} cursor
  */
-const estimate = ({ cells, cost = 0 }, scope) => {
+const estimate = ({ cells, cost = 0 }, bindings, cursor) => {
   let total = cost
   for (const [variable, cost] of cells) {
-    if (scope && !Scope.isBound(scope, variable)) {
+    if (!Cursor.has(bindings, cursor, variable)) {
       total += cost
     }
   }
