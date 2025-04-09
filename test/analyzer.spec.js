@@ -1,5 +1,5 @@
 import * as Analyzer from '../src/analyzer.js'
-import { Task, Link, $, Var, API } from 'datalogia'
+import { Task, Link, $, Var, API, Memory } from 'datalogia'
 
 /**
  * @type {import('entail').Suite}
@@ -8,13 +8,15 @@ export const testAnalyzer = {
   'plans negation last': async (assert) => {
     const plan = Analyzer.rule({
       match: { child: $.child, uncle: $.uncle },
-      when: [
-        { match: { the: 'semantic/type', of: $.child, is: 'child' } },
-        { match: { the: 'relation/nephew', of: $.uncle, is: $.child } },
-        {
-          not: { match: { the: 'legal/guardian', of: $.child, is: $.uncle } },
-        },
-      ],
+      when: {
+        where: [
+          { match: { the: 'semantic/type', of: $.child, is: 'child' } },
+          { match: { the: 'relation/nephew', of: $.uncle, is: $.child } },
+          {
+            not: { match: { the: 'legal/guardian', of: $.child, is: $.uncle } },
+          },
+        ],
+      },
     })
       .apply({ child: $.child, uncle: $.uncle })
       .plan()
@@ -23,15 +25,17 @@ export const testAnalyzer = {
       match: { child: $.child, uncle: $.uncle },
       rule: {
         match: { child: $.child, uncle: $.uncle },
-        when: [
-          { match: { the: 'semantic/type', of: $.child, is: 'child' } },
-          { match: { the: 'relation/nephew', of: $.uncle, is: $.child } },
-          {
-            not: {
-              match: { the: 'legal/guardian', of: $.child, is: $.uncle },
+        when: {
+          where: [
+            { match: { the: 'semantic/type', of: $.child, is: 'child' } },
+            { match: { the: 'relation/nephew', of: $.uncle, is: $.child } },
+            {
+              not: {
+                match: { the: 'legal/guardian', of: $.child, is: $.uncle },
+              },
             },
-          },
-        ],
+          ],
+        },
       },
     })
   },
@@ -50,10 +54,12 @@ export const testAnalyzer = {
 
     const plan = Analyzer.rule({
       match: { x: $.x },
-      when: [
-        { match: { the: 'type', of: $.x, is: 'doc' } },
-        { match: { this: $.x }, rule: Allowed },
-      ],
+      when: {
+        where: [
+          { match: { the: 'type', of: $.x, is: 'doc' } },
+          { match: { this: $.x }, rule: Allowed },
+        ],
+      },
     })
       .apply({ x: $.y })
       .plan()
@@ -62,44 +68,46 @@ export const testAnalyzer = {
       match: { x: $.y },
       rule: {
         match: { x: $.x },
-        when: [
-          { match: { the: 'type', of: $.x, is: 'doc' } },
-          {
-            match: { this: $.x },
-            rule: {
+        when: {
+          where: [
+            { match: { the: 'type', of: $.x, is: 'doc' } },
+            {
               match: { this: $.x },
-              when: {
-                draft: [
-                  {
-                    match: {
-                      the: 'status',
-                      of: $.x,
-                      is: 'draft',
-                    },
-                  },
-                ],
-                activeOwner: [
-                  {
-                    match: {
-                      the: 'owner',
-                      of: $.x,
-                      is: $.user,
-                    },
-                  },
-                  {
-                    not: {
+              rule: {
+                match: { this: $.x },
+                when: {
+                  draft: [
+                    {
                       match: {
                         the: 'status',
-                        of: $.user,
-                        is: 'blocked',
+                        of: $.x,
+                        is: 'draft',
                       },
                     },
-                  },
-                ],
+                  ],
+                  activeOwner: [
+                    {
+                      match: {
+                        the: 'owner',
+                        of: $.x,
+                        is: $.user,
+                      },
+                    },
+                    {
+                      not: {
+                        match: {
+                          the: 'status',
+                          of: $.user,
+                          is: 'blocked',
+                        },
+                      },
+                    },
+                  ],
+                },
               },
             },
-          },
-        ],
+          ],
+        },
       },
     })
   },
@@ -118,11 +126,13 @@ export const testAnalyzer = {
 
     const Test = /** @type {const} */ ({
       match: { x: $.x },
-      when: [
-        { match: { this: $.x }, rule: Allowed },
-        { match: { the: 'type', of: $.x, is: 'doc' } },
-        { match: { the: 'dept', of: $.user, is: 'eng' } },
-      ],
+      when: {
+        where: [
+          { match: { this: $.x }, rule: Allowed },
+          { match: { the: 'type', of: $.x, is: 'doc' } },
+          { match: { the: 'dept', of: $.user, is: 'eng' } },
+        ],
+      },
     })
 
     const plan = Analyzer.rule(Test).apply({ x: $.myX }).plan()
@@ -131,27 +141,29 @@ export const testAnalyzer = {
       match: { x: $.myX },
       rule: {
         match: { x: $.x },
-        when: [
-          { match: { the: 'type', of: $.x, is: 'doc' } },
-          {
-            match: { this: $.x },
-            rule: {
+        when: {
+          where: [
+            { match: { the: 'type', of: $.x, is: 'doc' } },
+            {
               match: { this: $.x },
-              when: {
-                draft: [{ match: { the: 'status', of: $.x, is: 'draft' } }],
-                activeOwner: [
-                  { match: { the: 'owner', of: $.x, is: $.user } },
-                  {
-                    not: {
-                      match: { the: 'status', of: $.user, is: 'blocked' },
+              rule: {
+                match: { this: $.x },
+                when: {
+                  draft: [{ match: { the: 'status', of: $.x, is: 'draft' } }],
+                  activeOwner: [
+                    { match: { the: 'owner', of: $.x, is: $.user } },
+                    {
+                      not: {
+                        match: { the: 'status', of: $.user, is: 'blocked' },
+                      },
                     },
-                  },
-                ],
+                  ],
+                },
               },
             },
-          },
-          { match: { the: 'dept', of: $.user, is: 'eng' } },
-        ],
+            { match: { the: 'dept', of: $.user, is: 'eng' } },
+          ],
+        },
       },
     })
   },
@@ -159,17 +171,19 @@ export const testAnalyzer = {
   'plans execution by cost': async (assert) => {
     const plan = Analyzer.rule({
       match: { title: $.title, actor: $.actor },
-      when: [
-        { match: { the: 'movie/title', of: $.movie, is: $.title } },
-        { match: { the: 'movie/cast', of: $.movie, is: $.actor } },
-        {
-          match: {
-            the: 'person/name',
-            of: $.actor,
-            is: 'Arnold Schwarzenegger',
+      when: {
+        where: [
+          { match: { the: 'movie/title', of: $.movie, is: $.title } },
+          { match: { the: 'movie/cast', of: $.movie, is: $.actor } },
+          {
+            match: {
+              the: 'person/name',
+              of: $.actor,
+              is: 'Arnold Schwarzenegger',
+            },
           },
-        },
-      ],
+        ],
+      },
     })
       .apply({ title: $.title, actor: $.actor })
       .plan()
@@ -178,17 +192,19 @@ export const testAnalyzer = {
       match: { title: $.title, actor: $.actor },
       rule: {
         match: { title: $.title, actor: $.actor },
-        when: [
-          {
-            match: {
-              the: 'person/name',
-              of: $.actor,
-              is: 'Arnold Schwarzenegger',
+        when: {
+          where: [
+            {
+              match: {
+                the: 'person/name',
+                of: $.actor,
+                is: 'Arnold Schwarzenegger',
+              },
             },
-          },
-          { match: { the: 'movie/cast', of: $.movie, is: $.actor } },
-          { match: { the: 'movie/title', of: $.movie, is: $.title } },
-        ],
+            { match: { the: 'movie/cast', of: $.movie, is: $.actor } },
+            { match: { the: 'movie/title', of: $.movie, is: $.title } },
+          ],
+        },
       },
     })
   },
@@ -327,13 +343,15 @@ export const testAnalyzer = {
   'plans operations requiring shared variables': async (assert) => {
     const plan = Analyzer.rule({
       match: { x: $.x, user: $.user },
-      when: [
-        { match: { the: 'role', of: $.user, is: 'admin' } },
-        { match: { the: 'review', of: $.x, is: $.review } },
-        { match: { the: 'type', of: $.x, is: 'doc' } },
-        { match: { the: 'owner', of: $.x, is: $.user } },
-        { match: { the: 'status', of: $.x, is: 'draft' } },
-      ],
+      when: {
+        where: [
+          { match: { the: 'role', of: $.user, is: 'admin' } },
+          { match: { the: 'review', of: $.x, is: $.review } },
+          { match: { the: 'type', of: $.x, is: 'doc' } },
+          { match: { the: 'owner', of: $.x, is: $.user } },
+          { match: { the: 'status', of: $.x, is: 'draft' } },
+        ],
+      },
     })
       .apply({ x: $.x, user: $.user })
       .plan()
@@ -342,13 +360,15 @@ export const testAnalyzer = {
       match: { x: $.x, user: $.user },
       rule: {
         match: { x: $.x, user: $.user },
-        when: [
-          { match: { the: 'role', of: $.user, is: 'admin' } },
-          { match: { the: 'type', of: $.x, is: 'doc' } },
-          { match: { the: 'owner', of: $.x, is: $.user } },
-          { match: { the: 'status', of: $.x, is: 'draft' } },
-          { match: { the: 'review', of: $.x, is: $.review } },
-        ],
+        when: {
+          where: [
+            { match: { the: 'role', of: $.user, is: 'admin' } },
+            { match: { the: 'type', of: $.x, is: 'doc' } },
+            { match: { the: 'owner', of: $.x, is: $.user } },
+            { match: { the: 'status', of: $.x, is: 'draft' } },
+            { match: { the: 'review', of: $.x, is: $.review } },
+          ],
+        },
       },
     })
   },
@@ -356,11 +376,13 @@ export const testAnalyzer = {
   'handles Match clauses with variable dependencies': async (assert) => {
     const plan = Analyzer.rule({
       match: { doc: $.doc, count: $.count, size: $.size },
-      when: [
-        { match: { of: $.count, is: $.size }, operator: 'text/length' },
-        { match: { of: $.size, is: 1000 }, operator: '==' },
-        { match: { the: 'word-count', of: $.doc, is: $.count } },
-      ],
+      when: {
+        where: [
+          { match: { of: $.count, is: $.size }, operator: 'text/length' },
+          { match: { of: $.size, is: 1000 }, operator: '==' },
+          { match: { the: 'word-count', of: $.doc, is: $.count } },
+        ],
+      },
     })
       .apply({ doc: $.doc, count: $.count, size: $.size })
       .plan()
@@ -369,11 +391,13 @@ export const testAnalyzer = {
       match: { doc: $.doc, count: $.count, size: $.size },
       rule: {
         match: { doc: $.doc, count: $.count, size: $.size },
-        when: [
-          { match: { the: 'word-count', of: $.doc, is: $.count } },
-          { match: { of: $.count, is: $.size }, operator: 'text/length' },
-          { match: { of: $.size, is: 1000 }, operator: '==' },
-        ],
+        when: {
+          where: [
+            { match: { the: 'word-count', of: $.doc, is: $.count } },
+            { match: { of: $.count, is: $.size }, operator: 'text/length' },
+            { match: { of: $.size, is: 1000 }, operator: '==' },
+          ],
+        },
       },
     })
   },
@@ -382,10 +406,12 @@ export const testAnalyzer = {
     assert.throws(() => {
       const plan = Analyzer.rule({
         match: { doc: $.doc },
-        when: [
-          { match: { the: 'status', of: $.doc, is: 'ready' } },
-          { match: { of: $.user, is: 'admin' }, operator: '==' },
-        ],
+        when: {
+          where: [
+            { match: { the: 'status', of: $.doc, is: 'ready' } },
+            { match: { of: $.user, is: 'admin' }, operator: '==' },
+          ],
+        },
       })
         .apply({ doc: $.doc })
         .plan()
@@ -441,10 +467,12 @@ export const testAnalyzer = {
   'correctly maps variables across scopes': async (assert) => {
     const plan = Analyzer.rule({
       match: { x: $.x, y: $.y },
-      when: [
-        { match: { the: 'type', of: $.y, is: 'person' } },
-        { match: { the: 'name', of: $.y, is: $.x } },
-      ],
+      when: {
+        where: [
+          { match: { the: 'type', of: $.y, is: 'person' } },
+          { match: { the: 'name', of: $.y, is: $.x } },
+        ],
+      },
     })
       .apply({ x: $.y, y: $.x })
       .plan()
@@ -453,10 +481,12 @@ export const testAnalyzer = {
       match: { x: $.y, y: $.x },
       rule: {
         match: { x: $.x, y: $.y },
-        when: [
-          { match: { the: 'type', of: $.y, is: 'person' } },
-          { match: { the: 'name', of: $.y, is: $.x } },
-        ],
+        when: {
+          where: [
+            { match: { the: 'type', of: $.y, is: 'person' } },
+            { match: { the: 'name', of: $.y, is: $.x } },
+          ],
+        },
       },
     })
   },
@@ -466,7 +496,7 @@ export const testAnalyzer = {
       () =>
         Analyzer.rule({
           match: { x: $.x, y: $.y },
-          when: [{ match: { the: 'type', of: $.y, is: 'person' } }],
+          when: { where: [{ match: { the: 'type', of: $.y, is: 'person' } }] },
         })
           .apply({ x: $.output, y: $.input })
           .plan(),
@@ -534,11 +564,13 @@ export const testAnalyzer = {
     const make = (x) =>
       Analyzer.rule({
         match: { x: $.x, y: $.y },
-        when: [
-          { match: { of: $.type, is: 'type' }, operator: '==' },
-          { match: { the: $.type, of: $.y, is: 'person' } },
-          { match: { the: 'name', of: $.y, is: $.x } },
-        ],
+        when: {
+          where: [
+            { match: { of: $.type, is: 'type' }, operator: '==' },
+            { match: { the: $.type, of: $.y, is: 'person' } },
+            { match: { the: 'name', of: $.y, is: $.x } },
+          ],
+        },
       })
         .apply({ x, y: $.output })
         .plan()
@@ -549,11 +581,13 @@ export const testAnalyzer = {
         match: { x: $.input, y: $.output },
         rule: {
           match: { x: $.x, y: $.y },
-          when: [
-            { match: { the: $.type, of: $.y, is: 'person' } },
-            { match: { of: $.type, is: 'type' }, operator: '==' },
-            { match: { the: 'name', of: $.y, is: $.x } },
-          ],
+          when: {
+            where: [
+              { match: { the: $.type, of: $.y, is: 'person' } },
+              { match: { of: $.type, is: 'type' }, operator: '==' },
+              { match: { the: 'name', of: $.y, is: $.x } },
+            ],
+          },
         },
       },
       'without bindings order remains same'
@@ -565,11 +599,13 @@ export const testAnalyzer = {
         match: { x: 'John', y: $.output },
         rule: {
           match: { x: $.x, y: $.y },
-          when: [
-            { match: { the: 'name', of: $.y, is: $.x } },
-            { match: { the: $.type, of: $.y, is: 'person' } },
-            { match: { of: $.type, is: 'type' }, operator: '==' },
-          ],
+          when: {
+            where: [
+              { match: { the: 'name', of: $.y, is: $.x } },
+              { match: { the: $.type, of: $.y, is: 'person' } },
+              { match: { of: $.type, is: 'type' }, operator: '==' },
+            ],
+          },
         },
       },
       'with bindings plans more more efficiently'
@@ -649,7 +685,9 @@ export const testAnalyzer = {
       () =>
         Analyzer.rule({
           match: { x: $.x, y: $.y },
-          when: [{ match: { this: $.x, than: $.y }, operator: '>' }],
+          when: {
+            where: [{ match: { this: $.x, than: $.y }, operator: '>' }],
+          },
         })
           // @ts-expect-error - missing match for y
           .apply({ x: $.input })
@@ -669,7 +707,9 @@ export const testAnalyzer = {
   'rule output may be provided': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
-      when: [{ match: { of: $.x, by: 1, is: $.y }, operator: '-' }],
+      when: {
+        where: [{ match: { of: $.x, by: 1, is: $.y }, operator: '-' }],
+      },
     })
 
     const application = rule.apply({ x: $.outX, y: $.outY })
@@ -685,24 +725,28 @@ export const testAnalyzer = {
   'rule maps multi-variable input terms correctly': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.a, y: $.b },
-      when: [
-        {
-          match: { of: $.a, with: $.b, is: $.result },
-          operator: 'text/concat',
-        },
-      ],
+      when: {
+        where: [
+          {
+            match: { of: $.a, with: $.b, is: $.result },
+            operator: 'text/concat',
+          },
+        ],
+      },
     })
 
     assert.deepEqual(rule.apply({ x: 1, y: 2 }).plan().toJSON(), {
       match: { x: 1, y: 2 },
       rule: {
         match: { x: $.a, y: $.b },
-        when: [
-          {
-            match: { of: $.a, with: $.b, is: $.result },
-            operator: 'text/concat',
-          },
-        ],
+        when: {
+          where: [
+            {
+              match: { of: $.a, with: $.b, is: $.result },
+              operator: 'text/concat',
+            },
+          ],
+        },
       },
     })
 
@@ -733,7 +777,9 @@ export const testAnalyzer = {
   'unification + input': async (assert) => {
     const rule = Analyzer.rule({
       match: { a: $.a, b: $.a, c: $.c }, // Same variable $.a in both positions
-      when: [{ match: { of: $.a, is: $.c }, operator: '==' }],
+      when: {
+        where: [{ match: { of: $.a, is: $.c }, operator: '==' }],
+      },
     })
 
     assert.ok(
@@ -746,12 +792,14 @@ export const testAnalyzer = {
   'errors if rule branch references undefined variable': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
-      when: [
-        {
-          match: { of: $.z, with: $.y, is: $.x }, // $.z not in case
-          operator: '+',
-        },
-      ],
+      when: {
+        where: [
+          {
+            match: { of: $.z, with: $.y, is: $.x }, // $.z not in case
+            operator: '+',
+          },
+        ],
+      },
     })
 
     const match = rule.apply({ x: $.a, y: $.b })
@@ -769,9 +817,11 @@ export const testAnalyzer = {
       () =>
         Analyzer.rule({
           match: { x: $.x, y: $.y },
-          when: [
-            { match: { the: 'type', of: $.x, is: 'person' } }, // Doesn't handle $.y
-          ],
+          when: {
+            where: [
+              { match: { the: 'type', of: $.x, is: 'person' } }, // Doesn't handle $.y
+            ],
+          },
         })
           .apply({ x: 'x', y: $.out })
           .plan(),
@@ -799,7 +849,9 @@ export const testAnalyzer = {
   'allows output variables to be omitted from match': async (assert) => {
     const plan = Analyzer.rule({
       match: { x: $.x, y: $.y },
-      when: [{ match: { of: $.x, is: $.y }, operator: 'math/absolute' }],
+      when: {
+        where: [{ match: { of: $.x, is: $.y }, operator: 'math/absolute' }],
+      },
     })
       // @ts-expect-error - missing y
       .apply({ x: 'test' })
@@ -811,10 +863,12 @@ export const testAnalyzer = {
   'detects cycles between branches': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
-      when: [
-        { match: { of: $.y, is: $.x }, operator: 'math/absolute' },
-        { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
-      ],
+      when: {
+        where: [
+          { match: { of: $.y, is: $.x }, operator: 'math/absolute' },
+          { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+        ],
+      },
     })
 
     assert.throws(() => {
@@ -827,10 +881,12 @@ export const testAnalyzer = {
         match: { x: 1, y: $.out },
         rule: {
           match: { x: $.x, y: $.y },
-          when: [
-            { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
-            { match: { of: $.y, is: $.x }, operator: 'math/absolute' },
-          ],
+          when: {
+            where: [
+              { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+              { match: { of: $.y, is: $.x }, operator: 'math/absolute' },
+            ],
+          },
         },
       },
       'resolves cycle through x'
@@ -842,10 +898,12 @@ export const testAnalyzer = {
         match: { x: $.q, y: 1 },
         rule: {
           match: { x: $.x, y: $.y },
-          when: [
-            { match: { of: $.y, is: $.x }, operator: 'math/absolute' },
-            { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
-          ],
+          when: {
+            where: [
+              { match: { of: $.y, is: $.x }, operator: 'math/absolute' },
+              { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+            ],
+          },
         },
       },
       'resolves cycle through y'
@@ -855,22 +913,26 @@ export const testAnalyzer = {
   'resoles cycles from application': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
-      when: [
-        { match: { the: 'type', of: $.x, is: 'person' } }, // Outputs $.x
-        { match: { of: $.x, with: 1, is: $.y }, operator: '+' }, // Uses $.x to produce $.y
-        { match: { of: $.y, by: 1, is: $.x }, operator: '-' }, // Creates cycle by producing $.x again
-      ],
+      when: {
+        where: [
+          { match: { the: 'type', of: $.x, is: 'person' } }, // Outputs $.x
+          { match: { of: $.x, with: 1, is: $.y }, operator: '+' }, // Uses $.x to produce $.y
+          { match: { of: $.y, by: 1, is: $.x }, operator: '-' }, // Creates cycle by producing $.x again
+        ],
+      },
     })
 
     assert.deepEqual(rule.apply({ x: $.outX, y: $.outY }).plan().toJSON(), {
       match: { x: $.outX, y: $.outY },
       rule: {
         match: { x: $.x, y: $.y },
-        when: [
-          { match: { the: 'type', of: $.x, is: 'person' } },
-          { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
-          { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
-        ],
+        when: {
+          where: [
+            { match: { the: 'type', of: $.x, is: 'person' } },
+            { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+            { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
+          ],
+        },
       },
     })
   },
@@ -878,11 +940,13 @@ export const testAnalyzer = {
   'unresolvable cycles': async (assert) => {
     const rule = Analyzer.rule({
       match: { is: $.is },
-      when: [
-        { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
-        { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
-        { match: { of: $.x, is: $.is }, operator: '==' },
-      ],
+      when: {
+        where: [
+          { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+          { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
+          { match: { of: $.x, is: $.is }, operator: '==' },
+        ],
+      },
     })
 
     assert.throws(
@@ -894,14 +958,16 @@ export const testAnalyzer = {
   'resolvable through unification': async (assert) => {
     const rule = Analyzer.rule({
       match: { is: $.is },
-      when: [
-        { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
-        { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
-        {
-          match: { this: $.x, as: $.is },
-          rule: { match: { this: $.as, as: $.as } },
-        },
-      ],
+      when: {
+        where: [
+          { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+          { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
+          {
+            match: { this: $.x, as: $.is },
+            rule: { match: { this: $.as, as: $.as }, when: {} },
+          },
+        ],
+      },
     })
 
     assert.deepEqual(
@@ -910,14 +976,16 @@ export const testAnalyzer = {
         match: { is: 5 },
         rule: {
           match: { is: $.is },
-          when: [
-            {
-              match: { this: $.x, as: $.is },
-              rule: { match: { this: $.as, as: $.as }, when: {} },
-            },
-            { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
-            { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
-          ],
+          when: {
+            where: [
+              {
+                match: { this: $.x, as: $.is },
+                rule: { match: { this: $.as, as: $.as } },
+              },
+              { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+              { match: { of: $.y, by: 1, is: $.x }, operator: '-' },
+            ],
+          },
         },
       },
       'resolves cycle'
@@ -933,12 +1001,14 @@ export const testAnalyzer = {
     assert.throws(() => {
       Analyzer.rule({
         match: { x: $.x },
-        when: [
-          {
-            match: { of: $.x, with: 1, is: $.x },
-            operator: '+',
-          },
-        ],
+        when: {
+          where: [
+            {
+              match: { of: $.x, with: 1, is: $.x },
+              operator: '+',
+            },
+          ],
+        },
       })
         .apply({ x: $.x })
         .plan()
@@ -967,10 +1037,12 @@ export const testAnalyzer = {
   'plans rule based on available bindings': async (assert) => {
     const plan = Analyzer.rule({
       match: { x: $.x },
-      when: [
-        { match: { the: 'type', of: $.x, is: 'person' } },
-        { match: { the: 'name', of: $.x, is: $.name } },
-      ],
+      when: {
+        where: [
+          { match: { the: 'type', of: $.x, is: 'person' } },
+          { match: { the: 'name', of: $.x, is: $.name } },
+        ],
+      },
     })
       .apply({ x: $.x })
       .plan()
@@ -983,16 +1055,18 @@ export const testAnalyzer = {
       () =>
         Analyzer.rule({
           match: { x: $.x },
-          when: [
-            {
-              match: {
-                of: $.y, // y is not bound
-                with: 1,
-                is: $.x,
+          when: {
+            where: [
+              {
+                match: {
+                  of: $.y, // y is not bound
+                  with: 1,
+                  is: $.x,
+                },
+                operator: '+',
               },
-              operator: '+',
-            },
-          ],
+            ],
+          },
         })
           .apply({ x: $.x })
           .plan(),
@@ -1003,10 +1077,12 @@ export const testAnalyzer = {
   'plans rule when inputs are bound': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x, y: $.y },
-      when: [
-        // Needs $.x to produce $.y
-        { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
-      ],
+      when: {
+        where: [
+          // Needs $.x to produce $.y
+          { match: { of: $.x, with: 1, is: $.y }, operator: '+' },
+        ],
+      },
     })
 
     const match = rule.apply({ x: $.in, y: $.out })
@@ -1080,7 +1156,9 @@ export const testAnalyzer = {
   'considers variable mapping in cost estimation': async (assert) => {
     const rule = Analyzer.rule({
       match: { x: $.x },
-      when: [{ match: { of: $.x, with: 1, is: $.y }, operator: '+' }],
+      when: {
+        where: [{ match: { of: $.x, with: 1, is: $.y }, operator: '+' }],
+      },
     })
 
     assert.ok(rule.apply({ x: 1 }).plan(), 'Should plan with mapped variables')
@@ -1144,7 +1222,7 @@ export const testAnalyzer = {
 
     const Scan = Analyzer.rule({
       match: { x: $.x },
-      when: [{ match: { the: 'type', of: $.x, is: 'document' } }],
+      when: { where: [{ match: { the: 'type', of: $.x, is: 'document' } }] },
     })
 
     const between = Between.apply({ from: 0, to: 100, value: $.n }).plan()
@@ -1162,7 +1240,9 @@ export const testAnalyzer = {
 
     const select = Analyzer.rule({
       match: { the: $.attribute, of: $.entity, is: $.value },
-      when: [{ match: { the: $.attribute, of: $.entity, is: $.value } }],
+      when: {
+        where: [{ match: { the: $.attribute, of: $.entity, is: $.value } }],
+      },
     })
 
     /**
@@ -1266,10 +1346,12 @@ export const testAnalyzer = {
   'test correctly merges cost estimates': (assert) => {
     const rule = Analyzer.rule({
       match: { of: $.of },
-      when: [
-        { match: { the: 'name', of: $.of, is: $.name } },
-        { match: { of: $.name, is: 'string' }, operator: 'data/type' },
-      ],
+      when: {
+        where: [
+          { match: { the: 'name', of: $.of, is: $.name } },
+          { match: { of: $.name, is: 'string' }, operator: 'data/type' },
+        ],
+      },
     })
 
     const application = rule.apply({ of: $.subject })
@@ -1280,12 +1362,14 @@ export const testAnalyzer = {
   'unblocks when referenced remote variable is unblocked': (assert) => {
     const plan = Analyzer.rule({
       match: { actual: $.actual, expect: $.expect },
-      when: [
-        // Here we `$.expect` to be bound by the second conjunct.
-        { match: { of: $.expect, is: 'actual' }, operator: '==' },
-        // This sets a binding of the $.actual
-        { match: { of: 'actual', is: $.actual }, operator: '==' },
-      ],
+      when: {
+        where: [
+          // Here we `$.expect` to be bound by the second conjunct.
+          { match: { of: $.expect, is: 'actual' }, operator: '==' },
+          // This sets a binding of the $.actual
+          { match: { of: 'actual', is: $.actual }, operator: '==' },
+        ],
+      },
     })
       .apply({ actual: $.same, expect: $.same })
       .plan()
@@ -1294,10 +1378,12 @@ export const testAnalyzer = {
       match: { actual: $.same, expect: $.same },
       rule: {
         match: { actual: $.actual, expect: $.expect },
-        when: [
-          { match: { of: 'actual', is: $.actual }, operator: '==' },
-          { match: { of: $.expect, is: 'actual' }, operator: '==' },
-        ],
+        when: {
+          where: [
+            { match: { of: 'actual', is: $.actual }, operator: '==' },
+            { match: { of: $.expect, is: 'actual' }, operator: '==' },
+          ],
+        },
       },
     })
   },
@@ -1306,11 +1392,13 @@ export const testAnalyzer = {
     assert.throws(() => {
       const plan = Analyzer.rule({
         match: { q: $.q },
-        when: [
-          {
-            not: { match: { the: 'status/ready', of: $.q } },
-          },
-        ],
+        when: {
+          where: [
+            {
+              not: { match: { the: 'status/ready', of: $.q } },
+            },
+          ],
+        },
       })
         .apply({ q: $.q })
         .plan()
@@ -1324,10 +1412,12 @@ export const testAnalyzer = {
         name: $.name,
         salary: $.salary,
       },
-      when: [
-        { match: { the: 'name', of: $.this, is: $.name } },
-        { match: { the: 'salary', of: $.this, is: $.salary } },
-      ],
+      when: {
+        where: [
+          { match: { the: 'name', of: $.this, is: $.name } },
+          { match: { the: 'salary', of: $.this, is: $.salary } },
+        ],
+      },
     })
 
     const Supervisor = Analyzer.rule({
@@ -1335,18 +1425,20 @@ export const testAnalyzer = {
         employee: $.employee,
         supervisor: $.supervisor,
       },
-      when: [
-        // Using the same wildcard variable $._ for two different salary parameters
-        {
-          match: { this: $.subordinate, name: $.employee, salary: $._ },
-          rule: Employee,
-        },
-        { match: { the: 'supervisor', of: $.subordinate, is: $.manager } },
-        {
-          match: { this: $.manager, name: $.supervisor, salary: $._ },
-          rule: Employee,
-        },
-      ],
+      when: {
+        where: [
+          // Using the same wildcard variable $._ for two different salary parameters
+          {
+            match: { this: $.subordinate, name: $.employee, salary: $._ },
+            rule: Employee,
+          },
+          { match: { the: 'supervisor', of: $.subordinate, is: $.manager } },
+          {
+            match: { this: $.manager, name: $.supervisor, salary: $._ },
+            rule: Employee,
+          },
+        ],
+      },
     })
 
     const plan = Supervisor.apply().plan()
@@ -1360,12 +1452,14 @@ export const testAnalyzer = {
     assert.throws(() => {
       const plan = Analyzer.rule({
         match: { q: $.q },
-        when: [
-          {
-            match: { of: $.q, is: 'string' },
-            operator: 'data/type',
-          },
-        ],
+        when: {
+          where: [
+            {
+              match: { of: $.q, is: 'string' },
+              operator: 'data/type',
+            },
+          ],
+        },
       })
         .apply({ q: $.q })
         .plan()
@@ -1375,10 +1469,12 @@ export const testAnalyzer = {
   'discard variable still fails with required operators': (assert) => {
     const rule = Analyzer.rule({
       match: { type: $.type },
-      when: [
-        // Using $._ as the required 'of' parameter - this should still fail
-        { match: { of: $._, is: $.type }, operator: 'data/type' },
-      ],
+      when: {
+        where: [
+          // Using $._ as the required 'of' parameter - this should still fail
+          { match: { of: $._, is: $.type }, operator: 'data/type' },
+        ],
+      },
     })
 
     assert.throws(() => {

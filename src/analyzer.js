@@ -312,6 +312,13 @@ class FormulaApplication {
     this.to = to
   }
 
+  get match() {
+    return this.source.match
+  }
+  get operator() {
+    return this.source.operator
+  }
+
   get recurs() {
     return null
   }
@@ -487,11 +494,32 @@ export class RuleApplication {
     const application = new this(terms, rule)
     const { scope, cells } = application
 
-    // Track all variables that need to be connected from inner to outer scope
-    for (const [at, inner] of Object.entries(rule.match)) {
+    /**
+     * We go over the rule variables and first we create links to variables
+     * in the application. If some of the terms are constants we will collect
+     * them in parameters and go over them next to bind them. We need to do it
+     * in two passes to handle a case like the one below
+     *
+     * ```ts
+     * {
+     *   match: { this: $.q, as: 2 }
+     *   rule: {
+     *     match: { this: $.a, as: $.a },
+     *     when: {}
+     *   }
+     * }
+     * ```
+     *
+     * Where we first want to create link `$.a -> $.q` and then create a
+     * binding `$q = 2`.
+     *
+     * @type {Map<API.Variable, API.Scalar>}
+     */
+    const parameters = new Map()
+    for (const [at, variable] of Object.entries(rule.match)) {
       const term = terms[at]
-      const cost = rule.cells.get(inner) ?? 0
-      // If binding is not provided during application, but it is used as input
+      const cost = rule.cells.get(variable) ?? 0
+      // If term is not provided during application, but it is used as an input
       // inside a rule we raise a reference error because variable is not bound.
       if (term === undefined && cost >= Infinity) {
         throw new ReferenceError(
@@ -499,25 +527,46 @@ export class RuleApplication {
         )
       }
 
-      // If provided term in the rule application is a variable we create a
-      // mapping between rules inner variable and the term - application
-      // variable.
       if (Variable.is(term)) {
         // We combine costs as we may have same outer variable set to different
         // inner variables.
         cells.set(term, combineCosts(cells.get(term) ?? 0, cost))
 
-        // Connect the inner rule variable to the outer application variable
-        Cursor.link(scope.references, inner, term, true)
+        /**
+         * TODO: Here we override a variable which is a problem in case like
+         * ```ts
+         * {
+         *    match: { x: $.a, y: $.b },
+         *    rule: {
+         *      match: { x: $.x, y: $.x }
+         *    }
+         * }
+         * ```
+         *
+         * Because first be bind `$.x -> $.a` and then we rebind it as
+         * `$.x -> $.b`
+         */
+        const fixme = Cursor.link(scope.references, variable, term, true)
       }
-      // If value for the term is provided we create a binding.
-      else if (term !== undefined) {
-        Cursor.set(scope.bindings, scope.references, inner, term)
+      // If rule binding is not applied & it is used as input (cost >= Infinity)
+      // inside a rule we raise a reference error because rule application is
+      // invalid.
+      else if (term === undefined) {
+        if ((rule.cells.get(variable) ?? 0) >= Infinity) {
+          throw new ReferenceError(
+            `Rule application omits required binding for "${at}"`
+          )
+        }
       }
-      // Otherwise we create a reference to the `_` discarding variable.
+      // Otherwise term is a constant and we capture it in the parameters
       else {
-        // createReference(context, inner, _)
+        parameters.set(variable, term)
       }
+    }
+
+    // Now go over the constant terms and assign them to the scope bindings
+    for (const [variable, term] of parameters) {
+      Cursor.set(scope.bindings, scope.references, variable, term)
     }
 
     return application
@@ -554,13 +603,11 @@ export class RuleApplication {
     // And copy bindings for the references into it.
     for (const [inner, outer] of this.scope.references) {
       const reference = Cursor.resolve(scope.references, outer)
+      Cursor.link(application.references, inner, reference)
       let value = Scope.get(scope, reference)
-      if (reference !== outer) {
-        value = value ?? Scope.get(scope, inner)
-        Cursor.link(application.references, inner, reference)
-      } else {
-        Cursor.link(application.references, inner, reference)
-      }
+      // if (reference !== outer) {
+      //   value = value ?? Scope.get(scope, inner)
+      // }
 
       if (value !== undefined) {
         Scope.set(application, inner, value)
@@ -604,17 +651,17 @@ export class RuleApplication {
 }
 
 /**
- * Creates map of variables as keys and string identifiers
- * corresponding to their names in the definition.
+ * Creates map of variables with identifiers as keys and corresponding variables
+ * as values. Omits non variable terms
  *
  * @param {API.Conclusion} match
- * @returns {Map<API.Variable, string>}
+ * @returns {Map<string, API.Variable>}
  */
 const ruleBindings = (match) => {
   const bindings = new Map()
   for (const [name, variable] of Object.entries(match)) {
     if (Variable.is(variable)) {
-      bindings.set(variable, name)
+      bindings.set(name, variable)
     }
   }
   return bindings
@@ -639,6 +686,7 @@ export class DeductiveRule {
     /** @type {Record<string, Join>} */
     const when = {}
     const bindings = ruleBindings(source.match)
+    const variables = new Set(bindings.values())
 
     const entries = Object.entries(disjuncts)
     for (const [name, conjuncts] of entries) {
@@ -646,7 +694,8 @@ export class DeductiveRule {
         name,
         conjuncts,
         bindings,
-      }).ensureBindings(bindings)
+        variables,
+      })
       total += deduction.cost
       when[name] = deduction
 
@@ -663,7 +712,7 @@ export class DeductiveRule {
     // If no disjuncts, all match variables are required inputs as they
     // must unify by relation.
     if (entries.length === 0) {
-      for (const variable of bindings.keys()) {
+      for (const variable of bindings.values()) {
         cells.set(variable, Infinity)
       }
     }
@@ -683,12 +732,7 @@ export class DeductiveRule {
     this.cells = cells
     this.cost = recurs ? cost ** 2 : cost
     this.recurs = recurs
-    this.disjuncts = when
-  }
-
-  /** @type {API.When} */
-  get when() {
-    return /** @type {any} */ (this.disjuncts)
+    this.when = when
   }
 
   /**
@@ -706,7 +750,7 @@ export class DeductiveRule {
     /** @type {Record<string, JoinPlan>} */
     const when = {}
     let cost = 0
-    const disjuncts = Object.entries(this.disjuncts)
+    const disjuncts = Object.entries(this.when)
     let recursive = 0
     for (const [name, disjunct] of disjuncts) {
       const plan = disjunct.plan(scope)
@@ -732,6 +776,9 @@ export class DeductiveRule {
           )
         }
       }
+
+      // We also need to add some body so the that evaluation creates a result.
+      when.where = new JoinPlan([], scope.references, 0)
     }
 
     // If all branches are recursive raise an error because we need a base case
@@ -749,7 +796,7 @@ export class DeductiveRule {
   }
 
   toDebugString() {
-    const disjuncts = Object.entries(this.disjuncts)
+    const disjuncts = Object.entries(this.when)
     const when = []
     for (const [name, disjunct] of disjuncts) {
       when.push(`${name}: ${toDebugString(disjunct)}`)
@@ -891,14 +938,23 @@ const identifyMatch = (frame, context = '') => {
   return context + '[' + mappedEntries.join(',') + ']'
 }
 
+/**
+ * @implements {API.Every<API.Conjunct|API.Recur>}
+ */
 class Join {
   /**
    * @param {object} source
-   * @param {Map<API.Variable, string>} source.bindings
-   * @param {string|number} source.name
-   * @param {API.Every} source.conjuncts
+   * @param {Map<string, API.Variable>} source.bindings
+   * @param {string} source.name
+   * @param {API.Every<API.Conjunct|API.Recur>} source.conjuncts
+   * @param {Set<API.Variable>} [source.variables]
    */
-  static from(source) {
+  static from({
+    bindings,
+    name,
+    conjuncts: members,
+    variables = new Set(bindings.values()),
+  }) {
     /** @type {Map<API.Variable, number>} */
     const cells = new Map()
     /** @type {Map<API.Variable, number>} */
@@ -918,7 +974,7 @@ class Join {
     // 3. Which bindings are inputs and which are outputs.
     // 4. Which conjuncts are negations as those need to be planned after all
     //    other conjuncts.
-    for (const member of source.conjuncts) {
+    for (const member of members) {
       const conjunct = from(member)
       conjuncts.push(conjunct)
 
@@ -932,7 +988,7 @@ class Join {
 
       for (const [variable, cost] of conjunct.cells) {
         // Only track costs for variables exposed in rule match
-        if (source.bindings.has(variable)) {
+        if (variables.has(variable)) {
           const base = cells.get(variable)
           cells.set(
             variable,
@@ -957,7 +1013,9 @@ class Join {
       total += cost
     }
 
-    return new this(conjuncts, cells, total, recurs, `${source.name}`)
+    this.ensureBindings(cells, bindings, name)
+
+    return new this(conjuncts, cells, total, recurs, name)
   }
 
   /**
@@ -972,14 +1030,16 @@ class Join {
    * choose to error on side of caution. It is also always possible to consume
    * variable in cases where it really isn't needed.
    *
-   * @param {Map<API.Variable, string>} bindings
+   * @param {Map<API.Variable, number>} cells
+   * @param {Map<string, API.Variable>} bindings
+   * @param {string} name
    */
-  ensureBindings(bindings) {
+  static ensureBindings(cells, bindings, name) {
     // Verify all bindings are used
-    for (const [variable, id] of bindings) {
-      if (!this.cells.has(variable)) {
+    for (const [id, variable] of bindings) {
+      if (!cells.has(variable)) {
         throw new ReferenceError(
-          `Rule case "${this.name}" does not bind variable ${variable} that rule matches as "${id}"`
+          `Rule case "${name}" does not bind variable ${variable} that rule matches as "${id}"`
         )
       }
     }
@@ -999,6 +1059,15 @@ class Join {
     this.cost = cost
     this.name = name
     this.recurs = recurs
+  }
+
+  /**
+   * @returns {IterableIterator<API.Conjunct|API.Recur>}
+   */
+  [Symbol.iterator]() {
+    return /** @type {IterableIterator<API.Conjunct|API.Recur>} */ (
+      this.conjuncts[Symbol.iterator]()
+    )
   }
 
   /**
@@ -1141,6 +1210,7 @@ class Join {
 /**
  * @typedef {Select|FormulaApplication|RuleApplication} Constraint
  * @typedef {Select|FormulaApplication|RuleApplication|Not|RuleRecursion} Conjunct
+ * @implements {API.Negation}
  */
 class Not {
   /**
@@ -1173,6 +1243,10 @@ class Not {
   constructor(constraint, cells) {
     this.constraint = constraint
     this.cells = cells
+  }
+
+  get not() {
+    return /** @type {API.Constraint} */ (this.constraint)
   }
 
   get cost() {
@@ -1254,15 +1328,16 @@ class DeductivePlan {
     this.recurs = recurs
   }
   toJSON() {
-    const when = Object.entries(this.disjuncts).map(([name, plan]) => [
+    const { match, disjuncts } = this
+    const branches = Object.entries(disjuncts).map(([name, plan]) => [
       name,
       toJSON(plan),
     ])
+    const when = Object.fromEntries(branches)
 
-    return {
-      match: this.match,
-      when: when.length === 1 ? when[0][1] : Object.fromEntries(when),
-    }
+    return branches.length === 1 && branches[0][1].length === 0 ?
+        { match }
+      : { match, when }
   }
 
   debug() {

@@ -483,44 +483,6 @@ export interface Deduction<Match extends Conclusion = Conclusion> {
   readonly when?: When<Conjunct | Recur>
 }
 
-export interface Loop<Match extends Conclusion = Conclusion> {
-  readonly loop: Match
-  readonly when: When<Conjunct | Recur<Match>>
-
-  readonly repeat?: undefined
-  readonly while?: undefined
-}
-
-export type Induction<
-  Match extends Conclusion = Conclusion,
-  Repeat extends Match = Match,
-> = {
-  readonly match: Match
-  readonly when: Every
-  readonly repeat: Repeat
-  readonly while: When
-  readonly loop?: undefined
-}
-
-// export type When =
-//   // Has or semantics
-//   | Disjuncts
-//   // Has and semantics
-//   | Conjuncts
-
-// export type Constraint = Variant<{
-//   Select: Pattern
-//   Where: RuleApplication
-//   Match: Formula
-// }>
-
-// export type Operation = Variant<{
-//   Select: Pattern
-//   Where: RuleApplication
-//   Match: Formula
-//   Not: Constraint
-// }>
-
 export type Constraint = MatchFact | MatchRule | SystemOperator
 
 export interface Negation {
@@ -530,24 +492,26 @@ export interface Negation {
   fact?: undefined
   rule?: undefined
   match?: undefined
+  recur?: undefined
 }
 
 export type Conjunct = Constraint | Negation
 export type Recur<Bindings extends Conclusion = Conclusion> = {
   recur: Bindings
 
-  not?: undefined
-  match?: undefined
-  rule?: undefined
   operator?: undefined
+  fact?: undefined
+  rule?: undefined
+  match?: undefined
+  not?: undefined
 }
 
-export type Every<T extends Conjunct | Recur = Conjunct> = readonly [T, ...T[]]
+export type Every<T extends Conjunct | Recur = Conjunct> = Iterable<T>
 export interface Some<T extends Conjunct | Recur = Conjunct> {
   readonly [Case: string]: Every<T>
 }
 
-export type When<T extends Conjunct | Recur = Conjunct> = Some<T> | Every<T>
+export type When<T extends Conjunct | Recur = Conjunct> = Some<T>
 
 export type WhenBuilder<T extends RuleDescriptor> =
   | SomeBuilder<T>
@@ -692,9 +656,9 @@ export type MatchOperator<Formula = unknown, Identifier = Formula> = {
 
   formula?: Formula
 
+  fact?: undefined
   rule?: undefined
   not?: undefined
-  fact?: undefined
   recur?: undefined
 }
 

@@ -609,6 +609,17 @@ export class Math {
  */
 export const deduce = (descriptor) => new Deduce(descriptor, {})
 
+const Same = Analyzer.rule({ match: { this: $.this, as: $.this } })
+
+export const same = Operator.for(
+  /**
+   * @template {API.Scalar} This
+   * @template {API.Scalar} As
+   * @param {{this: API.Term<This>, as: API.Term<As>}} terms
+   */
+  (terms) => Same.apply(terms)
+)
+
 /**
  * @template {API.RuleDescriptor} Descriptor
  * @template {API.RuleDescriptor} Locals
