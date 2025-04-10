@@ -14,7 +14,7 @@ export const testSelector = {
     const Delegation = deduce({
       this: Object,
       cid: String,
-      can: Object,
+      can: String,
       space: String,
     })
       .with({ capabilities: Object, capability: Object })

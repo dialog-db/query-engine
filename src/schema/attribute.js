@@ -82,7 +82,9 @@ export class Attribute extends Schema {
 
     return rule({
       match,
-      when: [factSelector, ...isSelector],
+      when: {
+        where: [factSelector, ...isSelector],
+      },
     }).apply(match)
   }
 
@@ -259,7 +261,7 @@ class ImplicitQuery {
 
     this.plan = rule(this.rule)
       .apply(/** @type {{}} */ (application))
-      .plan()
+      .prepare()
   }
 
   toSource() {
@@ -289,6 +291,8 @@ class ImplicitQuery {
     const selection = yield* this.plan.evaluate({
       source: from,
       selection: [new Map()],
+      self: this.plan.plan,
+      recur: [],
     })
 
     const results = []

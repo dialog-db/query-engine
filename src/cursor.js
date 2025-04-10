@@ -38,7 +38,12 @@ export const resolve = (scope, variable) =>
  */
 export const link = (scope, local, remote, override = false) => {
   const current = scope.get(local)
-  if (current == undefined || override) {
+  if (current == undefined) {
+    // Note that we store a reference even if `local === remote` so that we
+    // can iterate over the scope variables directly as opposed to having to
+    // iterate over variables and then resolve them through scope.
+    scope.set(local, remote)
+  } else if (override) {
     scope.set(local, remote)
   } else if (current !== remote) {
     throw new ReferenceError(

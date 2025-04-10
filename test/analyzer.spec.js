@@ -19,7 +19,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ child: $.child, uncle: $.uncle })
-      .plan()
+      .prepare()
 
     assert.deepEqual(plan.toJSON(), {
       match: { child: $.child, uncle: $.uncle },
@@ -62,7 +62,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ x: $.y })
-      .plan()
+      .prepare()
 
     assert.deepEqual(plan.toJSON(), {
       match: { x: $.y },
@@ -135,7 +135,7 @@ export const testAnalyzer = {
       },
     })
 
-    const plan = Analyzer.rule(Test).apply({ x: $.myX }).plan()
+    const plan = Analyzer.rule(Test).apply({ x: $.myX }).prepare()
 
     assert.deepEqual(plan.toJSON(), {
       match: { x: $.myX },
@@ -186,7 +186,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ title: $.title, actor: $.actor })
-      .plan()
+      .prepare()
 
     assert.deepEqual(plan.toJSON(), {
       match: { title: $.title, actor: $.actor },
@@ -230,7 +230,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ doc: $.doc })
-      .plan()
+      .prepare()
 
     assert.deepEqual(
       plan.toJSON(),
@@ -275,7 +275,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ x: $.doc })
-      .plan()
+      .prepare()
 
     assert.deepEqual(plan.toJSON(), {
       match: { x: $.doc },
@@ -313,7 +313,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ doc: $.document })
-      .plan()
+      .prepare()
 
     assert.deepEqual(
       plan.toJSON(),
@@ -354,7 +354,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ x: $.x, user: $.user })
-      .plan()
+      .prepare()
 
     assert.deepEqual(plan.toJSON(), {
       match: { x: $.x, user: $.user },
@@ -385,7 +385,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ doc: $.doc, count: $.count, size: $.size })
-      .plan()
+      .prepare()
 
     assert.deepEqual(plan.toJSON(), {
       match: { doc: $.doc, count: $.count, size: $.size },
@@ -414,7 +414,7 @@ export const testAnalyzer = {
         },
       })
         .apply({ doc: $.doc })
-        .plan()
+        .prepare()
     }, /Unbound \?user variable referenced from { match: { of: \$.user, is: "admin" }, operator: "==" }/)
   },
 
@@ -430,7 +430,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ user: 1 })
-      .plan()
+      .prepare()
 
     assert.deepEqual(plan.toJSON(), {
       match: { user: 1 },
@@ -460,7 +460,7 @@ export const testAnalyzer = {
         },
       })
         .apply({ doc: $.doc })
-        .plan()
+        .prepare()
     }, /Unbound \?count variable referenced from { match: { of: \$.count, is: 100 }, operator: "==" }/)
   },
 
@@ -475,7 +475,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ x: $.y, y: $.x })
-      .plan()
+      .prepare()
 
     assert.deepEqual(plan.toJSON(), {
       match: { x: $.y, y: $.x },
@@ -499,7 +499,7 @@ export const testAnalyzer = {
           when: { where: [{ match: { the: 'type', of: $.y, is: 'person' } }] },
         })
           .apply({ x: $.output, y: $.input })
-          .plan(),
+          .prepare(),
       /Rule case "where" does not bind variable \?x that rule matches as "x"/
     )
   },
@@ -517,7 +517,7 @@ export const testAnalyzer = {
           },
         })
           .apply({ x: $.output, y: $.input })
-          .plan(),
+          .prepare(),
       /Rule case "base" does not bind variable \?x that rule matches as "x"/
     )
   },
@@ -532,7 +532,7 @@ export const testAnalyzer = {
           },
         })
           .apply({ x: $.who })
-          .plan(),
+          .prepare(),
       /Recursive rule must have at least one non-recursive branch/
     )
   },
@@ -551,7 +551,7 @@ export const testAnalyzer = {
           },
         })
           .apply({ x: 5 })
-          .plan(),
+          .prepare(),
       /Recursive rule must have at least one non-recursive branch/
     )
   },
@@ -573,7 +573,7 @@ export const testAnalyzer = {
         },
       })
         .apply({ x, y: $.output })
-        .plan()
+        .prepare()
 
     assert.deepEqual(
       make($.input).toJSON(),
@@ -628,7 +628,7 @@ export const testAnalyzer = {
         },
       })
         .apply({ person })
-        .plan()
+        .prepare()
 
     assert.ok(plan($.who).cost > plan('Alice').cost)
   },
@@ -655,7 +655,7 @@ export const testAnalyzer = {
         },
       })
         .apply({ result })
-        .plan()
+        .prepare()
 
     assert.deepEqual(plan('data').toJSON(), {
       match: { result: 'data' },
@@ -691,7 +691,7 @@ export const testAnalyzer = {
         })
           // @ts-expect-error - missing match for y
           .apply({ x: $.input })
-          .plan(),
+          .prepare(),
 
       // Analyzer.from({
       //   match: { x: $.input },
@@ -715,11 +715,11 @@ export const testAnalyzer = {
     const application = rule.apply({ x: $.outX, y: $.outY })
 
     assert.throws(() => {
-      application.plan()
+      application.prepare()
     }, /Unbound \?x variable referenced from { match: { of: \$.x, by: 1, is: \$.y }, operator: "-" }/)
 
-    assert.ok(rule.apply({ x: null, y: $.unbound }).plan().toJSON())
-    assert.ok(rule.apply({ x: 1, y: 2 }).plan().toJSON())
+    assert.ok(rule.apply({ x: null, y: $.unbound }).prepare().toJSON())
+    assert.ok(rule.apply({ x: 1, y: 2 }).prepare().toJSON())
   },
 
   'rule maps multi-variable input terms correctly': async (assert) => {
@@ -735,7 +735,7 @@ export const testAnalyzer = {
       },
     })
 
-    assert.deepEqual(rule.apply({ x: 1, y: 2 }).plan().toJSON(), {
+    assert.deepEqual(rule.apply({ x: 1, y: 2 }).prepare().toJSON(), {
       match: { x: 1, y: 2 },
       rule: {
         match: { x: $.a, y: $.b },
@@ -751,12 +751,12 @@ export const testAnalyzer = {
     })
 
     assert.throws(
-      () => rule.apply({ x: 1, y: $.unbound }).plan(),
+      () => rule.apply({ x: 1, y: $.unbound }).prepare(),
       /Unbound \?b variable referenced/
     )
 
     assert.throws(
-      () => rule.apply({ y: 1, x: $.unbound }).plan(),
+      () => rule.apply({ y: 1, x: $.unbound }).prepare(),
       /Unbound \?a variable referenced/
     )
   },
@@ -769,7 +769,7 @@ export const testAnalyzer = {
     const same = Same.apply({ this: $.x, as: $.y })
 
     assert.throws(
-      () => same.plan(),
+      () => same.prepare(),
       /Rule application requires binding for \?a referring to \?y variable/
     )
   },
@@ -783,8 +783,8 @@ export const testAnalyzer = {
     })
 
     assert.ok(
-      rule.apply({ a: 1, b: 1, c: $.unbound }).plan().cost >=
-        rule.apply({ a: 1, b: 1, c: 1 }).plan().cost,
+      rule.apply({ a: 1, b: 1, c: $.unbound }).prepare().cost >=
+        rule.apply({ a: 1, b: 1, c: 1 }).prepare().cost,
       'output cell can be omitted'
     )
   },
@@ -805,7 +805,7 @@ export const testAnalyzer = {
     const match = rule.apply({ x: $.a, y: $.b })
 
     assert.throws(
-      () => rule.apply({ x: 'a', y: 'b' }).plan(),
+      () => rule.apply({ x: 'a', y: 'b' }).prepare(),
       /Unbound \?z variable referenced from/
     )
   },
@@ -824,7 +824,7 @@ export const testAnalyzer = {
           },
         })
           .apply({ x: 'x', y: $.out })
-          .plan(),
+          .prepare(),
       /Rule case "where" does not bind variable \?y that rule matches as "y"/
     )
   },
@@ -855,7 +855,7 @@ export const testAnalyzer = {
     })
       // @ts-expect-error - missing y
       .apply({ x: 'test' })
-      .plan()
+      .prepare()
 
     assert.ok(plan, 'Should allow omitting output variables')
   },
@@ -872,11 +872,11 @@ export const testAnalyzer = {
     })
 
     assert.throws(() => {
-      rule.apply({ x: $.in, y: $.out }).plan()
+      rule.apply({ x: $.in, y: $.out }).prepare()
     }, /Unbound \?y variable referenced from { match: { of: \$.y, is: \$.x }, operator: "math\/absolute" }/)
 
     assert.deepEqual(
-      rule.apply({ x: 1, y: $.out }).plan().toJSON(),
+      rule.apply({ x: 1, y: $.out }).prepare().toJSON(),
       {
         match: { x: 1, y: $.out },
         rule: {
@@ -893,7 +893,7 @@ export const testAnalyzer = {
     )
 
     assert.deepEqual(
-      rule.apply({ x: $.q, y: 1 }).plan().toJSON(),
+      rule.apply({ x: $.q, y: 1 }).prepare().toJSON(),
       {
         match: { x: $.q, y: 1 },
         rule: {
@@ -922,7 +922,7 @@ export const testAnalyzer = {
       },
     })
 
-    assert.deepEqual(rule.apply({ x: $.outX, y: $.outY }).plan().toJSON(), {
+    assert.deepEqual(rule.apply({ x: $.outX, y: $.outY }).prepare().toJSON(), {
       match: { x: $.outX, y: $.outY },
       rule: {
         match: { x: $.x, y: $.y },
@@ -950,7 +950,7 @@ export const testAnalyzer = {
     })
 
     assert.throws(
-      () => rule.apply({ is: $.q }).plan(),
+      () => rule.apply({ is: $.q }).prepare(),
       /Unbound \?x variable referenced from \{ match: { of: \$.x, with: 1, is: \$.y }, operator: "\+"/
     )
   },
@@ -971,7 +971,7 @@ export const testAnalyzer = {
     })
 
     assert.deepEqual(
-      rule.apply({ is: 5 }).plan().toJSON(),
+      rule.apply({ is: 5 }).prepare().toJSON(),
       {
         match: { is: 5 },
         rule: {
@@ -992,7 +992,7 @@ export const testAnalyzer = {
     )
 
     assert.throws(
-      () => rule.apply({ is: $.q }).plan(),
+      () => rule.apply({ is: $.q }).prepare(),
       /Rule application requires binding for \?as referring to \?q variable/
     )
   },
@@ -1011,7 +1011,7 @@ export const testAnalyzer = {
         },
       })
         .apply({ x: $.x })
-        .plan()
+        .prepare()
     }, /Variable .* cannot appear in both input and output of Match clause/)
   },
 
@@ -1029,7 +1029,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ x: 'x', y: 'y' })
-      .plan()
+      .prepare()
 
     assert.ok(plan, 'Rule should plan successfully')
   },
@@ -1045,7 +1045,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ x: $.x })
-      .plan()
+      .prepare()
 
     assert.ok(plan, 'Should plan successfully')
   },
@@ -1069,7 +1069,7 @@ export const testAnalyzer = {
           },
         })
           .apply({ x: $.x })
-          .plan(),
+          .prepare(),
       /Unbound \?y variable referenced from { match: { of: \$.y, with: 1, is: \$.x }, operator: "\+" }/
     )
   },
@@ -1088,11 +1088,11 @@ export const testAnalyzer = {
     const match = rule.apply({ x: $.in, y: $.out })
 
     assert.ok(
-      rule.apply({ x: 'in', y: 'out' }).plan(),
+      rule.apply({ x: 'in', y: 'out' }).prepare(),
       'Plans when input is bound'
     )
     assert.throws(
-      () => rule.apply({ x: $.x, y: 'out' }).plan(),
+      () => rule.apply({ x: $.x, y: 'out' }).prepare(),
       /Unbound \?x variable referenced from { match: { of: \$.x, with: 1, is: \$.y }, operator: "\+" }/
     )
   },
@@ -1120,7 +1120,7 @@ export const testAnalyzer = {
         },
       })
         .apply({ n: $.n, from, to })
-        .plan()
+        .prepare()
 
     /**
      * @param {object} source
@@ -1143,7 +1143,7 @@ export const testAnalyzer = {
         },
       })
         .apply({ n: $.n, from, to })
-        .plan()
+        .prepare()
 
     assert.ok(
       Recursive({ from: 0, to: 10 }).cost > Deductive({ from: 0, to: 10 }).cost,
@@ -1161,9 +1161,12 @@ export const testAnalyzer = {
       },
     })
 
-    assert.ok(rule.apply({ x: 1 }).plan(), 'Should plan with mapped variables')
     assert.ok(
-      rule.apply({ x: 'thing' }).plan(),
+      rule.apply({ x: 1 }).prepare(),
+      'Should plan with mapped variables'
+    )
+    assert.ok(
+      rule.apply({ x: 'thing' }).prepare(),
       'Should plan with bound variables'
     )
   },
@@ -1184,7 +1187,7 @@ export const testAnalyzer = {
     )
 
     assert.throws(
-      () => Same.apply({ this: $.x, as: $.x }).plan(),
+      () => Same.apply({ this: $.x, as: $.x }).prepare(),
       /Rule application requires binding for \? referring to \?x variable/
     )
   },
@@ -1195,7 +1198,7 @@ export const testAnalyzer = {
     })
 
     assert.throws(
-      () => Entity.apply({ this: $.q }).plan(),
+      () => Entity.apply({ this: $.q }).prepare(),
       /Rule application requires binding for \?this referring to \?q variable/
     )
   },
@@ -1225,9 +1228,9 @@ export const testAnalyzer = {
       when: { where: [{ match: { the: 'type', of: $.x, is: 'document' } }] },
     })
 
-    const between = Between.apply({ from: 0, to: 100, value: $.n }).plan()
+    const between = Between.apply({ from: 0, to: 100, value: $.n }).prepare()
 
-    const scan = Scan.apply({ x: $.x }).plan()
+    const scan = Scan.apply({ x: $.x }).prepare()
 
     assert.ok(
       between.cost < scan.cost,
@@ -1340,7 +1343,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ x: $.x })
-      .plan()
+      .prepare()
   },
 
   'test correctly merges cost estimates': (assert) => {
@@ -1372,7 +1375,7 @@ export const testAnalyzer = {
       },
     })
       .apply({ actual: $.same, expect: $.same })
-      .plan()
+      .prepare()
 
     assert.deepEqual(plan.toJSON(), {
       match: { actual: $.same, expect: $.same },
@@ -1401,7 +1404,7 @@ export const testAnalyzer = {
         },
       })
         .apply({ q: $.q })
-        .plan()
+        .prepare()
     }, /Unbound \?q variable/)
   },
 
@@ -1441,7 +1444,7 @@ export const testAnalyzer = {
       },
     })
 
-    const plan = Supervisor.apply().plan()
+    const plan = Supervisor.apply().prepare()
     assert.ok(
       plan,
       'Should successfully create a plan with reused wildcard variables'
@@ -1462,7 +1465,7 @@ export const testAnalyzer = {
         },
       })
         .apply({ q: $.q })
-        .plan()
+        .prepare()
     }, /Unbound \?q variable referenced from { match: { of: \$.q, is: "string" }, operator: "data\/type" }/)
   },
 
@@ -1478,7 +1481,7 @@ export const testAnalyzer = {
     })
 
     assert.throws(() => {
-      rule.apply({ type: 'string' }).plan()
+      rule.apply({ type: 'string' }).prepare()
     }, /Unbound \?_ variable referenced from/)
   },
 }

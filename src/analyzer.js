@@ -27,19 +27,21 @@ export const select = (selector) => Select.from({ match: selector })
 export const rule = (source) => DeductiveRule.from(source)
 
 /**
- * @template {API.SystemOperator} Source
- * @param {Source['operator']} operator
- * @param {Source['match']} match
+ * @template {API.SystemOperator['operator']} Operator
+ * @param {Operator} operator
+ * @returns {Formula<API.SystemOperator & {operator: Operator}>}
  */
-export const apply = (operator, match) =>
-  FormulaApplication.from(/** @type {Source} */ ({ operator, match }))
+export const formula = (operator) =>
+  /** @type {Formula<API.SystemOperator & {operator: Operator}>} */ (
+    new Formula(/** @type {never} */ (operator))
+  )
 
 /**
  * @param {API.Conjunct|API.Recur} source
  */
 export const from = (source) => {
   if (source.not) {
-    return Not.from(source)
+    return Negation.from(source)
   } else if (source.rule) {
     return RuleApplication.from(source)
   } else if (source.operator) {
@@ -254,6 +256,30 @@ class SelectPlan {
     }
 
     return `{ match: { ${parts.join(', ')} } }`
+  }
+}
+
+/**
+ * @template {API.SystemOperator} Operator
+ */
+class Formula {
+  /**
+   *
+   * @param {Operator['operator']} operator
+   */
+  constructor(operator) {
+    this.operator = operator
+  }
+  /**
+   * @param {Operator['match']} terms
+   */
+  apply(terms) {
+    return FormulaApplication.from(
+      /** @type {Operator} */ ({
+        operator: this.operator,
+        match: terms,
+      })
+    )
   }
 }
 
@@ -483,16 +509,23 @@ export class RuleApplication {
     // Build the underlying rule first
     const rule = DeductiveRule.from(source.rule)
 
-    return this.apply(rule, source.match)
+    return this.new(rule, source.match)
   }
+
   /**
+   * Creates a rule application with a given `rule` and set of `terms`.
+   *
    * @template {API.Conclusion} Match
    * @param {DeductiveRule<Match>} rule
    * @param {Partial<API.RuleBindings<Match>>} terms
    */
-  static apply(rule, terms) {
+  static new(rule, terms) {
+    /**
+     * Create an application and populate `references`, `bindings` and `cells`
+     * given the `terms`.
+     */
     const application = new this(terms, rule)
-    const { scope, cells } = application
+    const { references, bindings, cells } = application
 
     /**
      * We go over the rule variables and first we create links to variables
@@ -511,29 +544,43 @@ export class RuleApplication {
      * ```
      *
      * Where we first want to create link `$.a -> $.q` and then create a
-     * binding `$q = 2`.
+     * binding `$q = 2` so that we would end up with
+     *
+     * ```ts
+     * bindings = new Map([[$.q, 2]])
+     * references = new Map([[$.a, $.q]])
+     * ```
      *
      * @type {Map<API.Variable, API.Scalar>}
      */
-    const parameters = new Map()
+    const constants = new Map()
     for (const [at, variable] of Object.entries(rule.match)) {
+      // First we get a term corresponding to this rule binding.
       const term = terms[at]
+      // We get a base cost for it from the rule itself. If not listed by the
+      // rule cost is `0` (which may happen if binding is not used by a rule
+      // body).
       const cost = rule.cells.get(variable) ?? 0
-      // If term is not provided during application, but it is used as an input
-      // inside a rule we raise a reference error because variable is not bound.
+
       if (term === undefined && cost >= Infinity) {
         throw new ReferenceError(
           `Rule application omits required binding for "${at}"`
         )
       }
 
+      // If binding term is a variable itself we combine costs. For example if
+      // we had `{x, y}` rule variables both mapped to same `$.q` variable total
+      // cost of `$.q` would be costs of `x` and `y` (inside rule body) combined.
       if (Variable.is(term)) {
-        // We combine costs as we may have same outer variable set to different
-        // inner variables.
         cells.set(term, combineCosts(cells.get(term) ?? 0, cost))
 
         /**
-         * TODO: Here we override a variable which is a problem in case like
+         * We also add a `variable → term` mapping to the `references` so that
+         * during evalutaion we will know which variable to set.
+         *
+         * ⚠️ We override a variable (by passing `true` as a last argument) to
+         * workaround the problematic case like the one below
+         *
          * ```ts
          * {
          *    match: { x: $.a, y: $.b },
@@ -543,30 +590,41 @@ export class RuleApplication {
          * }
          * ```
          *
-         * Because first be bind `$.x -> $.a` and then we rebind it as
-         * `$.x -> $.b`
+         * Here we will end up `$.x → $.a` and then with `$.x → $.b`. We do not
+         * support `1:n` relation and we could either error which will break
+         * above example or we workaround by drop first mapping.
+         *
+         * TODO: Implement support for `m:n` relations which can happen.
          */
-        const fixme = Cursor.link(scope.references, variable, term, true)
+        const fixme = Cursor.link(references, variable, term, true)
       }
-      // If rule binding is not applied & it is used as input (cost >= Infinity)
-      // inside a rule we raise a reference error because rule application is
-      // invalid.
+      // Terms corresponding to rule binding that aren't used required may be
+      // omitted.
       else if (term === undefined) {
+        // However if binding is required if (cost == Infinity) in which case we
+        // raise a reference error as such rule application can never be evaluated.
+        // TODO: It may be worth deferring this to planning phase or more simply
+        // require that all terms were provided regardless of the rule semantics.
         if ((rule.cells.get(variable) ?? 0) >= Infinity) {
           throw new ReferenceError(
             `Rule application omits required binding for "${at}"`
           )
         }
       }
-      // Otherwise term is a constant and we capture it in the parameters
+      // Otherwise we have a constant binding which we capture so it will be
+      // set in bindings in the next loop.
       else {
-        parameters.set(variable, term)
+        constants.set(variable, term)
       }
     }
 
-    // Now go over the constant terms and assign them to the scope bindings
-    for (const [variable, term] of parameters) {
-      Cursor.set(scope.bindings, scope.references, variable, term)
+    // Now go over the collected constants and assign them to the application
+    // bindings.
+    // ⚠️ Note that we need to do this after we have collected all the references
+    // so that bindings set will be to the term variables as opposed to local
+    // variables.
+    for (const [variable, term] of constants) {
+      Cursor.set(bindings, references, variable, term)
     }
 
     return application
@@ -574,13 +632,63 @@ export class RuleApplication {
   /**
    * @param {Partial<API.RuleBindings<Match>> & {}} match
    * @param {DeductiveRule<Match>} rule
-   * @param {API.Scope} scope
+   * @param {API.Cursor} references
+   * @param {API.MatchFrame} bindings
    * @param {Map<API.Variable, number>} cells
    */
-  constructor(match, rule, scope = Scope.create(), cells = new Map()) {
+  constructor(
+    match,
+    rule,
+    references = new Map(),
+    bindings = new Map(),
+    cells = new Map()
+  ) {
     this.match = match
     this.rule = rule
-    this.scope = scope
+    /**
+     * Mapping between variables inside the rule and variables that they were
+     * bound to via rule application. Given below example we will have mapping
+     * `$.name → $.q`.
+     *
+     * ```js
+     * {
+     *    match: { name: $.q },
+     *    rule: {
+     *      match: { name: $.name },
+     *      when: {
+     *        where: [{ match: { the: "person/name", is: $.name } }]
+     *      }
+     *    }
+     * }
+     * ```
+     */
+    this.references = references
+    /**
+     * Mapping between variables inside the rule and constants that they were
+     * bound to via rule application. Given below example we will have a mapping
+     * `$.name → "Irakli"`.
+     *
+     * ```js
+     * {
+     *    match: { name: "Irakli", address: $.q },
+     *    rule: {
+     *      match: { name: $.name, $.address },
+     *      when: {
+     *        where: [
+     *          { match: { the: "person/name", of: $.person, is: $.name } },
+     *          { match: { the: "person/address", of: $.person, is: $.address } }
+     *        ]
+     *      }
+     *    }
+     * }
+     * ```
+     */
+    this.bindings = bindings
+
+    /**
+     * Mapping between variables that were bound in the application and the
+     * cost estimate for them staying unbound.
+     */
     this.cells = cells
   }
 
@@ -588,58 +696,107 @@ export class RuleApplication {
     return null
   }
 
+  /**
+   * Base cost of the rule application is the base cost of the rule itself.
+   */
   get cost() {
     return this.rule.cost
   }
 
   /**
+   * Plans the rule execution in the given scope. `RuleApplication` links rule
+   * variables (`this.rule.match`) to the variables passed in an application
+   * (`this.match`). However rule application itself may be nested inside some
+   * rule where terms (`this.match`) gets linked in this planning phase.
+   *
    * @param {API.Scope} scope
    */
-  plan(scope = Scope.free) {
-    // create a copy of the provided scope for this application.
-    // const application = Scope.clone(this.scope)
-    const application = Scope.create(new Map(), new Map(this.scope.bindings))
+  plan({ bindings, references }) {
+    const scope = Scope.create(
+      // We start with fresh list of references where we will capture links from
+      // the this application references to the references in in given scope.
+      new Map(),
+      // We copy bindings because those will remain the same. We do need to copy
+      // because `.plan` can be called multiple times and based no scope passed
+      // we may have to add some constants.
+      new Map(this.bindings)
+    )
 
-    // And copy bindings for the references into it.
-    for (const [inner, outer] of this.scope.references) {
-      const reference = Cursor.resolve(scope.references, outer)
-      Cursor.link(application.references, inner, reference)
-      let value = Scope.get(scope, reference)
-      // if (reference !== outer) {
-      //   value = value ?? Scope.get(scope, inner)
-      // }
+    /**
+     * Next we go over references in the rule application (`this.references`)
+     * and remap those to variables in the provided scope (`{references, bindings}`).
+     * To make it clear consider following example
+     *
+     * ```ts
+     * {
+     *    match: { name: $.q },
+     *    rule: { name: $.name },
+     *    when: {
+     *      where: [
+     *        {
+     *          match: { firstName: $.name, lastName: $._ } },
+     *          rule: {
+     *            match: { firstName: $.firstName, lastName: $.lastName },
+     *            when: {
+     *              where: [
+     *                 { the: "name/first", of: $.person, is: $.firstName },
+     *                 { the: "name/last", of: $.person, is: $.lastName }
+     *              ]
+     *            }
+     *          }
+     *      ]
+     *    }
+     * ```
+     *
+     * In this case oure provided scope `references` will be `$.name → $.q`
+     * while `this.references` will have `$.firstName → $.name`. What we want
+     * to end up in `scope.references` is `$.firstName → $.q` allowing us to
+     * can skip propagation during evaluation. To accomlish this we iterate over
+     * `this.references` and then map from inner `$.firstName` to whatever the
+     * outer `$.name` points in the provided `{references}` which happens to be
+     * `$.q`.
+     */
+    for (const [inner, outer] of this.references) {
+      const variable = Cursor.resolve(references, outer)
+      Cursor.link(scope.references, inner, variable)
 
+      // If there was a `variable` was alread bound to a constant in the scope
+      // we want to retain it which is what we are doing below.
+      const value = Cursor.get(bindings, references, variable)
+
+      // If we variable was set in scope we copy it into a local bindings.
       if (value !== undefined) {
-        Scope.set(application, inner, value)
+        Cursor.set(scope.bindings, scope.references, inner, value)
       }
     }
-    // for (const [local, remote] of application.references) {
-    //   // We resolve all remote variables so that all local variables
-    //   // are direct references as opposed to transitive ones.
-    //   // TODO: Figure out case where we actualy need this, because it
-    //   // seems to me that Scope.fork should do this.
-    //   Scope.link(application, local, Scope.resolve(scope, remote))
 
-    //   // If Variable is bound we also want assign it.
-    //   const value = Scope.get(scope, local)
-    //   if (value !== undefined) {
-    //     Scope.set(scope, local, value)
-    //   }
-    // }
-
-    return new RuleApplicationPlan(
-      this.match,
-      this.rule.plan(application),
-      application
-    )
+    return new RuleApplicationPlan(this.match, this.rule.plan(scope), scope)
   }
 
   /**
+   * Caches the application plan so that it can be reused across many queries.
+   *
+   * @type {RuleApplicationPlan<Match>|null}
+   */
+  #plan = null
+
+  prepare() {
+    let plan = this.#plan
+    if (plan == null) {
+      plan = this.plan(Scope.free)
+      this.#plan = plan
+    }
+    return plan
+  }
+
+  /**
+   * Runs this rule application as a query in on a given `input`.
+   *
    * @param {object} input
    * @param {API.Querier} input.from
    */
   select(input) {
-    return Task.perform(this.plan().query(input))
+    return Task.perform(this.prepare().query(input))
   }
 
   toDebugString() {
@@ -740,7 +897,7 @@ export class DeductiveRule {
    * @returns {RuleApplication<Match>}
    */
   apply(terms = this.match) {
-    return RuleApplication.apply(this, terms)
+    return RuleApplication.new(this, terms)
   }
 
   /**
@@ -792,7 +949,7 @@ export class DeductiveRule {
     // If recursive rule we inflate the cost by factor
     cost = this.recurs ? cost ** 2 : cost
 
-    return new DeductivePlan(this.match, scope, when, cost, this.recurs)
+    return new DeductiveRulePlan(this.match, scope, when, cost, this.recurs)
   }
 
   toDebugString() {
@@ -1209,13 +1366,13 @@ class Join {
 
 /**
  * @typedef {Select|FormulaApplication|RuleApplication} Constraint
- * @typedef {Select|FormulaApplication|RuleApplication|Not|RuleRecursion} Conjunct
+ * @typedef {Select|FormulaApplication|RuleApplication|Negation|RuleRecursion} Conjunct
  * @implements {API.Negation}
  */
-class Not {
+class Negation {
   /**
    * @param {API.Negation} source
-   * @returns {Not}
+   * @returns {Negation}
    */
   static from({ not: constraint }) {
     const operation = /** @type {Constraint} */ (from(constraint))
@@ -1255,10 +1412,10 @@ class Not {
 
   /**
    * @param {API.Scope} scope
-   * @returns {Negate}
+   * @returns {NegationPlan}
    */
   plan(scope) {
-    return new Negate(this.constraint.plan(scope))
+    return new NegationPlan(this.constraint.plan(scope))
   }
 
   toDebugString() {
@@ -1312,7 +1469,7 @@ class JoinPlan {
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
  */
-class DeductivePlan {
+class DeductiveRulePlan {
   /**
    * @param {Match} match
    * @param {API.Scope} scope
@@ -1540,7 +1697,7 @@ export const toDebugString = (source) =>
 class RuleApplicationPlan {
   /**
    * @param {Partial<API.RuleBindings<Match>>} match
-   * @param {DeductivePlan<Match>} plan
+   * @param {DeductiveRulePlan<Match>} plan
    * @param {API.Scope} scope
    */
   constructor(match, plan, scope) {
@@ -1841,7 +1998,7 @@ const combineCosts = (total, cost) => {
   }
 }
 
-class Negate {
+class NegationPlan {
   /**
    * @param {API.EvaluationPlan} operand
    */

@@ -16,59 +16,65 @@ export const testEvaluation = {
         managerName: $.managerName,
         employeeName: $.employeeName,
       },
-      when: [
-        {
-          match: {
-            name: $.managerName,
-            supervisor: $.manager,
-            report: $.employee,
-          },
-          rule: {
+      when: {
+        where: [
+          {
             match: {
-              name: $.name,
-              supervisor: $.supervisor,
-              report: $.report,
+              name: $.managerName,
+              supervisor: $.manager,
+              report: $.employee,
             },
-            when: [
-              {
-                match: {
-                  the: 'person/name',
-                  of: $.supervisor,
-                  is: $.name,
-                },
+            rule: {
+              match: {
+                name: $.name,
+                supervisor: $.supervisor,
+                report: $.report,
               },
-              {
-                match: {
-                  the: 'work/report',
-                  of: $.supervisor,
-                  is: $.report,
-                },
+              when: {
+                where: [
+                  {
+                    match: {
+                      the: 'person/name',
+                      of: $.supervisor,
+                      is: $.name,
+                    },
+                  },
+                  {
+                    match: {
+                      the: 'work/report',
+                      of: $.supervisor,
+                      is: $.report,
+                    },
+                  },
+                ],
               },
-            ],
+            },
           },
-        },
-        {
-          match: {
-            person: $.employee,
-            name: $.employeeName,
-          },
-          rule: {
+          {
             match: {
-              name: $.name,
-              person: $.person,
+              person: $.employee,
+              name: $.employeeName,
             },
-            when: [
-              {
-                match: {
-                  the: 'person/name',
-                  of: $.person,
-                  is: $.name,
-                },
+            rule: {
+              match: {
+                name: $.name,
+                person: $.person,
               },
-            ],
+              when: {
+                where: [
+                  {
+                    match: {
+                      the: 'person/name',
+                      of: $.person,
+                      is: $.name,
+                    },
+                  },
+                ],
+              },
+            },
           },
-        },
-      ],
+        ],
+      },
     })
       .apply({
         manager: $.$manager,
@@ -76,7 +82,7 @@ export const testEvaluation = {
         managerName: $.$managerName,
         employeeName: $.$employeeName,
       })
-      .plan()
+      .prepare()
 
     const result = await Task.perform(plan.query({ from: db }))
 
@@ -106,22 +112,24 @@ export const testEvaluation = {
         b: $.b,
         expect: $.bb,
       },
-      when: [
-        {
-          match: {
-            the: 'person/name',
-            of: $.a,
-            is: $.aa,
+      when: {
+        where: [
+          {
+            match: {
+              the: 'person/name',
+              of: $.a,
+              is: $.aa,
+            },
           },
-        },
-        {
-          match: {
-            the: 'person/name',
-            of: $.b,
-            is: $.bb,
+          {
+            match: {
+              the: 'person/name',
+              of: $.b,
+              is: $.bb,
+            },
           },
-        },
-      ],
+        ],
+      },
     })
 
     const plan = rule
@@ -131,7 +139,7 @@ export const testEvaluation = {
         b: $.subject,
         expect: $.expect,
       })
-      .plan()
+      .prepare()
 
     const result = await Task.perform(plan.query({ from: db }))
 
@@ -180,80 +188,91 @@ export const testEvaluation = {
         'manages.is.name.is': $['manages.is.name.is'],
         'manages.of': $.this,
       },
-      when: [
-        {
-          match: { the: $['name.the'], is: $['name.is'], of: $.this },
-          rule: {
-            match: { the: $.the, is: $.is, of: $.of },
-            when: [
-              { match: { of: 'Person/name', is: $.the }, operator: '==' },
-              { match: { the: $.the, of: $.of, is: $.is } },
-              { match: { of: $.is, is: 'string' }, operator: 'data/type' },
-            ],
-          },
-        },
-        {
-          match: {
-            the: $['manages.the'],
-            'is.this': $['manages.is.this'],
-            'is.name.the': $['manages.is.name.the'],
-            'is.name.is': $['manages.is.name.is'],
-            of: $.this,
-          },
-          rule: {
-            match: {
-              the: $.the,
-              'is.this': $['is.this'],
-              'is.name.the': $['is.name.the'],
-              'is.name.is': $['is.name.is'],
-              of: $.of,
+      when: {
+        where: [
+          {
+            match: { the: $['name.the'], is: $['name.is'], of: $.this },
+            rule: {
+              match: { the: $.the, is: $.is, of: $.of },
+              when: {
+                where: [
+                  { match: { of: 'Person/name', is: $.the }, operator: '==' },
+                  { match: { the: $.the, of: $.of, is: $.is } },
+                  { match: { of: $.is, is: 'string' }, operator: 'data/type' },
+                ],
+              },
             },
-            when: [
-              { match: { of: 'Manages/employee', is: $.the }, operator: '==' },
-              { match: { the: $.the, of: $.of, is: $['is.this'] } },
-              {
-                match: {
-                  this: $['is.this'],
-                  'name.the': $['is.name.the'],
-                  'name.is': $['is.name.is'],
-                  'name.of': $['is.this'],
-                },
-                rule: {
-                  match: {
-                    this: $.this,
-                    'name.the': $['name.the'],
-                    'name.is': $['name.is'],
-                    'name.of': $.this,
+          },
+          {
+            match: {
+              the: $['manages.the'],
+              'is.this': $['manages.is.this'],
+              'is.name.the': $['manages.is.name.the'],
+              'is.name.is': $['manages.is.name.is'],
+              of: $.this,
+            },
+            rule: {
+              match: {
+                the: $.the,
+                'is.this': $['is.this'],
+                'is.name.the': $['is.name.the'],
+                'is.name.is': $['is.name.is'],
+                of: $.of,
+              },
+              when: {
+                where: [
+                  {
+                    match: { of: 'Manages/employee', is: $.the },
+                    operator: '==',
                   },
-                  when: [
-                    {
+                  { match: { the: $.the, of: $.of, is: $['is.this'] } },
+                  {
+                    match: {
+                      this: $['is.this'],
+                      'name.the': $['is.name.the'],
+                      'name.is': $['is.name.is'],
+                      'name.of': $['is.this'],
+                    },
+                    rule: {
                       match: {
-                        the: $['name.the'],
-                        is: $['name.is'],
-                        of: $.this,
+                        this: $.this,
+                        'name.the': $['name.the'],
+                        'name.is': $['name.is'],
+                        'name.of': $.this,
                       },
-                      rule: {
-                        match: { the: $.the, is: $.is, of: $.of },
-                        when: [
+                      when: {
+                        where: [
                           {
-                            match: { of: 'Person/name', is: $.the },
-                            operator: '==',
-                          },
-                          { match: { the: $.the, of: $.of, is: $.is } },
-                          {
-                            match: { of: $.is, is: 'string' },
-                            operator: 'data/type',
+                            match: {
+                              the: $['name.the'],
+                              is: $['name.is'],
+                              of: $.this,
+                            },
+                            rule: {
+                              match: { the: $.the, is: $.is, of: $.of },
+                              when: [
+                                {
+                                  match: { of: 'Person/name', is: $.the },
+                                  operator: '==',
+                                },
+                                { match: { the: $.the, of: $.of, is: $.is } },
+                                {
+                                  match: { of: $.is, is: 'string' },
+                                  operator: 'data/type',
+                                },
+                              ],
+                            },
                           },
                         ],
                       },
                     },
-                  ],
-                },
+                  },
+                ],
               },
-            ],
+            },
           },
-        },
-      ],
+        ],
+      },
     })
 
     const result = await rule.apply().select({ from: db })

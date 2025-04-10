@@ -533,10 +533,12 @@ export const testSchema = {
         Analyzer.rule({
           match: { this: $.this },
           // when: [{ not: { match: { of: $.this, the: 'content/title' } } }],
-          when: [implicitTitle({ of: { this: $.this } })],
+          when: {
+            where: [implicitTitle({ of: { this: $.this } })],
+          },
         })
           .apply({ this: $.this })
-          .plan(),
+          .prepare(),
       / Unbound \?of variable referenced from { not: { match: { the: "content\/title", of: \$.of } } }/
     )
   },

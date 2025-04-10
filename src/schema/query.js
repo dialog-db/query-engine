@@ -45,7 +45,7 @@ export class Query {
 
     this.plan = rule(this.rule)
       .apply(/** @type {{}} */ (this.match))
-      .plan()
+      .prepare()
   }
 
   toSource() {
@@ -75,6 +75,8 @@ export class Query {
     const selection = yield* this.plan.evaluate({
       source: from,
       selection: [new Map()],
+      self: this.plan.plan,
+      recur: [],
     })
 
     const results = []
