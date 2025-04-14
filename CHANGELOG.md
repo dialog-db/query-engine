@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.0](https://github.com/dialog-db/query-engine/compare/v0.9.2...v0.10.0) (2025-04-14)
+
+
+### Features
+
+* setup radicle mirror ([cc5ddab](https://github.com/dialog-db/query-engine/commit/cc5ddab49602700969d1144aed6ab181d03d3539))
+* setup radicle mirror ([#66](https://github.com/dialog-db/query-engine/issues/66)) ([fd20fa9](https://github.com/dialog-db/query-engine/commit/fd20fa99d7ec63509656f1b8ea1d4a3a7c182600))
+
+
+### Bug Fixes
+
+* mirror only on pushes to main branches ([b21bebd](https://github.com/dialog-db/query-engine/commit/b21bebd9734f536d23e9ba11ebb7e91044bd3b07))
+* mirror only on pushes to main branches ([#67](https://github.com/dialog-db/query-engine/issues/67)) ([92d67b1](https://github.com/dialog-db/query-engine/commit/92d67b1c252e74e8709295198b3908898e6a23ed))
+
 ## [0.9.2](https://github.com/Gozala/datalogia/compare/v0.9.1...v0.9.2) (2024-10-30)
 
 
