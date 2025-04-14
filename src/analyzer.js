@@ -110,7 +110,7 @@ class Select {
    * @param {API.Scope} scope
    */
   plan({ references, bindings }) {
-    return new SelectPlan(this.selector, this.cells, references, bindings)
+    return new SelectPlan(this, references, bindings)
   }
 
   toJSON() {
@@ -136,40 +136,22 @@ class Select {
 
     return `{ match: { ${parts.join(', ')} } }`
   }
-
-  /**
-   * @param {Select} other
-   */
-  compare(other) {
-    const { the, of, is } = this.selector
-    const { the: toThe, of: toOf, is: toIs } = other.selector
-
-    let order = Term.compare(the ?? Variable._, toThe ?? Variable._)
-    if (order !== 0) {
-      return order
-    }
-
-    order = Term.compare(of ?? Variable._, toOf ?? Variable._)
-    if (order !== 0) {
-      return order
-    }
-
-    return Term.compare(is ?? Variable._, toIs ?? Variable._)
-  }
 }
 
-class SelectPlan {
+export class SelectPlan {
   /**
-   * @param {API.Select} selector
-   * @param {Map<API.Variable, number>} cells
+   * @param {Select} source
    * @param {API.Cursor} cursor
    * @param {API.MatchFrame} parameters
    */
-  constructor(selector, cells, cursor, parameters) {
-    this.selector = selector
-    this.cells = cells
+  constructor(source, cursor, parameters) {
+    this.source = source
     this.cursor = cursor
     this.parameters = parameters
+  }
+
+  get selector() {
+    return this.source.selector
   }
 
   get recurs() {
@@ -204,11 +186,19 @@ class SelectPlan {
 
       // Note: We expect that there will be LRUCache wrapping the db
       // so calling scan over and over again will not actually cause new scans.
-      const facts = yield* source.scan({
-        entity: Variable.is(of) ? undefined : of,
-        attribute: Variable.is(the) ? undefined : the,
-        value: Variable.is(is) ? undefined : is,
-      })
+      /** @type {API.FactsSelector} */
+      const query = {}
+      if (!Variable.is(of)) {
+        query.entity = of
+      }
+      if (!Variable.is(the)) {
+        query.attribute = the
+      }
+      if (!Variable.is(is)) {
+        query.value = is
+      }
+
+      const facts = yield* source.scan(query)
 
       for (const [entity, attribute, value] of facts) {
         try {
@@ -235,27 +225,11 @@ class SelectPlan {
   }
 
   toJSON() {
-    return {
-      match: this.selector,
-    }
+    return this.source.toJSON()
   }
 
   toDebugString() {
-    const { of, the, is } = this.selector
-    const parts = []
-    if (the !== undefined) {
-      parts.push(`the: ${Term.toDebugString(the)}`)
-    }
-
-    if (of !== undefined) {
-      parts.push(`of: ${Term.toDebugString(of)}`)
-    }
-
-    if (is !== undefined) {
-      parts.push(`is: ${Term.toDebugString(is)}`)
-    }
-
-    return `{ match: { ${parts.join(', ')} } }`
+    return this.source.toDebugString()
   }
 }
 
@@ -1483,6 +1457,9 @@ class DeductiveRulePlan {
     this.disjuncts = disjuncts
     this.cost = cost
     this.recurs = recurs
+  }
+  get when() {
+    return this.disjuncts
   }
   toJSON() {
     const { match, disjuncts } = this

@@ -1,5 +1,6 @@
 import * as Analyzer from '../src/analyzer.js'
 import { Task, Link, $, Var, API, Memory } from 'datalogia'
+import * as Inspector from './inspector.js'
 
 /**
  * @type {import('entail').Suite}
@@ -1483,5 +1484,32 @@ export const testAnalyzer = {
     assert.throws(() => {
       rule.apply({ type: 'string' }).prepare()
     }, /Unbound \?_ variable referenced from/)
+  },
+
+  'test select resolution': async (assert) => {
+    const plan = Analyzer.rule({
+      match: { person: $.person, name: $.name },
+      when: {
+        where: [{ match: { the: 'person/name', of: $.person, is: $.name } }],
+      },
+    })
+      .apply({ person: $.q, name: 'Irakli' })
+      .prepare()
+
+    const source = Memory.create([
+      {
+        irakli: { 'person/name': 'Irakli' },
+        zoe: { 'person/name': 'Zoe' },
+      },
+    ])
+    const inspector = Inspector.from(source)
+
+    assert.deepEqual(await plan.select({ from: inspector }), [
+      { person: Link.of({ 'person/name': 'Irakli' }), name: 'Irakli' },
+    ])
+
+    assert.deepEqual(inspector.queries(), [
+      { attribute: 'person/name', value: 'Irakli' },
+    ])
   },
 }
