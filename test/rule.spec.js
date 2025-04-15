@@ -204,13 +204,13 @@ export const testRules = {
         Person({ this: $manager, name: manager }),
       ])
 
-    // assert.deepEqual(
-    //   await Manages().select({ from: DB.Memory.create([alice]) }),
-    //   [
-    //     { manager: 'Alice', employee: 'Bob' },
-    //     { manager: 'Bob', employee: 'Mallory' },
-    //   ]
-    // )
+    assert.deepEqual(
+      await Manages().select({ from: DB.Memory.create([alice]) }),
+      [
+        { manager: 'Alice', employee: 'Bob' },
+        { manager: 'Bob', employee: 'Mallory' },
+      ]
+    )
 
     assert.deepEqual(
       await Manages({ employee: 'Bob', manager: $ }).select({

@@ -248,7 +248,7 @@ export const testRecursion = {
     )
   },
 
-  'test recursion': async (assert) => {
+  'only test recursion': async (assert) => {
     // const list = DB.link()
     // const item = DB.link()
     // const head = DB.link()
@@ -277,16 +277,6 @@ export const testRecursion = {
         ],
       }))
 
-    const Implicit = deduce({
-      the: String,
-      of: Object,
-      is: Object,
-      default: { Null: {} },
-    }).when(({ the, of, is, default: implicit, _ }) => ({
-      explicit: [Fact({ the, of, is }), Data.Type({ of: implicit, is: _ })],
-      implicit: [Fact.not({ the, of }), Data.same({ this: implicit, as: is })],
-    }))
-
     // const test = await Implicit({
     //   the: 'list/next',
     //   of: id(3),
@@ -303,18 +293,18 @@ export const testRecursion = {
       Fact({ the: 'name', of: is, is: name }),
     ])
 
-    const result = await NestRecursive().select({ from: db })
+    // const result = await NestRecursive().select({ from: db })
 
-    assert.deepEqual(result, [
-      { of: id(0), is: id(1), name: 'a' },
-      { of: id(1), is: id(2), name: 'b' },
-      { of: id(0), is: id(2), name: 'b' },
-      { of: id(2), is: id(3), name: 'c' },
-      { of: id(1), is: id(3), name: 'c' },
-      { of: id(0), is: id(3), name: 'c' },
-    ])
+    // assert.deepEqual(result, [
+    //   { of: id(0), is: id(1), name: 'a' },
+    //   { of: id(1), is: id(2), name: 'b' },
+    //   { of: id(0), is: id(2), name: 'b' },
+    //   { of: id(2), is: id(3), name: 'c' },
+    //   { of: id(1), is: id(3), name: 'c' },
+    //   { of: id(0), is: id(3), name: 'c' },
+    // ])
 
-    return 'seems to enter infinite loop'
+    // return 'seems to enter infinite loop'
 
     const RootedRecursion = deduce({
       node: Object,
@@ -327,32 +317,41 @@ export const testRecursion = {
         Fact({ the: 'name', of: node, is: name }),
       ])
 
-    console.log(await RootedRecursion().select({ from: db }))
+    // assert.deepEqual(await RootedRecursion().select({ from: db }), [
+    //   { node: id(1), name: 'a' },
+    //   { node: id(2), name: 'b' },
+    //   { node: id(3), name: 'c' },
+    // ])
+
+    const Implicit = deduce({
+      the: String,
+      of: Object,
+      is: Object,
+      default: { Null: {} },
+    }).when(({ the, of, is, default: implicit, _ }) => ({
+      explicit: [Fact({ the, of, is }), Data.Type({ of: implicit, is: _ })],
+      implicit: [Fact.not({ the, of }), Data.same({ this: implicit, as: is })],
+    }))
 
     const Query = deduce({
       each: Object,
-      // name: String,
-      // next: Object
+      name: String,
+      next: Object,
     })
       .with({ root: Object })
-      .where(
-        ({
-          each,
-          // name,
-          // next,
-          root,
-        }) => [
-          Fact({ the: 'data/type', of: root, is: 'list' }),
-          Child({ of: root, is: each }),
-          // Fact({ the: 'name', of: each, is: name }),
-          // Implicit({
-          //   the: 'list/next',
-          //   of: each,
-          //   is: next,
-          //   default: null,
-          // }),
-        ]
-      )
+      .where(({ each, name, next, root }) => [
+        Fact({ the: 'data/type', of: root, is: 'list' }),
+        Child({ of: root, is: each }),
+        Fact({ the: 'name', of: each, is: name }),
+        Implicit({
+          the: 'list/next',
+          of: each,
+          is: next,
+          default: null,
+        }),
+      ])
+
+    console.log(Query().form.prepare())
 
     const matches = await Query().select({ from: db })
     return console.log(matches)

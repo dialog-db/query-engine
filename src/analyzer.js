@@ -567,7 +567,9 @@ export class RuleApplication {
       // we had `{x, y}` rule variables both mapped to same `$.q` variable total
       // cost of `$.q` would be costs of `x` and `y` (inside rule body) combined.
       if (Variable.is(term)) {
-        cells.set(term, combineCosts(cells.get(term) ?? 0, cost))
+        // If some cell is required we need to make sure that it remains so
+        // after we combine the cost estimates.
+        cells.set(term, (cells.get(term) ?? 0) + cost)
 
         /**
          * We also add a `variable → term` mapping to the `references` so that
@@ -1238,6 +1240,9 @@ class Join {
     // Initial setup - check which operations are ready vs blocked
     for (const conjunct of this.conjuncts) {
       let requires = 0
+      // TODO: resolvable through unification does not work here because
+      // cels $.x and $.is have cost of Infinity and even though we have $.is
+      // we still block this because we do not know here that $.x == $.is
       for (const [variable, cost] of conjunct.cells) {
         if (
           cost >= Infinity &&
@@ -1285,7 +1290,16 @@ class Join {
         )
       }
 
-      ordered.push(top.current.plan(scope))
+      // TODO: 💣 We do not actually have bindings in the scope here so planning
+      // will fail here because we check for variable bindings. We should
+      // instead check if binding is set as opposed to copy values.
+      ordered.push(
+        top.current.plan({
+          bindings: scope.bindings,
+          // bindings: local,
+          references: scope.references,
+        })
+      )
       ready.delete(top.current)
       cost = combineCosts(cost, top.cost)
 

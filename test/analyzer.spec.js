@@ -968,7 +968,7 @@ export const testAnalyzer = {
     )
   },
 
-  'resolvable through unification': async (assert) => {
+  'only resolvable through unification': async (assert) => {
     const rule = Analyzer.rule({
       match: { is: $.is },
       when: {
