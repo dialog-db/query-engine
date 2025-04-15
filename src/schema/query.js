@@ -41,7 +41,7 @@ export class Query {
       : /** @type {API.Every} */ (schema.where)
 
     /** @type {API.Deduction} */
-    this.rule = { match, when: where }
+    this.rule = { match, when: { where } }
 
     this.plan = rule(this.rule)
       .apply(/** @type {{}} */ (this.match))

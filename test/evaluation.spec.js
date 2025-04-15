@@ -250,17 +250,19 @@ export const testEvaluation = {
                             },
                             rule: {
                               match: { the: $.the, is: $.is, of: $.of },
-                              when: [
-                                {
-                                  match: { of: 'Person/name', is: $.the },
-                                  operator: '==',
-                                },
-                                { match: { the: $.the, of: $.of, is: $.is } },
-                                {
-                                  match: { of: $.is, is: 'string' },
-                                  operator: 'data/type',
-                                },
-                              ],
+                              when: {
+                                where: [
+                                  {
+                                    match: { of: 'Person/name', is: $.the },
+                                    operator: '==',
+                                  },
+                                  { match: { the: $.the, of: $.of, is: $.is } },
+                                  {
+                                    match: { of: $.is, is: 'string' },
+                                    operator: 'data/type',
+                                  },
+                                ],
+                              },
                             },
                           },
                         ],

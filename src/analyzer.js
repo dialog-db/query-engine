@@ -10,10 +10,30 @@ import { add } from './selector.js'
 import { indent, li } from './format.js'
 import * as Task from './task.js'
 import { _ } from './$.js'
-import * as Scope from './scope.js'
 import * as Cursor from './cursor.js'
 
 export { $ }
+
+/**
+ * For each form we define classes like `Select`, `Join`, `RuleApplication`,
+ * etc... representing parsed syntax forms. They all have `plan` method that
+ * either error or produce corresponding `SelectPlan`, `JoinPlan`,
+ * `RuleApplicationPlan` etc... forms that represent execution plan for the
+ * original syntax form. During planning we perform following static analysis:
+ *
+ * 1. Reslove local variables to variables in the parent scope.
+ * 2. Analyze which variables must be bound (e.g. formula inputs must be where's
+ * bound select variables reduce search space but do not need to be bound).
+ * 3. Reorder rule clause for optimal execution.
+ *
+ * Method fails when required variable is not bound in the upper scope or when
+ * some rule bindings are not passed during application.
+ *
+ * ℹ️ Two phases are required because prase takes place bottom up (leaf forms
+ * are parsed first) and we can not analyze scope because forms above have not
+ * being parsed yet. However once we have parsed syntax forms we have all the
+ * information to perform static analisys.
+ */
 
 /**
  * @param {API.Select} selector
@@ -539,7 +559,7 @@ export class RuleApplication {
 
       if (term === undefined && cost >= Infinity) {
         throw new ReferenceError(
-          `Rule application omits required binding for "${at}"`
+          `Rule application omits required parameter "${at}"`
         )
       }
 
@@ -551,10 +571,7 @@ export class RuleApplication {
 
         /**
          * We also add a `variable → term` mapping to the `references` so that
-         * during evalutaion we will know which variable to set.
-         *
-         * ⚠️ We override a variable (by passing `true` as a last argument) to
-         * workaround the problematic case like the one below
+         * during evalutaion we will know which variables to set.
          *
          * ```ts
          * {
@@ -565,13 +582,9 @@ export class RuleApplication {
          * }
          * ```
          *
-         * Here we will end up `$.x → $.a` and then with `$.x → $.b`. We do not
-         * support `1:n` relation and we could either error which will break
-         * above example or we workaround by drop first mapping.
-         *
-         * TODO: Implement support for `m:n` relations which can happen.
+         * Here we will end up `$.x → $.a` and then with `$.x → $.b`.
          */
-        const fixme = Cursor.link(references, variable, term, true)
+        Cursor.link(references, variable, term)
       }
       // Terms corresponding to rule binding that aren't used required may be
       // omitted.
@@ -759,7 +772,7 @@ export class RuleApplication {
   prepare() {
     let plan = this.#plan
     if (plan == null) {
-      plan = this.plan(Scope.free)
+      plan = this.plan(this)
       this.#plan = plan
     }
     return plan
@@ -810,8 +823,7 @@ export class DeductiveRule {
    * @param {API.Deduction<Case>} source
    */
   static from(source) {
-    const disjuncts =
-      Array.isArray(source.when) ? { where: source.when } : source.when ?? {}
+    const disjuncts = source.when ?? {}
 
     let cells = new Map()
     let recurs = false
@@ -1091,7 +1103,7 @@ class Join {
   static from({
     bindings,
     name,
-    conjuncts: members,
+    conjuncts: forms,
     variables = new Set(bindings.values()),
   }) {
     /** @type {Map<API.Variable, number>} */
@@ -1113,8 +1125,8 @@ class Join {
     // 3. Which bindings are inputs and which are outputs.
     // 4. Which conjuncts are negations as those need to be planned after all
     //    other conjuncts.
-    for (const member of members) {
-      const conjunct = from(member)
+    for (const form of forms) {
+      const conjunct = from(form)
       conjuncts.push(conjunct)
 
       if (conjunct.recurs) {

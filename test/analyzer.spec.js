@@ -701,7 +701,7 @@ export const testAnalyzer = {
       //     when: [{ match: { this: $.x, than: $.y }, operator: '>' }],
       //   },
       // })
-      /Rule application omits required binding for "y"/
+      /Rule application omits required parameter "y"/
     )
   },
 
