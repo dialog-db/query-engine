@@ -73,6 +73,8 @@ export const from = (source) => {
   }
 }
 
+const NONE = new Map()
+
 /**
  * @implements {API.MatchFact}
  */
@@ -109,6 +111,10 @@ class Select {
   constructor(selector, cells) {
     this.cells = cells
     this.selector = selector
+  }
+
+  get references() {
+    return NONE
   }
 
   get recurs() {
@@ -331,6 +337,10 @@ class FormulaApplication {
     this.source = source
     this.from = from
     this.to = to
+  }
+
+  get references() {
+    return NONE
   }
 
   get match() {
@@ -985,6 +995,10 @@ class RuleRecursion {
     return this
   }
 
+  get references() {
+    return NONE
+  }
+
   /**
    * @param {Match} terms
    * @param {Map<API.Variable, number>} cells
@@ -1243,26 +1257,30 @@ class Join {
       // TODO: resolvable through unification does not work here because
       // cels $.x and $.is have cost of Infinity and even though we have $.is
       // we still block this because we do not know here that $.x == $.is
-      for (const [variable, cost] of conjunct.cells) {
-        if (
-          cost >= Infinity &&
-          !Cursor.has(local, scope.references, variable)
-          // &&
-          // If it is _ we don't actually need it perhaps
-          // TODO: Evaluate if this is correct ❓
-          // reference !== $._
-        ) {
-          requires++
-          for (const target of Cursor.resolve(scope.references, variable)) {
-            const waiting = blocked.get(target)
-            if (waiting) {
-              waiting.add(conjunct)
-            } else {
-              blocked.set(target, new Set([conjunct]))
-            }
+      for (const variable of unbound(conjunct, {
+        references: scope.references,
+        bindings: local,
+      })) {
+        // for (const [variable, cost] of conjunct.cells) {
+        //   if (
+        //     cost >= Infinity &&
+        //     !Cursor.has(local, scope.references, variable)
+        //     // &&
+        //     // If it is _ we don't actually need it perhaps
+        //     // TODO: Evaluate if this is correct ❓
+        //     // reference !== $._
+        //   ) {
+        requires++
+        for (const target of Cursor.resolve(scope.references, variable)) {
+          const waiting = blocked.get(target)
+          if (waiting) {
+            waiting.add(conjunct)
+          } else {
+            blocked.set(target, new Set([conjunct]))
           }
         }
       }
+      // }
 
       if (requires === 0) {
         ready.add(conjunct)
@@ -1415,6 +1433,10 @@ class Negation {
   constructor(constraint, cells) {
     this.constraint = constraint
     this.cells = cells
+  }
+
+  get references() {
+    return this.constraint.references
   }
 
   get not() {
@@ -2069,4 +2091,25 @@ export const NOTHING = Link.of({ '/': 'bafkqaaa' })
 
 export const debug = (source) => {
   return source.debug ? source.debug() : JSON.stringify(source, null, 2)
+}
+
+/**
+ * @param {Conjunct} conjunct
+ * @param {API.Scope} scope
+ * @returns
+ */
+const unbound = function* (conjunct, { bindings, references }) {
+  next: for (const [variable, cost] of conjunct.cells) {
+    // If cell cost is infinity we want to consider all the other variables
+    // this one may be unified with an of them would imply binding.
+    if (cost >= Infinity && !Cursor.has(bindings, references, variable)) {
+      for (const variant of Cursor.enumerate(conjunct.references, variable)) {
+        if (Cursor.has(bindings, references, variant)) {
+          continue next
+        }
+      }
+
+      yield variable
+    }
+  }
 }

@@ -42,6 +42,29 @@ export const resolve = function* (scope, variable) {
 }
 
 /**
+ * Enumerates all the variables that are equivalent to the given one in this
+ * scope.
+ *
+ * @template {API.Scalar} T
+ * @param {API.Cursor} scope
+ * @param {API.Variable<T>} variable
+ */
+export const enumerate = function* (scope, variable) {
+  for (const target of resolve(scope, variable)) {
+    let found = 0
+    for (const variables of scope.values()) {
+      if (variables.has(target)) {
+        found += variables.size
+        yield* variables
+      }
+    }
+    if (found == 0) {
+      yield target
+    }
+  }
+}
+
+/**
  * Creates a reference from `local` variable to a `remote`
  * variable in the given `scope`.
  *
