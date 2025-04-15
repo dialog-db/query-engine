@@ -767,10 +767,22 @@ export const testAnalyzer = {
       match: { this: $.a, as: $.a },
     })
 
-    const same = Same.apply({ this: $.x, as: $.y })
+    assert.deepEqual(Same.apply({ this: 1, as: $.q }).prepare().toJSON(), {
+      match: { this: 1, as: $.q },
+      rule: {
+        match: { this: $.a, as: $.a },
+      },
+    })
+
+    assert.deepEqual(Same.apply({ this: $.q, as: 2 }).prepare().toJSON(), {
+      match: { this: $.q, as: 2 },
+      rule: {
+        match: { this: $.a, as: $.a },
+      },
+    })
 
     assert.throws(
-      () => same.prepare(),
+      () => Same.apply({ this: $.x, as: $.y }).prepare(),
       /Rule application requires binding for \?a/
     )
   },
