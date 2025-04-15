@@ -34,7 +34,7 @@ export const testRules = {
 
     assert.throws(
       () => same({ this: $.q, as: $.q2 }).select({ from: db }),
-      /Rule application requires binding for \?this referring to \?q2 variable/
+      /Rule application requires binding for \?this/
     )
   },
   'test basic': async (assert) => {

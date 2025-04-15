@@ -771,7 +771,7 @@ export const testAnalyzer = {
 
     assert.throws(
       () => same.prepare(),
-      /Rule application requires binding for \?a referring to \?y variable/
+      /Rule application requires binding for \?a/
     )
   },
 
@@ -994,7 +994,7 @@ export const testAnalyzer = {
 
     assert.throws(
       () => rule.apply({ is: $.q }).prepare(),
-      /Rule application requires binding for \?as referring to \?q variable/
+      /Rule application requires binding for \?as/
     )
   },
 
@@ -1189,7 +1189,7 @@ export const testAnalyzer = {
 
     assert.throws(
       () => Same.apply({ this: $.x, as: $.x }).prepare(),
-      /Rule application requires binding for \? referring to \?x variable/
+      /Rule application requires binding for \?/
     )
   },
 
@@ -1200,7 +1200,7 @@ export const testAnalyzer = {
 
     assert.throws(
       () => Entity.apply({ this: $.q }).prepare(),
-      /Rule application requires binding for \?this referring to \?q variable/
+      /Rule application requires binding for \?this/
     )
   },
 

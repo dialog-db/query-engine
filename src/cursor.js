@@ -10,8 +10,14 @@ import { _ } from './$.js'
  * @param {API.Cursor} scope
  * @param {API.Variable} variable
  */
-export const has = (selection, scope, variable) =>
-  selection.has(resolve(scope, variable))
+export const has = (selection, scope, variable) => {
+  for (const candidate of resolve(scope, variable)) {
+    if (selection.has(candidate)) {
+      return true
+    }
+  }
+  return false
+}
 
 /**
  * Attempts to resolve the variable in this scope. If variable is a reference
@@ -21,10 +27,19 @@ export const has = (selection, scope, variable) =>
  * @template {API.Scalar} T
  * @param {API.Cursor} scope
  * @param {API.Variable<T>} variable
- * @returns {API.Variable<T>}
+ * @returns {Iterable<API.Variable<T>>}
  */
-export const resolve = (scope, variable) =>
-  /** @type {API.Variable<T>} */ (scope.get(variable) ?? variable)
+export const resolve = function* (scope, variable) {
+  const variables =
+    /** @type {Set<API.Variable<T>>|undefined} */
+    (scope.get(variable))
+
+  if (variables) {
+    yield* variables
+  } else {
+    yield variable
+  }
+}
 
 /**
  * Creates a reference from `local` variable to a `remote`
@@ -34,25 +49,16 @@ export const resolve = (scope, variable) =>
  * @param {API.Cursor} scope
  * @param {API.Variable<T>} local
  * @param {API.Variable<T>} remote
- * @param {boolean} override
  */
-export const link = (scope, local, remote, override = false) => {
-  const current = scope.get(local)
-  if (current == undefined) {
+export const link = (scope, local, remote) => {
+  const variables = scope.get(local)
+  if (variables == undefined) {
     // Note that we store a reference even if `local === remote` so that we
     // can iterate over the scope variables directly as opposed to having to
     // iterate over variables and then resolve them through scope.
-    scope.set(local, remote)
-  } else if (override) {
-    scope.set(local, remote)
-  } else if (current !== remote) {
-    throw new ReferenceError(
-      `Can not link ${Variable.toDebugString(
-        local
-      )} to ${Variable.toDebugString(
-        remote
-      )} because it is already linked to ${Variable.toDebugString(current)}`
-    )
+    scope.set(local, new Set([remote]))
+  } else {
+    variables.add(remote)
   }
 }
 
@@ -63,8 +69,15 @@ export const link = (scope, local, remote, override = false) => {
  * @param {API.Variable<T>} variable
  * @return {T|undefined}
  */
-export const read = (selection, scope, variable) =>
-  /** @type {T|undefined} */ (selection.get(resolve(scope, variable)))
+export const read = (selection, scope, variable) => {
+  for (const candidate of resolve(scope, variable)) {
+    const value = /** @type {T|undefined} */ (selection.get(candidate))
+    if (value !== undefined) {
+      return value
+    }
+  }
+  return undefined
+}
 
 /**
  * Gets a value associated with the given term in the given selection.
@@ -87,24 +100,25 @@ export const get = (selection, scope, term) =>
  * @param {T} value
  */
 export const set = (selection, scope, variable, value) => {
-  // We ignore assignments to `_` because that is discard variable.
-  if (variable !== _) {
-    const target = resolve(scope, variable)
-    const current = selection.get(target)
-    // If currently variable is not set we set to a given value.
-    if (current === undefined) {
-      selection.set(target, value)
-    }
-    // If we do however have a value already we need to check that it is
-    // consistent with value being assigned if it is not we throw an error.
-    else if (!Constant.equal(current, value)) {
-      throw new RangeError(
-        `Can not bind ${Variable.toDebugString(
-          variable
-        )} to ${Constant.toDebugString(
-          value
-        )} because it is already bound to ${Constant.toDebugString(current)}`
-      )
+  for (const target of resolve(scope, variable)) {
+    // We ignore assignments to `_` because that is discard variable.
+    if (target !== _) {
+      const current = selection.get(target)
+      // If currently variable is not set we set to a given value.
+      if (current === undefined) {
+        selection.set(target, value)
+      }
+      // If we do however have a value already we need to check that it is
+      // consistent with value being assigned if it is not we throw an error.
+      else if (!Constant.equal(current, value)) {
+        throw new RangeError(
+          `Can not bind ${Variable.toDebugString(
+            variable
+          )} to ${Constant.toDebugString(
+            value
+          )} because it is already bound to ${Constant.toDebugString(current)}`
+        )
+      }
     }
   }
 }

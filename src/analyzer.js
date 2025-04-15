@@ -166,8 +166,9 @@ export class SelectPlan {
    */
   resolve(term, bindings) {
     if (Variable.is(term)) {
-      const reference = Cursor.resolve(this.cursor, term)
-      return /** @type {API.Term<T>} */ (bindings.get(reference) ?? reference)
+      return Cursor.get(bindings, this.cursor, term) ?? term
+      // const reference = Cursor.resolve(this.cursor, term)
+      // return /** @type {API.Term<T>} */ (bindings.get(reference) ?? reference)
     } else {
       return term
     }
@@ -685,16 +686,14 @@ export class RuleApplication {
    *
    * @param {API.Scope} scope
    */
-  plan({ bindings, references }) {
-    const scope = Scope.create(
-      // We start with fresh list of references where we will capture links from
-      // the this application references to the references in in given scope.
-      new Map(),
-      // We copy bindings because those will remain the same. We do need to copy
-      // because `.plan` can be called multiple times and based no scope passed
-      // we may have to add some constants.
-      new Map(this.bindings)
-    )
+  plan(scope) {
+    // We start with fresh list of references where we will capture links from
+    // the this application references to the references in in given scope.
+    const references = new Map()
+    // We copy bindings because those will remain the same. We do need to copy
+    // because `.plan` can be called multiple times and based no scope passed
+    // we may have to add some constants.
+    const bindings = new Map(this.bindings)
 
     /**
      * Next we go over references in the rule application (`this.references`)
@@ -731,20 +730,23 @@ export class RuleApplication {
      * `$.q`.
      */
     for (const [inner, outer] of this.references) {
-      const variable = Cursor.resolve(references, outer)
-      Cursor.link(scope.references, inner, variable)
+      for (const source of outer) {
+        for (const variable of Cursor.resolve(scope.references, source)) {
+          Cursor.link(references, inner, variable)
 
-      // If there was a `variable` was alread bound to a constant in the scope
-      // we want to retain it which is what we are doing below.
-      const value = Cursor.get(bindings, references, variable)
+          // If there was a `variable` was alread bound to a constant in the scope
+          // we want to retain it which is what we are doing below.
+          const value = Cursor.get(scope.bindings, scope.references, variable)
 
-      // If we variable was set in scope we copy it into a local bindings.
-      if (value !== undefined) {
-        Cursor.set(scope.bindings, scope.references, inner, value)
+          // If we variable was set in scope we copy it into a local bindings.
+          if (value !== undefined) {
+            Cursor.set(bindings, references, inner, value)
+          }
+        }
       }
     }
 
-    return new RuleApplicationPlan(this.match, this.rule.plan(scope), scope)
+    return new RuleApplicationPlan(this.match, this.rule, references, bindings)
   }
 
   /**
@@ -875,16 +877,16 @@ export class DeductiveRule {
   }
 
   /**
-   * @param {API.Scope} scope
+   * @param {API.Scope} application
    */
-  plan(scope) {
+  plan(application) {
     /** @type {Record<string, JoinPlan>} */
     const when = {}
     let cost = 0
     const disjuncts = Object.entries(this.when)
     let recursive = 0
     for (const [name, disjunct] of disjuncts) {
-      const plan = disjunct.plan(scope)
+      const plan = disjunct.plan(application)
       when[name] = plan
       cost += plan.cost
       if (disjunct.recurs) {
@@ -898,18 +900,18 @@ export class DeductiveRule {
     // Which is why we need to perform validation here in such a case.
     if (disjuncts.length === 0) {
       for (const [cell, cost] of this.cells) {
-        const variable = Cursor.resolve(scope.references, cell)
-        if (cost >= Infinity && !Scope.isBound(scope, variable)) {
-          const reference =
-            cell !== variable ? `${cell} referring to ${variable}` : cell
+        if (
+          cost >= Infinity &&
+          !Cursor.has(application.bindings, application.references, cell)
+        ) {
           throw new ReferenceError(
-            `Rule application requires binding for ${reference} variable`
+            `Rule application requires binding for ${cell} variable`
           )
         }
       }
 
       // We also need to add some body so the that evaluation creates a result.
-      when.where = new JoinPlan([], scope.references, 0)
+      when.where = new JoinPlan([], application.references, 0)
     }
 
     // If all branches are recursive raise an error because we need a base case
@@ -923,7 +925,13 @@ export class DeductiveRule {
     // If recursive rule we inflate the cost by factor
     cost = this.recurs ? cost ** 2 : cost
 
-    return new DeductiveRulePlan(this.match, scope, when, cost, this.recurs)
+    return new DeductiveRulePlan(
+      this.match,
+      application,
+      when,
+      cost,
+      this.recurs
+    )
   }
 
   toDebugString() {
@@ -1206,9 +1214,9 @@ class Join {
    * @returns {JoinPlan}
    */
   plan(scope) {
-    // We create copy of the scope because we will be modifying it as we
-    // attempt to figure out execution order.
-    const local = Scope.fork(scope)
+    // We create a local copy of the binding because we want to modify it here
+    // as we attempt to figure out optimal execution order.
+    const local = new Map(scope.bindings)
     /** @type {Map<API.Variable, Set<typeof this.conjuncts[0]>>} */
     const blocked = new Map()
     /** @type {Set<typeof this.conjuncts[0]>} */
@@ -1219,23 +1227,22 @@ class Join {
     for (const conjunct of this.conjuncts) {
       let requires = 0
       for (const [variable, cost] of conjunct.cells) {
-        // We resolve the target of the cell as we may have multiple different
-        // references to the same variable.
-        const reference = Cursor.resolve(local.references, variable)
         if (
           cost >= Infinity &&
-          !Scope.isBound(local, reference)
+          !Cursor.has(local, scope.references, variable)
           // &&
           // If it is _ we don't actually need it perhaps
           // TODO: Evaluate if this is correct ❓
           // reference !== $._
         ) {
           requires++
-          const waiting = blocked.get(reference)
-          if (waiting) {
-            waiting.add(conjunct)
-          } else {
-            blocked.set(reference, new Set([conjunct]))
+          for (const target of Cursor.resolve(scope.references, variable)) {
+            const waiting = blocked.get(target)
+            if (waiting) {
+              waiting.add(conjunct)
+            } else {
+              blocked.set(target, new Set([conjunct]))
+            }
           }
         }
       }
@@ -1251,7 +1258,7 @@ class Join {
 
       // Find lowest cost operation among ready ones
       for (const current of ready) {
-        const cost = estimate(current, local.bindings, local.references)
+        const cost = estimate(current, local, scope.references)
 
         if (!top) {
           top = { cost, current }
@@ -1274,8 +1281,8 @@ class Join {
       // Update local scope so all the cells of the planned assertion will
       // be bound.
       for (const [cell] of unblocked) {
-        if (!Scope.isBound(local, cell)) {
-          Scope.set(local, cell, NOTHING)
+        if (!Cursor.has(local, scope.references, cell)) {
+          Cursor.set(local, scope.references, cell, NOTHING)
         }
       }
 
@@ -1285,28 +1292,36 @@ class Join {
         // We resolve a cell to a variable as all blocked operations are tracked
         // by resolved variables because multiple local variable may be bound to
         // same target variable.
-        const variable = Cursor.resolve(local.references, cell)
-        const waiting = blocked.get(variable)
-        if (waiting) {
-          for (const assertion of waiting) {
-            let unblock = true
-            // Go over all the cells in this assertion that was blocked on this
-            // variable and check if it can be planned now.
-            for (const [cell, cost] of assertion.cells) {
-              const variable = Cursor.resolve(local.references, cell)
-              // If cell is required and is still not available, we can't
-              // unblock it yet.
-              if (cost >= Infinity && !Scope.isBound(local, variable)) {
-                unblock = false
-                break
+        // const variable = Cursor.resolve(local.references, cell)
+        for (const variable of Cursor.resolve(scope.references, cell)) {
+          const waiting = blocked.get(variable)
+          if (waiting) {
+            for (const conjunct of waiting) {
+              let unblock = true
+              // Go over all the cells in this assertion that was blocked on this
+              // variable and check if it can be planned now.
+              for (const [cell, cost] of conjunct.cells) {
+                // const variable = Cursor.resolve(local.references, cell)
+                for (const variable of Cursor.resolve(scope.references, cell)) {
+                  // If cell is required and is still not available, we can't
+                  // unblock it yet.
+                  if (
+                    cost >= Infinity &&
+                    !Cursor.has(local, scope.references, variable)
+                  ) {
+                    unblock = false
+                    break
+                  }
+                }
+              }
+
+              if (unblock) {
+                ready.add(conjunct)
               }
             }
-
-            if (unblock) {
-              ready.add(assertion)
-            }
+            // blocked.delete(variable)
+            blocked.delete(variable)
           }
-          blocked.delete(variable)
         }
       }
     }
@@ -1314,7 +1329,7 @@ class Join {
     if (blocked.size > 0) {
       const [[constraint]] = blocked.values()
       for (const [cell, cost] of constraint.cells) {
-        if (cost >= Infinity && !Scope.isBound(local, cell)) {
+        if (cost >= Infinity && !Cursor.has(local, scope.references, cell)) {
           throw new ReferenceError(
             `Unbound ${cell} variable referenced from ${toDebugString(
               constraint
@@ -1674,13 +1689,16 @@ export const toDebugString = (source) =>
 class RuleApplicationPlan {
   /**
    * @param {Partial<API.RuleBindings<Match>>} match
-   * @param {DeductiveRulePlan<Match>} plan
-   * @param {API.Scope} scope
+   * @param {DeductiveRule<Match>} rule
+   * @param {API.Cursor} references
+   * @param {API.MatchFrame} bindings
    */
-  constructor(match, plan, scope) {
+  constructor(match, rule, references, bindings) {
     this.match = match
-    this.plan = plan
-    this.scope = scope
+    this.rule = rule
+    this.references = references
+    this.bindings = bindings
+    this.plan = rule.plan(this)
   }
 
   get cost() {
@@ -1701,20 +1719,22 @@ class RuleApplicationPlan {
 
     // Copy derived bindings from the output
     for (const [inner, outer] of references) {
-      const value = output.get(outer)
-      if (value !== undefined) {
-        try {
-          Cursor.merge(match, references, outer, value)
-        } catch {
-          return null
+      for (const source of outer) {
+        const value = output.get(source)
+        if (value !== undefined) {
+          try {
+            Cursor.merge(match, references, source, value)
+          } catch {
+            return null
+          }
+          //   match.set(outer, value)
+          // try {
+          //   merge(context, outer, value, match)
+          // } catch {
+          //   return null
+          // }
+          // match.set(outer, value)
         }
-        //   match.set(outer, value)
-        // try {
-        //   merge(context, outer, value, match)
-        // } catch {
-        //   return null
-        // }
-        // match.set(outer, value)
       }
     }
 
@@ -1764,14 +1784,14 @@ class RuleApplicationPlan {
       for (const [name, term] of Object.entries(this.match)) {
         const value = Cursor.get(
           input,
-          this.scope.references,
+          this.references,
           /** @type {API.Term} */ (term)
         )
 
         const variable = this.plan.match[name]
 
         if (value !== undefined && variable !== undefined) {
-          Cursor.set(bindings, this.scope.references, variable, value)
+          Cursor.set(bindings, this.references, variable, value)
         }
       }
 
@@ -1803,8 +1823,8 @@ class RuleApplicationPlan {
         const match = this.createFullMatch(
           input,
           result,
-          this.scope.references,
-          this.scope.bindings
+          this.references,
+          this.bindings
         )
 
         if (match) {
@@ -1853,8 +1873,8 @@ class RuleApplicationPlan {
             const directMatch = this.createFullMatch(
               input,
               stepResult,
-              this.scope.references,
-              this.scope.bindings
+              this.references,
+              this.bindings
             )
 
             if (directMatch) {

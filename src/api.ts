@@ -835,7 +835,7 @@ export interface EvaluationPlan {
  * relation meaning multiple local variables may point to the same remote one
  * but local variable can point to at most one remote variable.
  */
-export type Cursor = Map<Variable, Variable>
+export type Cursor = Map<Variable, Set<Variable>>
 
 /**
  * Represents set of bound variables.
