@@ -1,6 +1,6 @@
-# Datalogia
+# @dialog-db/query
 
-Library for querying in-memory facts using [datalog].
+[Datalog] query engine for the dialog database.
 
 ## Example
 
