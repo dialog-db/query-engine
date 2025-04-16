@@ -5,7 +5,7 @@ import * as Term from './term.js'
 import * as Constant from './constant.js'
 import * as Selector from './selector.js'
 import operators from './formula/lib.js'
-import { indent, li } from './data/string/format.js'
+import { indent } from './data/string/format.js'
 import * as Task from './task.js'
 import { _, $ } from './$.js'
 import * as Cursor from './cursor.js'
@@ -1278,7 +1278,8 @@ class Join {
   plan(scope) {
     // We create a local copy of the binding because we want to modify it here
     // as we attempt to figure out optimal execution order.
-    const local = new Map(scope.bindings)
+    const bindings = new Map(scope.bindings)
+    const { references } = scope
     /** @type {Map<API.Variable, Set<typeof this.conjuncts[0]>>} */
     const blocked = new Map()
     /** @type {Set<typeof this.conjuncts[0]>} */
@@ -1293,7 +1294,7 @@ class Join {
       // we still block this because we do not know here that $.x == $.is
       for (const variable of unbound(conjunct, {
         references: scope.references,
-        bindings: local,
+        bindings,
       })) {
         // for (const [variable, cost] of conjunct.cells) {
         //   if (
@@ -1305,7 +1306,7 @@ class Join {
         //     // reference !== $._
         //   ) {
         requires++
-        for (const target of Cursor.resolve(scope.references, variable)) {
+        for (const target of Cursor.resolve(references, variable)) {
           const waiting = blocked.get(target)
           if (waiting) {
             waiting.add(conjunct)
@@ -1327,7 +1328,7 @@ class Join {
 
       // Find lowest cost operation among ready ones
       for (const current of ready) {
-        const cost = estimate(current, local, scope.references)
+        const cost = estimate(current, bindings, references)
 
         if (!top) {
           top = { cost, current }
@@ -1342,14 +1343,10 @@ class Join {
         )
       }
 
-      // TODO: 💣 We do not actually have bindings in the scope here so planning
-      // will fail here because we check for variable bindings. We should
-      // instead check if binding is set as opposed to copy values.
       ordered.push(
         top.current.plan({
-          // bindings: scope.bindings,
-          bindings: local,
-          references: scope.references,
+          bindings,
+          references,
         })
       )
       ready.delete(top.current)
@@ -1359,8 +1356,8 @@ class Join {
       // Update local scope so all the cells of the planned assertion will
       // be bound.
       for (const [cell] of unblocked) {
-        if (!Cursor.has(local, scope.references, cell)) {
-          Cursor.markBound(local, scope.references, cell)
+        if (!Cursor.has(bindings, references, cell)) {
+          Cursor.markBound(bindings, references, cell)
         }
       }
 
@@ -1371,7 +1368,7 @@ class Join {
         // by resolved variables because multiple local variable may be bound to
         // same target variable.
         // const variable = Cursor.resolve(local.references, cell)
-        for (const variable of Cursor.resolve(scope.references, cell)) {
+        for (const variable of Cursor.resolve(references, cell)) {
           const waiting = blocked.get(variable)
           if (waiting) {
             for (const conjunct of waiting) {
@@ -1380,12 +1377,12 @@ class Join {
               // variable and check if it can be planned now.
               for (const [cell, cost] of conjunct.cells) {
                 // const variable = Cursor.resolve(local.references, cell)
-                for (const variable of Cursor.resolve(scope.references, cell)) {
+                for (const variable of Cursor.resolve(references, cell)) {
                   // If cell is required and is still not available, we can't
                   // unblock it yet.
                   if (
                     cost >= Infinity &&
-                    !Cursor.has(local, scope.references, variable)
+                    !Cursor.has(bindings, references, variable)
                   ) {
                     unblock = false
                     break
@@ -1407,7 +1404,7 @@ class Join {
     if (blocked.size > 0) {
       const [[constraint]] = blocked.values()
       for (const [cell, cost] of constraint.cells) {
-        if (cost >= Infinity && !Cursor.has(local, scope.references, cell)) {
+        if (cost >= Infinity && !Cursor.has(bindings, references, cell)) {
           throw new ReferenceError(
             `Unbound ${cell} variable referenced from ${toDebugString(
               constraint
@@ -1417,7 +1414,7 @@ class Join {
       }
     }
 
-    return new JoinPlan(ordered, scope.references, cost)
+    return new JoinPlan(ordered, references, cost)
   }
 
   toJSON() {
@@ -1659,75 +1656,6 @@ class RuleApplicationPlan {
   }
 
   /**
-   * Helper function to create a full match combining input and output bindings
-   * @param {Map<API.Variable, API.Scalar>} input
-   * @param {Map<API.Variable, API.Scalar>} output
-   * @param {API.Cursor} references
-   * @param {API.MatchFrame} bindings
-   * @returns {Map<API.Variable, API.Scalar>|null}
-   */
-  createFullMatch(input, output, references, bindings) {
-    // Create a new map starting with the input bindings
-    const match = new Map(input)
-
-    // Copy derived bindings from the output
-    for (const [inner, outer] of references) {
-      for (const source of outer) {
-        const value = output.get(source)
-        if (value !== undefined) {
-          try {
-            Cursor.merge(match, references, source, value)
-          } catch {
-            return null
-          }
-          //   match.set(outer, value)
-          // try {
-          //   merge(context, outer, value, match)
-          // } catch {
-          //   return null
-          // }
-          // match.set(outer, value)
-        }
-      }
-    }
-
-    // Copy constant bindings from the context
-    for (const [variable, value] of bindings) {
-      if (value !== Cursor.NOTHING) {
-        match.set(variable, value)
-      }
-    }
-
-    return match
-  }
-
-  /**
-   * Helper to create a transitive match combining input with output
-   * @param {Map<API.Variable, API.Scalar>} input
-   * @param {Map<API.Variable, API.Scalar>} originalContext
-   * @param {Map<API.Variable, API.Scalar>} output
-   * @returns {Map<API.Variable, API.Scalar>}
-   */
-  createTransitiveMatch(input, originalContext, output) {
-    const result = new Map(input)
-
-    // First, preserve all bindings from the original context
-    // This is critical to maintain properties like 'name'
-    for (const [key, value] of originalContext.entries()) {
-      result.set(key, value)
-    }
-
-    // Then carefully merge bindings from the output
-    for (const [key, value] of output.entries()) {
-      if (!originalContext.has(key)) {
-        result.set(key, value)
-      }
-    }
-
-    return result
-  }
-
-  /**
    * @param {API.EvaluationContext} context
    */
   *evaluate({ source, selection }) {
@@ -1880,15 +1808,6 @@ class RuleApplicationPlan {
     }
 
     return [match]
-  }
-
-  /**
-   * @param {API.MatchFrame} frame
-   * @param {API.MatchFrame} input
-   * @param {API.MatchFrame} output
-   */
-  writeTransitive(frame, input, output) {
-    const match = Match.clone(frame)
   }
 
   toJSON() {
