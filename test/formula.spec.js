@@ -50,7 +50,7 @@ export const testRelation = {
             Data.Type({ of: q, is: type }),
           ])
 
-        const result = yield* Query().select({ from: db })
+        const result = yield* Query().query({ from: db })
 
         assert.deepEqual(
           result,
@@ -64,7 +64,7 @@ export const testRelation = {
       ])
 
       assert.deepEqual(
-        yield* Query().select({ from: db }),
+        yield* Query().query({ from: db }),
         [],
         'produces no frames'
       )
@@ -88,7 +88,7 @@ export const testRelation = {
           Data.Reference({ of: data, is: link }),
         ])
 
-        assert.deepEqual(yield* Query().select({ from: db }), [
+        assert.deepEqual(yield* Query().query({ from: db }), [
           { link: Link.of(data) },
         ])
       }
@@ -114,7 +114,7 @@ export const testRelation = {
           Data.same({ this: q, as: value }),
         ])
 
-        assert.deepEqual(yield* Query().select({ from: db }), [
+        assert.deepEqual(yield* Query().query({ from: db }), [
           { q: /** @type {any} */ (value) },
         ])
       }
@@ -124,7 +124,7 @@ export const testRelation = {
       ])
 
       assert.deepEqual(
-        yield* AssignmentQuery().select({ from: db }),
+        yield* AssignmentQuery().query({ from: db }),
         [{ q: 5 }],
         'will perform assignment'
       )
@@ -139,7 +139,7 @@ export const testRelation = {
           Text.Concat({ of: [text, ' world'], is: out }),
         ])
 
-      assert.deepEqual(yield* TwoPartsQuery().select({ from: db }), [
+      assert.deepEqual(yield* TwoPartsQuery().query({ from: db }), [
         { out: 'hello world' },
       ])
 
@@ -150,7 +150,7 @@ export const testRelation = {
           Text.Concat({ of: [text, ' world'], is: out }),
         ])
 
-      assert.deepEqual(yield* ThreePartsQuery().select({ from: db }), [
+      assert.deepEqual(yield* ThreePartsQuery().query({ from: db }), [
         { out: 'hello world' },
       ])
     }),
@@ -164,7 +164,7 @@ export const testRelation = {
           Text.Words({ of: text, is: word }),
         ])
 
-      assert.deepEqual(yield* Word().select({ from: db }), [
+      assert.deepEqual(yield* Word().query({ from: db }), [
         { word: 'hello' },
         { word: 'world' },
       ])
@@ -179,7 +179,7 @@ export const testRelation = {
           Text.Lines({ of: text, is: line }),
         ])
 
-      assert.deepEqual(yield* Lines().select({ from: db }), [
+      assert.deepEqual(yield* Lines().query({ from: db }), [
         { line: 'hello,' },
         { line: 'how are you' },
         { line: '' },
@@ -195,7 +195,7 @@ export const testRelation = {
           Text.UpperCase({ of: text, is: word }),
         ])
 
-      assert.deepEqual(yield* UpperCase().select({ from: db }), [
+      assert.deepEqual(yield* UpperCase().query({ from: db }), [
         { word: 'HELLO' },
       ])
     }),
@@ -209,7 +209,7 @@ export const testRelation = {
           Text.LowerCase({ of: text, is: word }),
         ])
 
-      assert.deepEqual(yield* Query().select({ from: db }), [{ word: 'hello' }])
+      assert.deepEqual(yield* Query().query({ from: db }), [{ word: 'hello' }])
     }),
 
   'test string/trim': (assert) =>
@@ -221,7 +221,7 @@ export const testRelation = {
           Text.Trim({ of: text, is: out }),
         ])
 
-      assert.deepEqual(yield* Query().select({ from: db }), [
+      assert.deepEqual(yield* Query().query({ from: db }), [
         { out: 'Hello world!' },
       ])
     }),
@@ -235,7 +235,7 @@ export const testRelation = {
           Text.TrimStart({ of: text, is: out }),
         ])
 
-      assert.deepEqual(yield* Query().select({ from: db }), [
+      assert.deepEqual(yield* Query().query({ from: db }), [
         { out: 'Hello world!   ' },
       ])
     }),
@@ -248,7 +248,7 @@ export const testRelation = {
           Text.TrimEnd({ of: text, is: out }),
         ])
 
-      assert.deepEqual(yield* Query().select({ from: db }), [
+      assert.deepEqual(yield* Query().query({ from: db }), [
         { out: '   Hello world!' },
       ])
     }),
@@ -264,7 +264,7 @@ export const testRelation = {
           UTF8.ToText({ of: bytes, is: out }),
         ])
 
-      assert.deepEqual(yield* Query().select({ from: db }), [
+      assert.deepEqual(yield* Query().query({ from: db }), [
         { out: 'Hello world!' },
       ])
     }),
@@ -278,7 +278,7 @@ export const testRelation = {
           UTF8.FromText({ of: text, is: out }),
         ])
 
-      assert.deepEqual(yield* Query().select({ from: db }), [
+      assert.deepEqual(yield* Query().query({ from: db }), [
         { out: new TextEncoder().encode('Hello world!') },
       ])
     }),
@@ -292,7 +292,7 @@ export const testRelation = {
           Text.Length({ of: text, is: out }),
         ])
 
-      assert.deepEqual(yield* Query().select({ from: db }), [{ out: 12 }])
+      assert.deepEqual(yield* Query().query({ from: db }), [{ out: 12 }])
     }),
 
   'test + operator': (assert) =>
@@ -305,7 +305,7 @@ export const testRelation = {
           Math.Sum({ of: a, with: b, is: c }),
         ])
 
-      assert.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 3 }])
+      assert.deepEqual(yield* TwoTermsQuery().query({ from: db }), [{ c: 3 }])
 
       const MultiTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab10: Number })
@@ -319,7 +319,7 @@ export const testRelation = {
           Math.Sum({ of: ab10, with: b, is: c }),
         ])
 
-      assert.deepEqual(yield* MultiTermsQuery().select({ from: db }), [
+      assert.deepEqual(yield* MultiTermsQuery().query({ from: db }), [
         { c: 15 },
       ])
 
@@ -327,17 +327,13 @@ export const testRelation = {
         Data.same({ this: 5, as: c }),
       ])
 
-      assert.deepEqual(yield* SingleTermQuery().select({ from: db }), [
-        { c: 5 },
-      ])
+      assert.deepEqual(yield* SingleTermQuery().query({ from: db }), [{ c: 5 }])
 
       const EmptyTermsQuery = deduce({ c: Number }).where(({ c }) => [
         Data.same({ this: 0, as: c }),
       ])
 
-      assert.deepEqual(yield* EmptyTermsQuery().select({ from: db }), [
-        { c: 0 },
-      ])
+      assert.deepEqual(yield* EmptyTermsQuery().query({ from: db }), [{ c: 0 }])
     }),
 
   'test - operator': (assert) =>
@@ -350,7 +346,7 @@ export const testRelation = {
           Math.Subtraction({ of: a, by: b, is: c }),
         ])
 
-      assert.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 8 }])
+      assert.deepEqual(yield* TwoTermsQuery().query({ from: db }), [{ c: 8 }])
 
       const MultiTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab1: Number })
@@ -363,23 +359,19 @@ export const testRelation = {
           Math.Subtraction({ of: ab1, by: b, is: c }),
         ])
 
-      assert.deepEqual(yield* MultiTermsQuery().select({ from: db }), [
-        { c: 5 },
-      ])
+      assert.deepEqual(yield* MultiTermsQuery().query({ from: db }), [{ c: 5 }])
 
       const EmptyTermsQuery = deduce({ c: Number }).where(({ c }) => [
         Data.same({ this: 0, as: c }),
       ])
 
-      assert.deepEqual(yield* EmptyTermsQuery().select({ from: db }), [
-        { c: 0 },
-      ])
+      assert.deepEqual(yield* EmptyTermsQuery().query({ from: db }), [{ c: 0 }])
 
       const SingleTermQuery = deduce({ c: Number }).where(({ c }) => [
         Data.same({ this: -6, as: c }),
       ])
 
-      assert.deepEqual(yield* SingleTermQuery().select({ from: db }), [
+      assert.deepEqual(yield* SingleTermQuery().query({ from: db }), [
         { c: -6 },
       ])
     }),
@@ -394,7 +386,7 @@ export const testRelation = {
           Math.Multiplication({ of: a, by: b, is: c }),
         ])
 
-      assert.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 20 }])
+      assert.deepEqual(yield* TwoTermsQuery().query({ from: db }), [{ c: 20 }])
 
       const MultiTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab3: Number })
@@ -407,7 +399,7 @@ export const testRelation = {
           Math.Multiplication({ of: ab3, by: b, is: c }),
         ])
 
-      assert.deepEqual(yield* MultiTermsQuery().select({ from: db }), [
+      assert.deepEqual(yield* MultiTermsQuery().query({ from: db }), [
         { c: 120 },
       ])
 
@@ -415,9 +407,7 @@ export const testRelation = {
         Data.same({ this: 1, as: c }),
       ])
 
-      assert.deepEqual(yield* EmptyTermsQuery().select({ from: db }), [
-        { c: 1 },
-      ])
+      assert.deepEqual(yield* EmptyTermsQuery().query({ from: db }), [{ c: 1 }])
 
       const SingleTermQuery = deduce({ c: Number })
         .with({ a: Number })
@@ -426,7 +416,7 @@ export const testRelation = {
           Data.same({ this: a, as: c }),
         ])
 
-      assert.deepEqual(yield* SingleTermQuery().select({ from: db }), [
+      assert.deepEqual(yield* SingleTermQuery().query({ from: db }), [
         { c: 10 },
       ])
     }),
@@ -441,7 +431,7 @@ export const testRelation = {
           Math.Division({ of: a, by: b, is: c }),
         ])
 
-      assert.deepEqual(yield* TwoTermsQuery().select({ from: db }), [{ c: 5 }])
+      assert.deepEqual(yield* TwoTermsQuery().query({ from: db }), [{ c: 5 }])
 
       const MultiTermsQuery = deduce({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab3: Number })
@@ -454,9 +444,7 @@ export const testRelation = {
           Math.Division({ of: ab3, by: b, is: c }),
         ])
 
-      assert.deepEqual(yield* MultiTermsQuery().select({ from: db }), [
-        { c: 4 },
-      ])
+      assert.deepEqual(yield* MultiTermsQuery().query({ from: db }), [{ c: 4 }])
 
       const SingleTermQuery = deduce({ c: Number })
         .with({ a: Number })
@@ -465,7 +453,7 @@ export const testRelation = {
           Math.Division({ of: a, by: 2, is: c }),
         ])
 
-      assert.deepEqual(yield* SingleTermQuery().select({ from: db }), [
+      assert.deepEqual(yield* SingleTermQuery().query({ from: db }), [
         { c: 2.5 },
       ])
 
@@ -478,7 +466,7 @@ export const testRelation = {
         ])
 
       assert.deepEqual(
-        yield* DivisionByZeroQuery().select({ from: db }),
+        yield* DivisionByZeroQuery().query({ from: db }),
         [],
         'division by zero not allowed'
       )
@@ -494,7 +482,7 @@ export const testRelation = {
           Math.Modulo({ of: a, by: b, is: c }),
         ])
 
-      assert.deepEqual(yield* Query().select({ from: db }), [{ c: 1 }])
+      assert.deepEqual(yield* Query().query({ from: db }), [{ c: 1 }])
     }),
 
   'test ** operator': (assert) =>
@@ -506,7 +494,7 @@ export const testRelation = {
           Math.Power({ of: 2, exponent: b, is: c }),
         ])
 
-      assert.deepEqual(yield* Query().select({ from: db }), [{ c: 8 }])
+      assert.deepEqual(yield* Query().query({ from: db }), [{ c: 8 }])
     }),
 
   'test math/absolute': (assert) =>
@@ -520,7 +508,7 @@ export const testRelation = {
           Math.Absolute({ of: b, is: d }),
         ])
 
-      assert.deepEqual(yield* Query().select({ from: db }), [{ c: 2, d: 3 }])
+      assert.deepEqual(yield* Query().query({ from: db }), [{ c: 2, d: 3 }])
     }),
 
   'test text/like': (assert) =>
@@ -533,7 +521,7 @@ export const testRelation = {
           Data.same({ this: text, as: out }),
         ])
 
-      assert.deepEqual(yield* WithResultQuery().select({ from: db }), [
+      assert.deepEqual(yield* WithResultQuery().query({ from: db }), [
         { out: 'Hello World' },
       ])
 
@@ -567,7 +555,7 @@ export const testRelation = {
           Data.same({ this: text, as: out }),
         ])
 
-      assert.deepEqual(yield* WithResultQuery().select({ from: db }), [
+      assert.deepEqual(yield* WithResultQuery().query({ from: db }), [
         { out: 'Hello World' },
       ])
 
@@ -576,7 +564,7 @@ export const testRelation = {
         Text.includes({ this: text, slice: 'World' }),
       ])
 
-      assert.deepEqual(yield* BooleanQuery().select({ from: db }), [
+      assert.deepEqual(yield* BooleanQuery().query({ from: db }), [
         { text: 'Hello World' },
       ])
 
@@ -588,6 +576,6 @@ export const testRelation = {
           Data.same({ this: text, as: out }),
         ])
 
-      assert.deepEqual(yield* NoMatchQuery().select({ from: db }), [])
+      assert.deepEqual(yield* NoMatchQuery().query({ from: db }), [])
     }),
 }

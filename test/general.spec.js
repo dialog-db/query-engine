@@ -33,7 +33,7 @@ export const testDB = {
       Delegation.match({ space, can: 'store/add', cid: store }),
     ])
 
-    const result = await Query().select({ from: proofsDB })
+    const result = await Query().query({ from: proofsDB })
     assert.deepEqual(result, [
       {
         upload: 'bafy...upload',
@@ -57,7 +57,7 @@ export const testDB = {
       match({ the: 'age', of: e, is: 42 }),
     ])
 
-    assert.deepEqual(await Query().select({ from: db }), [
+    assert.deepEqual(await Query().query({ from: db }), [
       { e: Link.of('fred') },
       { e: Link.of('ethel') },
     ])
@@ -66,7 +66,7 @@ export const testDB = {
       match({ the: 'likes', is: x }),
     ])
 
-    assert.deepEqual(await Likes().select({ from: db }), [
+    assert.deepEqual(await Likes().query({ from: db }), [
       { x: 'pizza' },
       { x: 'opera' },
       { x: 'sushi' },
@@ -100,7 +100,7 @@ export const testDB = {
       ])
 
     assert.deepEqual(
-      new Set(await Query().select({ from: moviesDB })),
+      new Set(await Query().query({ from: moviesDB })),
       new Set([
         { director: 'James Cameron', title: 'The Terminator' },
         { director: 'James Cameron', title: 'Terminator 2: Judgment Day' },
@@ -116,7 +116,7 @@ export const testDB = {
     const RefinedQuery = Query.when(({ director }) => [
       Data.same.not({ this: 'James Cameron', as: director }),
     ])
-    assert.deepEqual(await RefinedQuery().select({ from: moviesDB }), [
+    assert.deepEqual(await RefinedQuery().query({ from: moviesDB }), [
       { director: 'John McTiernan', title: 'Predator' },
       { director: 'Mark L. Lester', title: 'Commando' },
       {
@@ -136,7 +136,7 @@ export const testDB = {
         match({ the: 'name', of: employee, is: name }),
       ])
 
-    assert.deepEqual(await Programmer().select({ from: employeeDB }), [
+    assert.deepEqual(await Programmer().query({ from: employeeDB }), [
       { name: 'Hacker Alyssa P' },
       { name: 'Fect Cy D' },
     ])
@@ -161,7 +161,7 @@ export const testDB = {
         Employee({ this: manager, name: supervisor }),
       ])
     assert.deepEqual(
-      new Set(await Supervisor().select({ from: employeeDB })),
+      new Set(await Supervisor().query({ from: employeeDB })),
       new Set([
         { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
         { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
@@ -190,7 +190,7 @@ export const testDB = {
       Data.greater({ this: salary, than: 30_000 }),
     ])
 
-    assert.deepEqual(await Above30K().select({ from: employeeDB }), [
+    assert.deepEqual(await Above30K().query({ from: employeeDB }), [
       { name: 'Bitdiddle Ben', salary: 60_000 },
       { name: 'Hacker Alyssa P', salary: 40_000 },
       { name: 'Fect Cy D', salary: 35_000 },
@@ -202,7 +202,7 @@ export const testDB = {
       Data.less({ this: salary, than: 100_000 }),
     ])
 
-    assert.deepEqual(await Between30_100K().select({ from: employeeDB }), [
+    assert.deepEqual(await Between30_100K().query({ from: employeeDB }), [
       { name: 'Bitdiddle Ben', salary: 60_000 },
       { name: 'Hacker Alyssa P', salary: 40_000 },
       { name: 'Fect Cy D', salary: 35_000 },
@@ -244,7 +244,7 @@ export const testDB = {
         ],
       }))
 
-    assert.deepEqual(await Query().select({ from: employeeDB }), [
+    assert.deepEqual(await Query().query({ from: employeeDB }), [
       { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
       { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
       { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
@@ -262,7 +262,7 @@ export const testDB = {
         match.not({ the: 'job', of: employee, is: 'Computer programmer' }),
       ])
 
-    assert.deepEqual(await Query().select({ from: employeeDB }), [
+    assert.deepEqual(await Query().query({ from: employeeDB }), [
       { name: 'Tweakit Lem E' },
     ])
   },

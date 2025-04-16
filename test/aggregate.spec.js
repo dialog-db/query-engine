@@ -1,52 +1,21 @@
-// @ts-nocheck
-import * as DB from 'datalogia'
-import { Task, Link, $ } from 'datalogia'
-import { rule } from '../src/rule.js'
+import { Memory, $, deduce, match, Task, Link } from './lib.js'
 
 /**
  * @type {import('entail').Suite}
  */
 export const testAggregate = {
-  'skip popularProfile': async (assert) => {
-    const follower = DB.link()
-    const follows = DB.link()
-
-    const operand = DB.link()
-    const Same = rule({
-      case: { as: $ },
-    })
-
-    const Follower = rule({
-      case: { follower: follower, follows: follows },
-      when: [{ Case: [follower, 'follows', follows] }],
-    })
-
-    const id = DB.link()
-    const profile = DB.link()
-    const c = DB.integer()
-    const popularProfile = rule({
-      case: { id },
-      when: [
-        DB.match([id, 'profile', DB._]),
-        Follower.match({ follower: profile, follows: id }),
-        // @ts-expect-error - we do not yet have aggregators
-        Same.match({ this: c, as: count.of(profile) }),
-        c.match({ '>': 3 }),
-      ],
-    })
-  },
   'aggregate items': (assert) =>
     Task.spawn(function* () {
-      const groceries = DB.Link.of({ name: 'Groceries' })
-      const milk = DB.Link.of({ title: 'Buy Milk' })
-      const eggs = DB.Link.of({ title: 'Buy Eggs' })
-      const bread = DB.Link.of({ title: 'Buy Bread' })
+      const groceries = Link.of({ name: 'Groceries' })
+      const milk = Link.of({ title: 'Buy Milk' })
+      const eggs = Link.of({ title: 'Buy Eggs' })
+      const bread = Link.of({ title: 'Buy Bread' })
 
-      const chores = DB.Link.of({ name: 'Chores' })
-      const laundry = DB.Link.of({ title: 'Do Laundry' })
-      const dishes = DB.Link.of({ title: 'Do Dishes' })
+      const chores = Link.of({ name: 'Chores' })
+      const laundry = Link.of({ title: 'Do Laundry' })
+      const dishes = Link.of({ title: 'Do Dishes' })
 
-      const db = DB.Memory.create([
+      const db = Memory.create([
         [groceries, 'name', 'Groceries'],
         [milk, 'title', 'Buy Milk'],
         [eggs, 'title', 'Buy Eggs'],
@@ -61,26 +30,25 @@ export const testAggregate = {
         [chores, 'todo', dishes],
       ])
 
-      const list = DB.link()
-      const item = DB.link()
-      const title = DB.string()
-      const name = DB.string()
-      const todo = DB.variable()
-
-      const match = yield* DB.query(db, {
-        select: {
-          name,
-          item: [{ todo: item, title }],
-        },
-        where: [
-          DB.match([list, 'name', name]),
-          DB.match([list, 'todo', item]),
-          DB.match([item, 'title', title]),
-          // includes(todo, item),
-        ],
+      const Todo = deduce({
+        this: Object,
+        name: String,
+        task: Object,
+        title: String,
       })
+        .where(($) => [
+          match({ the: 'name', of: $.this, is: $.name }),
+          match({ the: 'todo', of: $.this, is: $.task }),
+          match({ the: 'title', of: $.task, is: $.title }),
+        ])
+        .select(({ name, task, title }) => ({
+          name,
+          item: [{ todo: task, title }],
+        }))
 
-      assert.deepEqual(match, [
+      const results = yield* Todo().query({ from: db })
+
+      assert.deepEqual(results, [
         {
           name: 'Groceries',
           item: [
@@ -101,9 +69,9 @@ export const testAggregate = {
 
   'double aggregate': (assert) =>
     Task.spawn(function* () {
-      const lib = DB.Link.of({ name: 'datalogia' })
-      const tags = DB.Link.of({ tags: {} })
-      const files = DB.Link.of({ files: {} })
+      const lib = Link.of({ name: 'datalogia' })
+      const tags = Link.of({ tags: {} })
+      const files = Link.of({ files: {} })
 
       const source = {
         name: 'synopsys',
@@ -126,16 +94,16 @@ export const testAggregate = {
         types: [{ './src/lib.js': './dist/lib.d.ts' }],
       }
 
-      const db = DB.Memory.create([])
-      yield* DB.transact(db, [{ Import: source }])
+      const db = Memory.create([])
+      yield* db.transact([{ Import: source }])
 
-      const tag = DB.variable()
-      const file = DB.variable()
-      const title = DB.string()
-      const _tags = DB.link()
-      const _tagAt = DB.string()
-      const _files = DB.link()
-      const _filesAt = DB.string()
+      // const tag = DB.variable()
+      // const file = DB.variable()
+      // const title = DB.string()
+      // const _tags = DB.link()
+      // const _tagAt = DB.string()
+      // const _files = DB.link()
+      // const _filesAt = DB.string()
 
       // const match = yield* DB.query(db, {
       //   select: {
@@ -151,39 +119,66 @@ export const testAggregate = {
       //     DB.match([_files, _filesAt, file]),
       //   ],
       // })
-      const name = DB.string()
-      const at = DB.string()
-      const keyword = DB.string()
-      const dependency = DB.string()
-      const version = DB.string()
-      const entity = DB.link()
-      const dependencies = DB.link()
-      const keywords = DB.link()
-      const score = DB.variable()
-      const dev = DB.boolean()
-      const nil = DB.variable()
+      // const name = DB.string()
+      // const at = DB.string()
+      // const keyword = DB.string()
+      // const dependency = DB.string()
+      // const version = DB.string()
+      // const entity = DB.link()
+      // const dependencies = DB.link()
+      // const keywords = DB.link()
+      // const score = DB.variable()
+      // const dev = DB.boolean()
+      // const nil = DB.variable()
 
-      const selection = yield* DB.query(db, {
-        select: {
-          name,
-          keywords: [{ at, keyword }],
-          dependencies: [{ name: dependency, version }],
-          null: nil,
-          score,
-          dev,
-        },
-        where: [
-          { Case: [entity, 'name', name] },
-          { Case: [entity, 'null', nil] },
-          { Case: [entity, 'dependencies', dependencies] },
-          { Case: [entity, 'keywords', keywords] },
-          { Case: [keywords, at, keyword] },
-          { Case: [dependencies, dependency, version] },
-          { Case: [entity, 'null', nil] },
-          { Case: [entity, 'score', score] },
-          { Case: [entity, 'dev', dev] },
-        ],
+      const Package = deduce({
+        this: Object,
+        name: String,
+        keywords: Object,
+        keyword_at: String,
+        keyword: String,
+        dependencies: Object,
+        dependency: String,
+        dependency_version: String,
+        null: { Null: {} },
+        score: BigInt,
+        dev: Boolean,
       })
+        .where(($) => [
+          match({ the: 'name', of: $.this, is: $.name }),
+          match({ the: 'null', of: $.this, is: $.null }),
+          match({ the: 'dependencies', of: $.this, is: $.dependencies }),
+          match({
+            the: $.dependency,
+            of: $.dependencies,
+            is: $.dependency_version,
+          }),
+          match({ the: 'keywords', of: $.this, is: $.keywords }),
+          match({ the: $.keyword_at, of: $.keywords, is: $.keyword }),
+          match({ the: 'score', of: $.this, is: $.score }),
+          match({ the: 'dev', of: $.this, is: $.dev }),
+        ])
+        .select(
+          ({
+            name,
+            keyword,
+            keyword_at: at,
+            dependency,
+            dependency_version: version,
+            null: nil,
+            score,
+            dev,
+          }) => ({
+            name,
+            keywords: [{ at, keyword }],
+            dependencies: [{ name: dependency, version }],
+            null: nil,
+            score,
+            dev,
+          })
+        )
+
+      const selection = yield* Package().query({ from: db })
 
       assert.deepEqual(selection, [
         {
@@ -266,38 +261,31 @@ export const testAggregate = {
           tags: ['devops', 'automation', 'continuous integration'],
         },
       ]
-      const db = DB.Memory.create([])
-      yield* DB.transact(db, [{ Import: { source } }])
+      const db = Memory.create([])
+      yield* db.transact([{ Import: { source } }])
 
-      const entity = DB.link()
-      const title = DB.string()
-      const author = DB.string()
-      const tags = DB.link()
-      const tag = DB.variable()
-
-      const selection = yield* DB.query(db, {
-        select: {
-          '/': entity,
+      const Fact = deduce({
+        this: Object,
+        title: String,
+        author: String,
+        tags: Object,
+        tag: String,
+      })
+        .where(($) => [
+          match({ the: 'title', of: $.this, is: $.title }),
+          match({ the: 'author', of: $.this, is: $.author }),
+          match({ the: 'tags', of: $.this, is: $.tags }),
+          match({ of: $.tags, is: $.tag }),
+        ])
+        .select(({ this: self, title, author, tags, tag }) => ({
+          '/': self,
           title,
           author,
           tags: [tag],
           'tags/': tags,
-        },
-        where: [
-          {
-            Case: [entity, 'title', title],
-          },
-          {
-            Case: [entity, 'author', author],
-          },
-          {
-            Case: [entity, 'tags', tags],
-          },
-          {
-            Case: [tags, DB._, tag],
-          },
-        ],
-      })
+        }))
+
+      const selection = yield* Fact().query({ from: db })
 
       assert.deepEqual(
         selection,

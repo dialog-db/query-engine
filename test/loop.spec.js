@@ -44,7 +44,7 @@ export const testRecursion = {
     const adam = /** @type {any} */ ('adam')
     const eve = /** @type {any} */ ('eve')
 
-    const ancestors = await Ancestor().select({
+    const ancestors = await Ancestor().query({
       from: Memory.create([
         [alice, 'child/parent', bob],
         [bob, 'child/parent', mallory],
@@ -125,7 +125,7 @@ export const testRecursion = {
     const eve = /** @type {any} */ ('eve')
     const dave = /** @type {any} */ ('dave')
 
-    const ancestors = await Ancestor().select({
+    const ancestors = await Ancestor().query({
       from: Memory.create([
         // First branch
         [alice, 'child/parent', bob],
@@ -235,7 +235,7 @@ export const testRecursion = {
       }))
 
     assert.deepEqual(
-      await Range({ from: 1, to: 5, n: $ }).select({ from: db }),
+      await Range({ from: 1, to: 5, n: $ }).query({ from: db }),
       [
         { from: 1, n: 1, to: 5 },
         { from: 1, n: 2, to: 5 },
@@ -272,7 +272,7 @@ export const testRecursion = {
       match({ the: 'name', of: is, is: name }),
     ])
 
-    const result = await NestRecursive().select({ from: db })
+    const result = await NestRecursive().query({ from: db })
 
     assert.deepEqual(result, [
       { of: id(0), is: id(1), name: 'a' },
@@ -296,7 +296,7 @@ export const testRecursion = {
         match({ the: 'name', of: node, is: name }),
       ])
 
-    assert.deepEqual(await RootedRecursion().select({ from: db }), [
+    assert.deepEqual(await RootedRecursion().query({ from: db }), [
       { node: id(1), name: 'a' },
       { node: id(2), name: 'b' },
       { node: id(3), name: 'c' },
@@ -330,7 +330,7 @@ export const testRecursion = {
         }),
       ])
 
-    assert.deepEqual(await Query().select({ from: db }), [
+    assert.deepEqual(await Query().query({ from: db }), [
       { each: id(1), name: 'a', next: id(2) },
       { each: id(2), name: 'b', next: id(3) },
       // @ts-expect-error
@@ -360,7 +360,7 @@ export const testRecursion = {
         match({ the: 'name', of: node, is: name }),
       ])
 
-    assert.deepEqual(await RootedRecursion().select({ from: db }), [
+    assert.deepEqual(await RootedRecursion().query({ from: db }), [
       {
         node: id(1),
         name: 'a',

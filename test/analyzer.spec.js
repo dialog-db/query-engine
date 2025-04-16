@@ -1,4 +1,4 @@
-import { Link, $, API, Memory, Analyzer } from './lib.js'
+import { Link, $, API, Memory, Analyzer, Task } from './lib.js'
 import * as Inspector from './inspector.js'
 
 /**
@@ -1515,7 +1515,7 @@ export const testAnalyzer = {
     ])
     const inspector = Inspector.from(source)
 
-    assert.deepEqual(await plan.select({ from: inspector }), [
+    assert.deepEqual(await Task.perform(plan.query({ from: inspector })), [
       { person: Link.of({ 'person/name': 'Irakli' }), name: 'Irakli' },
     ])
 

@@ -20,16 +20,16 @@ const alice = {
  */
 export const testRules = {
   'unifying variables': async (assert) => {
-    assert.deepEqual(await same({ this: 1, as: $.q }).select({ from: db }), [
+    assert.deepEqual(await same({ this: 1, as: $.q }).query({ from: db }), [
       { this: 1, as: 1 },
     ])
 
-    assert.deepEqual(await same({ this: $.q, as: 2 }).select({ from: db }), [
+    assert.deepEqual(await same({ this: $.q, as: 2 }).query({ from: db }), [
       { this: 2, as: 2 },
     ])
 
     assert.throws(
-      () => same({ this: $.q, as: $.q2 }).select({ from: db }),
+      () => same({ this: $.q, as: $.q2 }).query({ from: db }),
       /Rule application requires binding for \?this/
     )
   },
@@ -45,7 +45,7 @@ export const testRules = {
       ]
     )
 
-    assert.deepEqual(await Alyssa().select({ from: db }), [
+    assert.deepEqual(await Alyssa().query({ from: db }), [
       { of: Memory.entity(1), name: 'Hacker Alyssa P' },
     ])
   },
@@ -66,7 +66,7 @@ export const testRules = {
       ])
 
     assert.deepEqual(
-      new Set(await Query().select({ from: db })),
+      new Set(await Query().query({ from: db })),
       new Set([{ name: 'Bitdiddle Ben' }, { name: 'Warbucks Oliver' }])
     )
   },
@@ -129,7 +129,7 @@ export const testRules = {
         ]
       )
 
-    const matches = await LivesNear().select({ from: db })
+    const matches = await LivesNear().query({ from: db })
 
     assert.deepEqual(
       matches.map((match) => JSON.stringify(match)).sort(),
@@ -169,7 +169,7 @@ export const testRules = {
         Supervisor({ employee: $employee, name: supervisor }),
       ])
 
-    assert.deepEqual(await Query().select({ from: db }), [
+    assert.deepEqual(await Query().query({ from: db }), [
       { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
       { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
       { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
@@ -201,13 +201,13 @@ export const testRules = {
         Person({ this: $manager, name: manager }),
       ])
 
-    assert.deepEqual(await Manages().select({ from: Memory.create([alice]) }), [
+    assert.deepEqual(await Manages().query({ from: Memory.create([alice]) }), [
       { manager: 'Alice', employee: 'Bob' },
       { manager: 'Bob', employee: 'Mallory' },
     ])
 
     assert.deepEqual(
-      await Manages({ employee: 'Bob', manager: $ }).select({
+      await Manages({ employee: 'Bob', manager: $ }).query({
         from: Memory.create([alice]),
       }),
       [{ manager: 'Alice', employee: 'Bob' }]

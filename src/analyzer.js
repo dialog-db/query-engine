@@ -930,10 +930,12 @@ export class RuleApplication {
   /**
    * Runs this rule application as a query in on a given `input`.
    *
+   * @template {API.Selector} [Selector=Match]
    * @param {object} input
    * @param {API.Querier} input.from
+   * @param {Selector} [input.selector]
    */
-  select(input) {
+  query(input) {
     return Task.perform(this.prepare().query(input))
   }
 
@@ -2212,12 +2214,12 @@ class RuleApplicationPlan {
   }
 
   /**
+   * @template {API.Selector} [Selector=Match]
    * @param {object} input
    * @param {API.Querier} input.from
+   * @param {Selector} [input.selector]
    */
-  *query({ from: source }) {
-    const { match: selector } = this
-
+  *query({ from: source, selector = /** @type {Selector} */ (this.match) }) {
     const frames = yield* this.execute({
       source,
       self: this.plan,
@@ -2225,15 +2227,7 @@ class RuleApplicationPlan {
       recur: [], // Array for pairs of [nextBindings, originalContext]
     })
 
-    return Selector.select(/** @type {Match} */ (selector), frames)
-  }
-
-  /**
-   * @param {object} source
-   * @param {API.Querier} source.from
-   */
-  select(source) {
-    return Task.perform(this.query(source))
+    return Selector.select(/** @type {Selector} */ (selector), frames)
   }
 
   toDebugString() {

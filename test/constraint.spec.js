@@ -22,7 +22,7 @@ export const testConstraints = {
         }),
       ])
 
-    assert.deepEqual(await Piz().select({ from: db }), [{ word: 'pizza' }])
+    assert.deepEqual(await Piz().query({ from: db }), [{ word: 'pizza' }])
   },
 
   'make pattern rule': async (assert) => {
@@ -38,31 +38,31 @@ export const testConstraints = {
       ])
 
     assert.deepEqual(
-      await Content({ match: 'piz*', word: $ }).select({ from: db }),
+      await Content({ match: 'piz*', word: $ }).query({ from: db }),
       [{ word: 'pizza', match: 'piz*' }]
     )
 
     assert.deepEqual(
-      await Content.match({ match: 'piz%' }).select({ from: db }),
+      await Content.match({ match: 'piz%' }).query({ from: db }),
       []
     )
 
     assert.deepEqual(
-      await Content.match({ match: 'Piz*' }).select({ from: db }),
+      await Content.match({ match: 'Piz*' }).query({ from: db }),
       []
     )
 
     assert.deepEqual(
-      await Content.match({ match: 'piz\\*' }).select({ from: db }),
+      await Content.match({ match: 'piz\\*' }).query({ from: db }),
       []
     )
     assert.deepEqual(
-      await Content({ match: 'piz?a', word: $ }).select({ from: db }),
+      await Content({ match: 'piz?a', word: $ }).query({ from: db }),
       [{ word: 'pizza', match: 'piz?a' }]
     )
 
     assert.deepEqual(
-      await Content({ match: 'store/*', word: $ }).select({ from: db }),
+      await Content({ match: 'store/*', word: $ }).query({ from: db }),
       [
         { word: 'store/*', match: 'store/*' },
         { word: 'store/add', match: 'store/*' },
@@ -70,7 +70,7 @@ export const testConstraints = {
     )
 
     assert.deepEqual(
-      await Content({ match: '*', word: $ }).select({ from: db }),
+      await Content({ match: '*', word: $ }).query({ from: db }),
       [
         { word: 'pizza', match: '*' },
         { word: 'store/*', match: '*' },
@@ -93,7 +93,7 @@ export const testConstraints = {
         }),
       ])
 
-    assert.deepEqual(await Content().select({ from: db }), [
+    assert.deepEqual(await Content().query({ from: db }), [
       { word: 'store/*' },
       { word: '*' },
     ])
@@ -111,6 +111,6 @@ export const testConstraints = {
         }),
       ])
 
-    assert.deepEqual(await Content().select({ from: db }), [{ word: '*' }])
+    assert.deepEqual(await Content().query({ from: db }), [{ word: '*' }])
   },
 }

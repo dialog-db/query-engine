@@ -275,7 +275,7 @@ export const testEvaluation = {
       },
     })
 
-    const result = await rule.apply().select({ from: db })
+    const result = await rule.apply().query({ from: db })
 
     assert.deepEqual(result, [
       {

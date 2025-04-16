@@ -523,6 +523,11 @@ export type EveryBuilder<T extends RuleDescriptor> = (
   variables: InferRuleVariables<T> & { _: Variable<any> }
 ) => EveryView
 
+export type ProjectionBuilder<
+  T extends RuleDescriptor,
+  Projection extends Selector,
+> = (variables: InferRuleVariables<T>) => Projection
+
 export type WhenView = EveryView | SomeView
 export type EveryView = ConjunctView[]
 export type ConjunctView = Conjunct | MatchView<unknown> | void

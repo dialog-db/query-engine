@@ -15,7 +15,7 @@ export const testMore = {
 
     const job = 'Computer programmer'
     assert.deepEqual(
-      await Employee({ job, name: Employee.$.name }).select({ from: testDB }),
+      await Employee({ job, name: Employee.$.name }).query({ from: testDB }),
       [
         { job, name: 'Hacker Alyssa P' },
         { job, name: 'Fect Cy D' },
@@ -29,7 +29,7 @@ export const testMore = {
       ]
     )
 
-    assert.deepEqual(await ComputerPeople().select({ from: testDB }), [
+    assert.deepEqual(await ComputerPeople().query({ from: testDB }), [
       { name: 'Bitdiddle Ben', job: 'Computer wizard' },
       { name: 'Hacker Alyssa P', job: 'Computer programmer' },
       { name: 'Fect Cy D', job: 'Computer programmer' },
@@ -59,7 +59,7 @@ export const testMore = {
         Employee({ this: manager, name: supervisor, salary: _ }),
       ])
 
-    assert.deepEqual(await Supervisor().select({ from: testDB }), [
+    assert.deepEqual(await Supervisor().query({ from: testDB }), [
       { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
       { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
       { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
@@ -71,7 +71,7 @@ export const testMore = {
     ])
 
     assert.deepEqual(
-      await Supervisor.match({ employee: $.q }).select({ from: testDB }),
+      await Supervisor.match({ employee: $.q }).query({ from: testDB }),
       [
         { employee: 'Hacker Alyssa P' },
         { employee: 'Fect Cy D' },
@@ -84,7 +84,7 @@ export const testMore = {
       ]
     )
 
-    assert.deepEqual(await Supervisor().select({ from: testDB }), [
+    assert.deepEqual(await Supervisor().query({ from: testDB }), [
       { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
       { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
       { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
@@ -99,7 +99,7 @@ export const testMore = {
       await Supervisor.match({
         ...Supervisor.$,
         supervisor: 'Warbucks Oliver',
-      }).select({
+      }).query({
         from: testDB,
       }),
       [
@@ -127,7 +127,7 @@ export const testMore = {
       ]
     )
 
-    assert.deepEqual(await NonPoorEmployees().select({ from: testDB }), [
+    assert.deepEqual(await NonPoorEmployees().query({ from: testDB }), [
       { name: 'Bitdiddle Ben', salary: 60_000 },
       { name: 'Hacker Alyssa P', salary: 40_000 },
       { name: 'Fect Cy D', salary: 35_000 },
@@ -139,7 +139,7 @@ export const testMore = {
       Data.less({ this: employee.salary, than: 100_000 }),
     ])
 
-    assert.deepEqual(await L2Employees().select({ from: testDB }), [
+    assert.deepEqual(await L2Employees().query({ from: testDB }), [
       { name: 'Bitdiddle Ben', salary: 60_000 },
       { name: 'Hacker Alyssa P', salary: 40_000 },
       { name: 'Fect Cy D', salary: 35_000 },
@@ -164,7 +164,7 @@ export const testMore = {
       Text.includes({ this: address, slice: 'Campridge' }),
     ])
 
-    assert.deepEqual(await WhoLivesInCambridge().select({ from: testDB }), [
+    assert.deepEqual(await WhoLivesInCambridge().query({ from: testDB }), [
       { name: 'Hacker Alyssa P', address: 'Campridge, Mass Ave 78' },
       { name: 'Fect Cy D', address: 'Campridge, Ames Street 3' },
     ])
@@ -205,7 +205,7 @@ export const testMore = {
         Text.not({ this: $.supervisorJob, pattern: 'Computer*' }),
       ])
 
-    assert.deepEqual(await Query().select({ from: testDB }), [
+    assert.deepEqual(await Query().query({ from: testDB }), [
       {
         employeeName: 'Bitdiddle Ben',
         supervisorName: 'Warbucks Oliver',

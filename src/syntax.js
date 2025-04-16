@@ -723,7 +723,7 @@ function* iterateDisjuncts(source) {
 /**
  * @template {API.RuleDescriptor} Descriptor
  * @template {API.RuleDescriptor} Locals
- * @extends {Callable<(terms?: API.InferRuleTerms<Descriptor>) => Query<Descriptor, Locals>>}
+ * @extends {Callable<(terms?: API.InferRuleTerms<Descriptor>) => Application<Descriptor, Locals>>}
  */
 class Deduction extends Callable {
   /** @type {API.Deduction<API.InferRuleVariables<Descriptor>>|undefined} */
@@ -874,7 +874,7 @@ class Deduction extends Callable {
   /**
    * @template {Partial<API.InferRuleTerms<Descriptor>>} Selection
    * @param {Selection} [terms]
-   * @returns {Query<{[K in keyof Selection]: Descriptor[K]}, Locals>}
+   * @returns {Application<{[K in keyof Selection]: Descriptor[K]}, Locals>}
    */
   match(terms) {
     const match =
@@ -882,7 +882,16 @@ class Deduction extends Callable {
         terms ?? this.form.match
       )
 
-    return new Query(match, this)
+    return new Application(match, this)
+  }
+
+  /**
+   * @template {API.Selector} Selector
+   * @param {API.ProjectionBuilder<Descriptor & Locals, Selector>} build
+   * @returns {Select<Descriptor, Locals, Selector>}
+   */
+  select(build) {
+    return new Select(build, this)
   }
 
   /**
@@ -905,18 +914,21 @@ class Deduction extends Callable {
 /**
  * @template {API.RuleDescriptor} Descriptor
  * @template {API.RuleDescriptor} Locals
+ * @template {API.Selector} [Selector=API.InferRuleVariables<Descriptor>]
  * @param {API.Every} where
  */
-class Query {
+class Application {
   /** @type {Analyzer.RuleApplication<API.InferRuleVariables<Descriptor>>|undefined} */
   #form
   /**
    * @param {API.InferRuleVariables<Descriptor>} match
    * @param {Deduction<Descriptor, Locals>} rule
+   * @param {Selector} [selector]
    */
-  constructor(match, rule) {
+  constructor(match, rule, selector) {
     this.match = match
     this.rule = rule
+    this.selector = selector
   }
 
   get form() {
@@ -931,11 +943,53 @@ class Query {
   /**
    * @param {{ from: API.Querier }} source
    */
-  select(source) {
-    return this.form.select(source)
+  query(source) {
+    return this.form.query(
+      this.selector ? { ...source, selector: this.selector } : source
+    )
   }
 
   *[Symbol.iterator]() {
     yield this.rule.apply(this.match)
+  }
+}
+
+/**
+ * @template {API.RuleDescriptor} Descriptor
+ * @template {API.RuleDescriptor} Locals
+ * @template {API.Selector} Selector
+ * @extends {Callable<(terms?: API.InferRuleTerms<Descriptor>) => Application<Descriptor, Locals, Selector>>}
+ */
+class Select extends Callable {
+  /**
+   * @param {API.ProjectionBuilder<Descriptor & Locals, Selector>} build
+   * @param {Deduction<Descriptor, Locals>} rule
+   */
+  constructor(build, rule) {
+    super(
+      /** @type {typeof this.match} */
+      (terms) => this.match(terms)
+    )
+    this.rule = rule
+    this.build = build
+  }
+
+  /**
+   * @template {Partial<API.InferRuleTerms<Descriptor>>} Selection
+   * @param {Selection} [terms]
+   * @returns {Application<{[K in keyof Selection]: Descriptor[K]}, Locals, Selector>}
+   */
+  match(terms) {
+    const variables = Deduce.buildVariables({
+      ...this.rule.locals,
+      ...this.rule.descriptor,
+    })
+
+    const match =
+      /** @type {API.InferRuleVariables<{[K in keyof Selection & keyof Descriptor]: Descriptor[K]}>} */ (
+        terms ?? this.rule.form.match
+      )
+
+    return new Application(match, this.rule, this.build(variables))
   }
 }

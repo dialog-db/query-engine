@@ -18,7 +18,7 @@ export const testPlan = {
       match({ the: 'person/name', of: actor, is: 'Arnold Schwarzenegger' }),
     ])
 
-    const result = await await Movie().select({ from: source })
+    const result = await await Movie().query({ from: source })
 
     assert.deepEqual(result.length, 5)
 

@@ -30,7 +30,7 @@ export const testSelector = {
       Delegation.match({ space, can: 'store/add', cid: store }),
     ])
 
-    const result = await Permission().select({ from: proofsDB })
+    const result = await Permission().query({ from: proofsDB })
     assert.deepEqual(result, [
       {
         space: 'did:key:zAlice',
@@ -72,7 +72,7 @@ export const testSelector = {
       Store.match({ space, cid: store }),
     ])
 
-    assert.deepEqual(await Query().select({ from: proofsDB }), [
+    assert.deepEqual(await Query().query({ from: proofsDB }), [
       {
         space: 'did:key:zAlice',
         upload: 'bafy...upload',
