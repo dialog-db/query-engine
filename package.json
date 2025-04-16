@@ -1,6 +1,6 @@
 {
-  "name": "datalogia",
-  "version": "0.9.2",
+  "name": "@dialog-db/query",
+  "version": "0.20.0",
   "description": "Datalog query engine inspired by Datomic",
   "main": "index.js",
   "type": "module",
@@ -29,18 +29,27 @@
   "exports": {
     ".": {
       "types": "./dist/src/lib.d.ts",
-      "import": "./src/lib.js",
-      "default": "./src/lib.js"
+      "import": "./src/lib.js"
+    },
+    "./syntax": {
+      "types": "./dist/src/syntax.d.ts",
+      "import": "./src/syntax.js"
+    },
+    "./source/inspector": {
+      "types": "./dist/src/source/inspector.d.ts",
+      "import": "./src/source/inspector.js"
+    },
+    "./source/memory": {
+      "types": "./dist/src/source/memory.d.ts",
+      "import": "./src/source/memory.js"
     },
     "./task": {
       "types": "./dist/src/task.d.ts",
-      "import": "./src/task.js",
-      "default": "./src/task.js"
+      "import": "./src/task.js"
     },
     "./variable": {
       "types": "./dist/src/variable.d.ts",
-      "import": "./src/variable.js",
-      "default": "./src/variable.js"
+      "import": "./src/variable.js"
     }
   },
   "dependencies": {
@@ -53,10 +62,12 @@
     "entail": "^2.1.2",
     "playwright-test": "14.0.0",
     "prettier": "3.1.0",
-    "typescript": "5.3.3"
+    "typescript": "^5.7.3",
+    "@types/deno": "^2.0.0"
   },
   "prettier": {
     "trailingComma": "es5",
+    "experimentalTernaries": true,
     "tabWidth": 2,
     "semi": false,
     "singleQuote": true

@@ -1,5 +1,5 @@
 import * as API from './api.js'
-import { is as isLink } from './link.js'
+import { is as isLink } from './data/link.js'
 
 /**
  * Checks given `value` against the given `type` and returns `true` if type
@@ -18,9 +18,9 @@ import { is as isLink } from './link.js'
  * }
  * ```
  *
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @param {API.Type<T>} type
- * @param {API.Constant} value
+ * @param {API.Scalar} value
  * @returns {value is T}
  */
 export const isTypeOf = (type, value) => !unify(type, infer(value)).error
@@ -29,9 +29,9 @@ export const isTypeOf = (type, value) => !unify(type, infer(value)).error
  * Checks given `value` against the given `type` and returns either an ok
  * result or type error.
  *
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @param {API.Type<T>} type
- * @param {API.Constant} value
+ * @param {API.Scalar} value
  * @returns {API.Result<API.Type, TypeError>}
  */
 export const check = (type, value) => unify(type, infer(value))
@@ -45,8 +45,8 @@ export const check = (type, value) => unify(type, infer(value))
  * @returns {API.Result<API.Type, TypeError>}
  */
 export const unify = (type, other) => {
-  const expect = toDiscriminant(type)
-  const actual = toDiscriminant(other)
+  const expect = toTypeName(type)
+  const actual = toTypeName(other)
   if (expect === actual) {
     return { ok: type }
   } else {
@@ -61,7 +61,7 @@ export const unify = (type, other) => {
  * runtime if the value passed is not a constant type, which should not happen
  * if you type check the code but could if used from unchecked JS code.
  *
- * @param {API.Constant} value
+ * @param {API.Scalar} value
  * @returns {API.Type}
  */
 export const infer = (value) => {
@@ -73,11 +73,11 @@ export const infer = (value) => {
     case 'bigint':
       return Int64
     case 'number':
-      return Number.isInteger(value)
-        ? Int32
-        : Number.isFinite(value)
-          ? Float32
-          : unreachable(`Number ${value} can not be inferred`)
+      return (
+        Number.isInteger(value) ? Int32
+        : Number.isFinite(value) ? Float32
+        : unreachable(`Number ${value} can not be inferred`)
+      )
     default: {
       if (value instanceof Uint8Array) {
         return Bytes
@@ -97,7 +97,7 @@ export const infer = (value) => {
 /**
  * Returns JSON representation of the given type.
  *
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @param {API.Type<T>} type
  * @returns {API.Type<T>}
  */
@@ -108,7 +108,7 @@ export const toJSON = (type) => /** @type {any} */ ({ [toString(type)]: {} })
  *
  * @param {API.Type} type
  */
-export const toString = (type) => toDiscriminant(type)
+export const toString = (type) => toTypeName(type)
 
 export { toJSON as inspect }
 
@@ -116,25 +116,25 @@ export { toJSON as inspect }
  * Returns the discriminant of the given type.
  *
  * @param {API.Type} type
- * @returns {string & keyof API.Type}
+ * @returns {API.TypeName}
  */
-export const toDiscriminant = (type) => {
+export const toTypeName = (type) => {
   if (type.Boolean) {
-    return 'Boolean'
+    return 'boolean'
   } else if (type.Bytes) {
-    return 'Bytes'
+    return 'bytes'
   } else if (type.Float32) {
-    return 'Float32'
+    return 'float32'
   } else if (type.Int32) {
-    return 'Int32'
+    return 'int32'
   } else if (type.Int64) {
-    return 'Int64'
+    return 'int64'
   } else if (type.Link) {
-    return 'Link'
+    return 'reference'
   } else if (type.String) {
-    return 'String'
+    return 'string'
   } else if (type.Null) {
-    return 'Null'
+    return 'null'
   } else {
     throw new TypeError(`Invalid type ${type}`)
   }
@@ -175,11 +175,24 @@ export const unreachable = (message) => {
 }
 
 export const Unit = /** @type {API.Unit} */ Object.freeze({})
-export const Boolean = /** @type {API.Type<boolean>} */ ({ Boolean: Unit })
-export const Int32 = /** @type {API.Type<API.Int32>} */ ({ Int32: Unit })
-export const Float32 = /** @type {API.Type<API.Float32>} */ ({ Float32: Unit })
-export const Int64 = /** @type {API.Type<API.Int64>} */ ({ Int64: Unit })
-export const String = /** @type {API.Type<string>} */ ({ String: Unit })
-export const Bytes = /** @type {API.Type<API.Bytes>} */ ({ Bytes: Unit })
-export const Link = /** @type {API.Type<API.Link>} */ ({ Link: Unit })
-export const Null = /** @type {API.Type<API.Null>} */ ({ Null: Unit })
+export const Null = /** @type {API.Type<API.Null>} */ ({ Null: { order: 0 } })
+export const Boolean = /** @type {API.Type<boolean>} */ ({
+  Boolean: { order: 1 },
+})
+export const Int32 = /** @type {API.Type<API.Int32>} */ ({
+  Int32: { order: 2 },
+})
+export const Int64 = /** @type {API.Type<API.Int64>} */ ({
+  Int64: { order: 3 },
+})
+
+export const Float32 = /** @type {API.Type<API.Float32>} */ ({
+  Float32: { order: 4 },
+})
+
+export const String = /** @type {API.Type<string>} */ ({ String: { order: 5 } })
+
+export const Bytes = /** @type {API.Type<API.Bytes>} */ ({
+  Bytes: { order: 6 },
+})
+export const Link = /** @type {API.Type<API.Link>} */ ({ Link: { order: 9 } })

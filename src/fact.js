@@ -1,6 +1,6 @@
 import * as API from './api.js'
 import * as Constant from './constant.js'
-import * as Link from './link.js'
+import * as Link from './data/link.js'
 
 /**
  * @param {API.Instantiation} source
@@ -48,7 +48,7 @@ export const derive = function* iterate(source) {
 }
 
 /**
- * @param {[API.Entity, API.Attribute, API.Constant, cause?: API.Link[]]} source
+ * @param {[API.Entity, API.Attribute, API.Scalar, cause?: API.Link[]]} source
  */
 export const create = ([entity, attribute, value, cause = []]) =>
   new Fact(entity, attribute, value, sort(cause))
@@ -61,7 +61,7 @@ const sort = (links) =>
   links.sort((left, right) => left.toString().localeCompare(right.toString()))
 
 /**
- * @param {[API.Entity, API.Attribute, API.Constant, cause?: API.Link[]]} source
+ * @param {[API.Entity, API.Attribute, API.Scalar, cause?: API.Link[]]} source
  */
 export const link = ([entity, attribute, value, cause = []]) =>
   Link.of([entity, attribute, value, sort(cause)])

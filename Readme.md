@@ -4,11 +4,10 @@ Library for querying in-memory facts using [datalog].
 
 ## Example
 
-
 ```js
-import * as DB from "datalogia"
+import { deduce, Fact } from "@dialog-db/query"
 
-export const demo = (db) => {
+export const demo = async (db) => {
   // We will be trying to find movie titles and director names for movies
   // where Arnold Schwarzenegger casted. We do not need a database schema
   // for writes but we do need schema for queries meaning we want to define
@@ -16,37 +15,37 @@ export const demo = (db) => {
 
   // We well be looking for actors and directors that are entities with
   // "person/name" attribute.
-  const Person = DB.entity({
-    "person/name": DB.string,
-  })
+  const Person = deduce({
+    this: Object,
+    name: String
+  }).where(({ name, this: person }) => [
+    Person({ the: 'person/name', of: person, is: name })
+  ])
 
   // We also define `Moive` entity with attributes for the director, cast
   // and a title.
-  const Movie = DB.entity({
-    "movie/title": DB.string,
-    "movie/director": Person,
-    "movie/cast": Person,
-  })
+  const Movie = deduce({
+    this: Object,
+    title: String,
+    director: Object,
+    cast: Object
+  }).where(({ this: movie, title, director, cast }) => [
+      Fact({ the: 'movie/title', of: movie, is: title }),
+      Fact({ the: 'movie/director', of: movie, is: director }),
+      Fact({ the: 'movie/cast', of: movie, is: cast })
+    ])
+  
+  // We want find movie titles and their directors that
+  const Query = deduce({ director: String, movie: String })
+    .with({ $director: Object, $actor: Object })
+    .where(({ movie, director, actor, $movie, $director, $actor }) => [
+      Movie.match({ title: movie, director: $director, cast: $.actor }),
+      Person({ this: $director, name: director }),
+      Porson({ this: $actor, name: 'Arnold Schwarzenegger' })
+    ])
 
-  // No we'll define set of variables used by our query
-  const director = Person()
-  const actor = Person()
-
-  const results = DB.query(db, {
-    // We want find movie titles and their directors that
-    select: {
-      director: director["person/name"],
-      movie: movie["movie/title"],
-    },
-    where: [
-      // Movie casted our actor
-      movie['movie/cast'].is(actor),
-      // Movie was directed by our director
-      movie['movie/director'].is(director),
-      // Actor is named 'Arnold Schwarzenegger
-      actor['preson/name'].is("Arnold Schwarzenegger")
-    ],
-  })
+  
+  const movies = await Query().select({ from: db })
   // [
   //   { director: 'James Cameron', movie: 'The Terminator' },
   //   { director: 'John McTiernan', movie: 'Predator' },
@@ -59,6 +58,5 @@ export const demo = (db) => {
   // ]
 }
 ```
-
 
 [datalog]: https://en.wikipedia.org/wiki/Datalog

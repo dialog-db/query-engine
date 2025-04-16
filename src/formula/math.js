@@ -1,99 +1,14 @@
 import * as API from '../api.js'
 
 /**
- * @param {API.Tuple<API.Numeric>} numbers
+ * @param {object} operands
+ * @param {API.Numeric} operands.of
+ * @param {API.Numeric} operands.with
  * @returns {API.Numeric[]}
  */
-export const sum = (numbers) => {
-  if (Array.isArray(numbers)) {
-    let total = 0
-    for (const number of numbers) {
-      if (typeof number === 'number') {
-        total += number
-      } else {
-        return []
-      }
-    }
-    return [total]
-  } else {
-    return []
-  }
-}
-
-/**
- * @param {number[]} numbers
- * @returns {number[]}
- */
-export const subtract = (numbers) => {
-  if (Array.isArray(numbers)) {
-    if (numbers.length === 0) {
-      return [-0]
-    }
-
-    const [first, ...rest] = numbers
-    if (rest.length === 0) {
-      return [-first]
-    } else {
-      let total = first
-      for (const number of rest) {
-        if (typeof number === 'number') {
-          total -= number
-        } else {
-          return []
-        }
-      }
-      return [total]
-    }
-  } else {
-    return []
-  }
-}
-
-/**
- * @param {number[]} numbers
- * @returns {number[]}
- */
-export const multiply = (numbers) => {
-  if (Array.isArray(numbers)) {
-    let total = 1
-
-    for (const number of numbers) {
-      if (typeof number === 'number') {
-        total *= number
-      } else {
-        return []
-      }
-    }
-    return [total]
-  } else {
-    return []
-  }
-}
-
-/**
- * @param {unknown} numbers
- * @returns {number[]}
- */
-export const divide = (numbers) => {
-  if (Array.isArray(numbers)) {
-    if (numbers.length === 0) {
-      return [1]
-    }
-
-    const [first, ...rest] = numbers
-    if (rest.length === 0) {
-      return [1 / first]
-    } else {
-      let total = first
-      for (const number of rest) {
-        if (typeof number === 'number' && number !== 0) {
-          total /= number
-        } else {
-          return []
-        }
-      }
-      return [total]
-    }
+export const addition = ({ of, with: by }) => {
+  if (typeof of === 'number' && typeof by === 'number') {
+    return [of + by]
   } else {
     return []
   }
@@ -101,14 +16,13 @@ export const divide = (numbers) => {
 
 /**
  * @param {object} input
- * @param {number} input.n
- * @param {number} input.by
+ * @param {API.Numeric} input.of
+ * @param {API.Numeric} input.by
+ * @returns {API.Numeric[]}
  */
-export const modulo = ({ n, by }) => {
-  if (typeof n === 'number' && typeof by === 'number' && by !== 0) {
-    return [n % by]
-  } else if (typeof n === 'bigint' && typeof by === 'bigint') {
-    return [n % by]
+export const subtraction = ({ of, by }) => {
+  if (typeof of === 'number' && typeof by === 'number') {
+    return [of - by]
   } else {
     return []
   }
@@ -116,25 +30,69 @@ export const modulo = ({ n, by }) => {
 
 /**
  * @param {object} input
- * @param {number} input.base
- * @param {number} input.exponent
+ * @param {API.Numeric} input.of
+ * @param {API.Numeric} input.by
+ * @returns {API.Numeric[]}
  */
-export const power = ({ base, exponent }) => {
-  if (typeof base === 'number' && typeof exponent === 'number') {
-    return [base ** exponent]
-  } else if (typeof base === 'bigint' && typeof exponent === 'bigint') {
-    return [base ** exponent]
+export const multiplication = ({ of, by }) => {
+  if (typeof of === 'number' && typeof by === 'number') {
+    return [of * by]
   } else {
     return []
   }
 }
 
 /**
- * @param {number} n
+ * @param {object} input
+ * @param {API.Numeric} input.of
+ * @param {API.Numeric} input.by
+ * @returns {API.Numeric[]}
  */
-export const absolute = (n) => {
-  if (typeof n === 'number') {
-    return [Math.abs(n)]
+export const division = ({ of, by }) => {
+  if (typeof of === 'number' && typeof by === 'number' && by !== 0) {
+    return [of / by]
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {object} input
+ * @param {API.Numeric} input.of
+ * @param {API.Numeric} input.by
+ * @returns {API.Numeric[]}
+ */
+export const modulo = ({ of, by }) => {
+  if (typeof of === 'number' && typeof by === 'number' && by !== 0) {
+    return [of % by]
+  } else if (typeof of === 'bigint' && typeof by === 'bigint') {
+    return [of % by]
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {object} input
+ * @param {API.Numeric} input.of
+ * @param {API.Numeric} input.by
+ */
+export const power = ({ of, by: exponent }) => {
+  if (typeof of === 'number' && typeof exponent === 'number') {
+    return [of ** exponent]
+  } else if (typeof of === 'bigint' && typeof exponent === 'bigint') {
+    return [of ** exponent]
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {number} of
+ */
+export const absolute = (of) => {
+  if (typeof of === 'number') {
+    return [Math.abs(of)]
   } else {
     return []
   }

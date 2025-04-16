@@ -1,4 +1,4 @@
-import * as Pattern from '../pattern.js'
+import * as Pattern from '../data/string/pattern.js'
 
 /**
  * @param {object} input
@@ -19,11 +19,91 @@ export const like = ({ text, pattern }) => {
 }
 
 /**
- * @param {[string, ...string[]]} value
+ * @param {object} source
+ * @param {string} source.of
+ * @param {string} source.with
  */
-export const concat = (value) => {
-  if (Array.isArray(value)) {
-    return [value.join('')]
+export const concat = ({ of, with: suffix }) => {
+  if (typeof of === 'string' && typeof suffix === 'string') {
+    return [`${of}${suffix}`]
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {string} of
+ */
+export const words = (of) => {
+  if (typeof of === 'string') {
+    return of.split(/\s+/)
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {string} of
+ */
+export const lines = (of) => {
+  if (typeof of === 'string') {
+    return of.split(/\r\n|\r|\n/g)
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {string} of
+ */
+export const toUpperCase = (of) => {
+  if (typeof of === 'string') {
+    return [of.toUpperCase()]
+  } else {
+    return []
+  }
+}
+
+/**
+ /**
+ * @param {string} of
+ */
+export const toLowerCase = (of) => {
+  if (typeof of === 'string') {
+    return [of.toLowerCase()]
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {string} of
+ */
+export const trim = (of) => {
+  if (typeof of === 'string') {
+    return [of.trim()]
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {string} of
+ */
+export const trimStart = (of) => {
+  if (typeof of === 'string') {
+    return [of.trimStart()]
+  } else {
+    return []
+  }
+}
+
+/**
+ * @param {string} of
+ */
+export const trimEnd = (of) => {
+  if (typeof of === 'string') {
+    return [of.trimEnd()]
   } else {
     return []
   }
@@ -31,83 +111,6 @@ export const concat = (value) => {
 
 /**
  * @param {string} value
- */
-export const words = (value) => {
-  if (typeof value === 'string') {
-    return value.split(/\s+/)
-  } else {
-    return []
-  }
-}
-
-/**
- * @param {unknown} value
- */
-export const lines = (value) => {
-  if (typeof value === 'string') {
-    return value.split(/\r\n|\r|\n/g)
-  } else {
-    return []
-  }
-}
-
-/**
- * @param {unknown} value
- */
-export const toUpperCase = (value) => {
-  if (typeof value === 'string') {
-    return [value.toUpperCase()]
-  } else {
-    return []
-  }
-}
-
-/**
- * @param {unknown} value
- */
-export const toLowerCase = (value) => {
-  if (typeof value === 'string') {
-    return [value.toLowerCase()]
-  } else {
-    return []
-  }
-}
-
-/**
- * @param {unknown} value
- */
-export const trim = (value) => {
-  if (typeof value === 'string') {
-    return [value.trim()]
-  } else {
-    return []
-  }
-}
-
-/**
- * @param {unknown} value
- */
-export const trimStart = (value) => {
-  if (typeof value === 'string') {
-    return [value.trimStart()]
-  } else {
-    return []
-  }
-}
-
-/**
- * @param {unknown} value
- */
-export const trimEnd = (value) => {
-  if (typeof value === 'string') {
-    return [value.trimEnd()]
-  } else {
-    return []
-  }
-}
-
-/**
- * @param {unknown} value
  */
 export const length = (value) => {
   if (typeof value === 'string') {
@@ -119,13 +122,13 @@ export const length = (value) => {
 
 /**
  * @param {object} input
- * @param {string} input.text
+ * @param {string} input.this
  * @param {string} input.slice
- * @returns {string[]}
+ * @returns {true[]}
  */
-export const includes = ({ text, slice }) => {
+export const includes = ({ this: text, slice }) => {
   if (text.includes(slice)) {
-    return [text]
+    return [true]
   } else {
     return []
   }
@@ -133,13 +136,13 @@ export const includes = ({ text, slice }) => {
 
 /**
  * @param {object} input
- * @param {string} input.text
+ * @param {string} input.of
  * @param {string} input.start
  * @param {string} input.end
  */
-export const slice = ({ text, start, end }) => {
+export const slice = ({ of, start, end }) => {
   if (typeof start === 'number' && typeof end === 'number') {
-    return [text.slice(start, end)]
+    return [of.slice(start, end)]
   } else {
     return []
   }

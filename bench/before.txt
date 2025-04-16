@@ -1,0 +1,9 @@
+Check file:///Users/gozala/Projects/datalog/bench/bench.js
+    CPU | Apple M3 Max
+Runtime | Deno 2.1.2 (aarch64-apple-darwin)
+
+file:///Users/gozala/Projects/datalog/bench/bench.js
+
+benchmark               time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------------------- ----------------------------- --------------------- --------------------------
+Run query with a join            23.2 s           0.0 (  23.1 s …   23.3 s)   23.2 s   23.3 s   23.3 s

@@ -1,7 +1,7 @@
-import * as API from './api.js'
-import { Constant } from './lib.js'
-import * as Link from './link.js'
-import * as Fact from './fact.js'
+import * as API from '../api.js'
+import { Constant } from '../lib.js'
+import * as Link from '../data/link.js'
+import * as Fact from '../fact.js'
 
 /**
  * @param {{}} source
@@ -47,8 +47,8 @@ export const toKey = (model) => toLink(model).toString()
  * @param {API.FactsSelector} selector
  * @returns {API.Task<API.Datum[], Error>}
  */
-export const scan = function* (model, { entity, attribute, value }) {
-  const key = toLink([entity ?? null, attribute ?? null, value ?? null])
+export const select = function* (model, { the, of, is }) {
+  const key = toLink([of ?? null, the ?? null, is ?? null])
   return Object.values(model.index[key.toString()] ?? {})
 }
 
@@ -188,7 +188,7 @@ class Memory {
   /**
    * @param {API.FactsSelector} selector
    */
-  scan(selector) {
-    return scan(this, selector)
+  select(selector) {
+    return select(this, selector)
   }
 }

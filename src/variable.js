@@ -1,6 +1,79 @@
 import * as API from './api.js'
 import * as Type from './type.js'
-import * as Bindings from './bindings.js'
+import * as Constant from './constant.js'
+
+export class Variable {
+  static id = 1
+  #name
+  /**
+   * @param {string|symbol} name
+   */
+  constructor(name = Symbol(), id = ++Variable.id) {
+    this['?'] = { id }
+    this.#name = name
+  }
+
+  get id() {
+    return this['?'].id
+  }
+  get name() {
+    return this.#name
+  }
+  toString() {
+    return typeof this.#name === 'symbol' ?
+        `?@${this.#name.description ?? this.id}`
+      : `?${this.#name.toString()}`
+  }
+  get [Symbol.toStringTag]() {
+    return this.toString()
+  }
+  [Symbol.for('nodejs.util.inspect.custom')]() {
+    return this.toString()
+  }
+
+  /**
+   *
+   * @param {object} context
+   * @param {number} context.id
+   */
+  with({ id }) {
+    return new Variable(this.name, id)
+  }
+}
+
+/**
+ * @param {string|symbol} name
+ */
+export const create = (name) => new Variable(name)
+
+/**
+ * @type {API.Variable<any>}
+ */
+export const _ = create('_').with({ id: 0 })
+
+/**
+ * @param {unknown} source
+ * @returns {Iterable<API.Variable>}
+ */
+export function* iterate(source) {
+  if (is(source)) {
+    yield source
+  } else if (!Constant.is(source)) {
+    for (const term of Object.values(source ?? {})) {
+      if (is(term)) {
+        yield term
+      } else if (!Constant.is(term)) {
+        yield* iterate(term)
+      }
+    }
+  }
+}
+
+/**
+ * @param {API.Variable} actual
+ * @param {API.Variable} expected
+ */
+export const equal = (actual, expected) => id(actual) === id(expected)
 
 /**
  * Predicate function that checks if given `term` is a {@link API.Variable}.
@@ -12,40 +85,13 @@ export const is = (term) =>
   typeof (/** @type {{['?']?: {id?:unknown}}} */ (term)?.['?']?.id) === 'number'
 
 /**
- * @template {API.Constant} T
- * @param {API.Variable<T>} variable
- * @returns {API.Type<T>|undefined}
- */
-export const toType = (variable) => variable['?'].type
-
-/**
  * @param {API.Variable} variable
  * @returns {API.VariableID}
  */
 export const id = (variable) => variable['?'].id
 
 /**
- * @param {API.Variable} variable
- * @returns
- */
-export const toKey = (variable) => `$${id(variable)}`
-
-/**
- *
- * @param {API.Variable} variable
- * @param {API.Constant} term
- */
-export const check = (variable, term) => {
-  const type = toType(variable)
-  if (type) {
-    return Type.check(type, term)
-  } else {
-    return { ok: Type.infer(term) }
-  }
-}
-
-/**
- * @template {API.Constant} T
+ * @template {API.Scalar} T
  * @param {API.Variable<T>} variable
  * @returns {API.Variable<T>}
  */
@@ -70,105 +116,30 @@ export { toJSON as inspect }
 export const toString = (variable) => JSON.stringify(toJSON(variable))
 
 /**
- * @template {API.Constant} T
- * @param {API.Type<T>} [type]
- * @returns {Variable<T>}
- */
-export const variable = (type) => new Variable(type)
-export const boolean = Object.assign(() => variable(Type.Boolean), Type.Boolean)
-export const int32 = Object.assign(() => variable(Type.Int32), Type.Int32)
-export const int64 = () => Object.assign(variable(Type.Int64), Type.Int64)
-export const float32 = () => Object.assign(variable(Type.Float32), Type.Float32)
-export const string = Object.assign(() => variable(Type.String), Type.String)
-
-export const bytes = Object.assign(() => variable(Type.Bytes), Type.Bytes)
-export const link = Object.assign(() => variable(Type.Link), Type.Link)
-
-export const entity = Object.assign(() => variable(Type.Link), Type.Link)
-export { int32 as integer, float32 as float }
-
-/**
- * @template {API.Constant} T
- * @implements {API.Variable<T>}
- */
-class Variable {
-  static id = 0
-
-  /**
-   * @param {API.Type<T>} [type]
-   */
-  constructor(type, id = ++Variable.id) {
-    this.type = type
-    this.id = id
-    this['?'] = this
-  }
-  toJSON() {
-    return toJSON(this)
-  }
-
-  /**
-   * @param {(value: T) => boolean} predicate
-   * @returns {API.Clause}
-   */
-  confirm(predicate) {
-    return new Constraint({ variable: this, predicate })
-  }
-}
-
-/**
- * @template {API.Constant} T
- * @param {API.Variable<T>} variable
- * @param {(value:T) => boolean} predicate
- * @returns {API.Clause}
- */
-export const confirm = (variable, predicate) =>
-  new Constraint({ variable, predicate })
-
-/**
- * @template {API.Constant} T
- */
-class Constraint {
-  /**
-   * @param {object} model
-   * @param {API.Variable<T>} model.variable
-   * @param {(value: T) => boolean} model.predicate
-   */
-  constructor(model) {
-    this.model = model
-    this.confirm = this.confirm.bind(this)
-  }
-  get Form() {
-    return this
-  }
-  get selector() {
-    return { variable: this.model.variable }
-  }
-  /**
-   * @param {{variable: API.Variable<T>}} selector
-   * @param {API.Bindings} bindings
-   * @returns {API.Result<API.Unit, Error>}
-   */
-  confirm(selector, bindings) {
-    const value = Bindings.get(bindings, selector.variable)
-    if (value == null) {
-      return { error: new RangeError(`Unbound variable`) }
-    }
-
-    if (this.model.predicate(value)) {
-      return { ok: Type.Unit }
-    } else {
-      return { error: new Error(`Skip`) }
-    }
-  }
-}
-
-/**
- * @type {Variable<any>}
- */
-export const _ = new Variable(undefined, 0)
-
-/**
  * @param {API.Variable} variable
  * @returns {boolean}
  */
 export const isBlank = (variable) => id(variable) === 0
+
+/**
+ * @param {API.Variable} variable
+ * @param {API.Variable} to
+ * @returns {-1|0|1}
+ */
+export const compare = ({ ['?']: { id: left } }, { ['?']: { id: right } }) => {
+  return (
+    left < right ? -1
+    : left > right ? 1
+    : 0
+  )
+}
+
+/**
+ * @param {API.Variable} variable
+ */
+export const toDebugString = (variable) => {
+  const name = `${variable}`.slice(1)
+  return /^[a-zA-Z_]\w*$/.test(name) ?
+      `$.${name}`
+    : `$[${JSON.stringify(name)}]`
+}

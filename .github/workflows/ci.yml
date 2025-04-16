@@ -23,15 +23,15 @@ jobs:
     strategy:
       matrix:
         node-version:
-          - 18
+          - 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
         with:
           version: 'latest'
       - name: Setup node ${{ matrix.node-version }}
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
@@ -48,18 +48,18 @@ jobs:
     strategy:
       matrix:
         node-version:
-          - 18
+          - 20
         os:
           - ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
         with:
           version: 'latest'
       - name: Setup node ${{ matrix.node-version }}
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
@@ -73,17 +73,16 @@ jobs:
     strategy:
       matrix:
         node-version:
-          - 18
+          - 20
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
         with:
           version: 'latest'
       - name: Setup node ${{ matrix.node-version }}
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'

@@ -1,0 +1,57 @@
+{
+  "version": "4",
+  "specifiers": {
+    "jsr:@std/assert@*": "1.0.8",
+    "jsr:@std/internal@^1.0.5": "1.0.5"
+  },
+  "jsr": {
+    "@std/assert@1.0.8": {
+      "integrity": "ebe0bd7eb488ee39686f77003992f389a06c3da1bbd8022184804852b2fa641b",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/internal@1.0.5": {
+      "integrity": "54a546004f769c1ac9e025abd15a76b6671ddc9687e2313b67376125650dc7ba"
+    }
+  },
+  "redirects": {
+    "https://esm.sh/merkle-reference": "https://esm.sh/merkle-reference@1.1.0",
+    "https://esm.sh/multiformats/bases/base32": "https://esm.sh/multiformats@13.3.1/bases/base32",
+    "https://esm.sh/neat-csv": "https://esm.sh/neat-csv@7.0.0",
+    "https://esm.sh/tsv": "https://esm.sh/tsv@0.2.0"
+  },
+  "remote": {
+    "https://esm.sh/merkle-reference@1.1.0": "395d05f852f1dbb2faca85810c58376c6c1c502c3ed48fc5a720200b7d6d043a",
+    "https://esm.sh/multiformats@13.3.1/bases/base32": "1fb6fa1af3d48fb320f114be31ce1195d62bb5413e3548ac3b4b8b5de0b536a4",
+    "https://esm.sh/neat-csv@7.0.0": "b66d2dbecb1ad887fd49e1f39fff4e19fb724272b7cd025791773019e8fcec1b",
+    "https://esm.sh/tsv@0.2.0": "f0f102d9cbb898f6be32f79cb097d4e49bd6a234ecd2390cfa7ddbf1e86ab7f4",
+    "https://esm.sh/v135/@noble/hashes@1.3.3/denonext/_assert.js": "f8882bd96e2a6d1834a445c5af97f927b1ba028f34963c8570568e33385c4419",
+    "https://esm.sh/v135/@noble/hashes@1.3.3/denonext/_sha2.js": "7b27807ccd3cf7c3b90ce23b17bc9c5d791a72e41dd2e01a4debd9727990bca9",
+    "https://esm.sh/v135/@noble/hashes@1.3.3/denonext/crypto.js": "cf6efbafcbb35e03bcb3a36cccd3d6d1f9bc4ba23f44a79551929a28c83e7901",
+    "https://esm.sh/v135/@noble/hashes@1.3.3/denonext/sha256.js": "762e0b0cbde1990fc905eb816d30cdc0cf7dd4c23d123408c6963294f124f97d",
+    "https://esm.sh/v135/@noble/hashes@1.3.3/denonext/utils.js": "701831e12a7e656df467b62f929ac9536ababef1b9b7445c7f87512366ae3933",
+    "https://esm.sh/v135/csv-parser@3.0.0/denonext/csv-parser.mjs": "7388a50da8b5e6980229c90baf8f85dbfe7ac00b153a9d29fdd58cb8af8d5d09",
+    "https://esm.sh/v135/get-stream@6.0.1/denonext/get-stream.mjs": "40659bc61ff2e49a7acf20f46d53c9b09b6d594f15bce414257f377f6f3934a7",
+    "https://esm.sh/v135/merkle-reference@1.1.0/denonext/merkle-reference.mjs": "f9480c84da4ccef3cc58363d05a34286a55f1cfe9988c699bfa17bb7fded6a2a",
+    "https://esm.sh/v135/multiformats@13.3.1/denonext/bases/base32.js": "fb833a3c4e0f8c2aaffa5ae5456e7bede839a6d3073601bdbf4a662417884670",
+    "https://esm.sh/v135/multiformats@13.3.1/denonext/bytes.js": "ac98daf0aca85610ca5e4337b1d397709716ef158c246ad5c62ffc7a9f197153",
+    "https://esm.sh/v135/neat-csv@7.0.0/denonext/neat-csv.mjs": "6a5b79be430fb7a9e7a78866430f2f92b46a5b5402dbeda0ecaecfba0c64dd51",
+    "https://esm.sh/v135/tsv@0.2.0/denonext/tsv.mjs": "5e4d4ef7a7077fd1a131c92bf6e775f73d7de21228a051f6bd77ccb27839f8d8"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@ipld/dag-cbor@^9.0.7",
+        "npm:@noble/hashes@1.3.3",
+        "npm:@types/deno@2",
+        "npm:c8@8.0.1",
+        "npm:entail@^2.1.2",
+        "npm:multiformats@13",
+        "npm:playwright-test@14.0.0",
+        "npm:prettier@3.1.0",
+        "npm:typescript@^5.7.3"
+      ]
+    }
+  }
+}

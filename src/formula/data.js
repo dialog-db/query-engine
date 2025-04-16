@@ -2,17 +2,17 @@ import * as API from '../api.js'
 import { Link } from '../constant.js'
 
 /**
- * @param {API.Constant} operand
+ * @param {API.Scalar} operand
  */
 export const is = (operand) => [operand]
 
 export const type =
   /**
-   * @param {API.Constant} value
+   * @param {API.Scalar} of
    * @returns {API.TypeName[]}
    */
-  (value) => {
-    switch (typeof value) {
+  (of) => {
+    switch (typeof of) {
       case 'boolean':
         return ['boolean']
       case 'string':
@@ -20,17 +20,17 @@ export const type =
       case 'bigint':
         return ['int64']
       case 'number':
-        return Number.isInteger(value)
-          ? ['int32']
-          : Number.isFinite(value)
-            ? ['float32']
-            : []
+        return (
+          Number.isInteger(of) ? ['int32']
+          : Number.isFinite(of) ? ['float32']
+          : []
+        )
       default: {
-        if (value === null) {
+        if (of === null) {
           return ['null']
-        } else if (value instanceof Uint8Array) {
+        } else if (of instanceof Uint8Array) {
           return ['bytes']
-        } else if (Link.is(value)) {
+        } else if (Link.is(of)) {
           return ['reference']
         } else {
           return []
@@ -40,7 +40,69 @@ export const type =
   }
 
 /**
- * @template {API.Constant|Record<string, API.Constant>} T
+ * @template {API.Scalar|Record<string, API.Scalar>} T
  * @param {T} data
  */
 export const refer = (data) => [Link.of(data)]
+
+const SUCCESS = [{}]
+
+/**
+ * @template {number|string} T
+ * @param {object} operands
+ * @param {T} operands.this
+ * @param {T} operands.than
+ * @returns {{}[]}
+ */
+export const greater = (operands) => {
+  if (operands.this > operands.than) {
+    return SUCCESS
+  } else {
+    return []
+  }
+}
+
+/**
+ * @template {number|string} T
+ * @param {object} operands
+ * @param {T} operands.this
+ * @param {T} operands.than
+ * @returns {{}[]}
+ */
+export const less = (operands) => {
+  if (operands.this < operands.than) {
+    return SUCCESS
+  } else {
+    return []
+  }
+}
+
+/**
+ * @template {number|string} T
+ * @param {object} operands
+ * @param {T} operands.this
+ * @param {T} operands.than
+ * @returns {{}[]}
+ */
+export const greaterOrEqual = (operands) => {
+  if (operands.this >= operands.than) {
+    return SUCCESS
+  } else {
+    return []
+  }
+}
+
+/**
+ * @template {number|string} T
+ * @param {object} operands
+ * @param {T} operands.this
+ * @param {T} operands.than
+ * @returns {{}[]}
+ */
+export const lessOrEqual = (operands) => {
+  if (operands.this <= operands.than) {
+    return SUCCESS
+  } else {
+    return []
+  }
+}

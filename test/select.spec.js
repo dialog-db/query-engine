@@ -1,190 +1,82 @@
-import * as DB from 'datalogia'
-import * as Link from '../src/link.js'
+import { deduce, match, Data } from './lib.js'
 import proofsDB from './proofs.db.js'
-import moviesDB from './movie.db.js'
-import employeeDB from './microshaft.db.js'
 
 /**
  * @type {import('entail').Suite}
  */
 export const testSelector = {
   'nested selection': async (assert) => {
-    const space = DB.string()
-    const upload = {
-      ucan: DB.link(),
-      cid: DB.string(),
-      capabilities: DB.link(),
-      capability: DB.link(),
-      space,
-    }
-
-    const store = {
-      ucan: DB.link(),
-      cid: DB.string(),
-      capabilities: DB.link(),
-      capability: DB.link(),
-      space,
-    }
-
-    const result = await DB.query(proofsDB, {
-      select: {
-        upload: {
-          cid: upload.cid,
-          space: upload.space,
-        },
-        store: {
-          cid: store.cid,
-          space: store.space,
-        },
-      },
-      where: [
-        DB.match([upload.ucan, 'cid', upload.cid]),
-        DB.match([upload.ucan, 'capabilities', upload.capabilities]),
-        DB.match([upload.capabilities, DB._, upload.capability]),
-        DB.match([upload.capability, 'can', 'upload/add']),
-        DB.match([upload.capability, 'with', upload.space]),
-
-        DB.match([store.ucan, 'cid', store.cid]),
-        DB.match([store.ucan, 'capabilities', store.capabilities]),
-        DB.match([store.capabilities, DB._, store.capability]),
-        DB.match([store.capability, 'can', 'store/add']),
-        DB.match([store.capability, 'with', store.space]),
-      ],
+    const Delegation = deduce({
+      this: Object,
+      cid: String,
+      can: String,
+      space: String,
     })
+      .with({ capabilities: Object, capability: Object })
+      .where(({ this: ucan, cid, capabilities, capability, space, can }) => [
+        match({ the: 'cid', of: ucan, is: cid }),
+        match({ the: 'capabilities', of: ucan, is: capabilities }),
+        match({ of: capabilities, is: capability }),
+        match({ the: 'can', of: capability, is: can }),
+        match({ the: 'with', of: capability, is: space }),
+      ])
 
+    const Permission = deduce({
+      space: String,
+      upload: String,
+      store: String,
+    }).where(({ space, upload, store }) => [
+      Delegation.match({ space, can: 'upload/add', cid: upload }),
+      Delegation.match({ space, can: 'store/add', cid: store }),
+    ])
+
+    const result = await Permission().query({ from: proofsDB })
     assert.deepEqual(result, [
       {
-        upload: {
-          cid: 'bafy...upload',
-          space: 'did:key:zAlice',
-        },
-        store: {
-          cid: 'bafy...store',
-          space: 'did:key:zAlice',
-        },
+        space: 'did:key:zAlice',
+        upload: 'bafy...upload',
+        store: 'bafy...store',
       },
     ])
   },
   'deeply nested selection': async (assert) => {
-    const space = DB.string()
-    const upload = {
-      ucan: DB.link(),
-      cid: DB.string(),
-      capabilities: DB.link(),
-      capability: DB.link(),
-      space,
-    }
-
-    const store = {
-      ucan: DB.link(),
-      cid: DB.string(),
-      capabilities: DB.link(),
-      capability: DB.link(),
-      space,
-    }
-
-    const result = await DB.query(proofsDB, {
-      select: {
-        result: {
-          upload: {
-            cid: upload.cid,
-            space: upload.space,
-          },
-          store: {
-            cid: store.cid,
-            space: store.space,
-          },
-        },
-      },
-      where: [
-        DB.match([upload.ucan, 'cid', upload.cid]),
-        DB.match([upload.ucan, 'capabilities', upload.capabilities]),
-        DB.match([upload.capabilities, DB._, upload.capability]),
-        DB.match([upload.capability, 'can', 'upload/add']),
-        DB.match([upload.capability, 'with', upload.space]),
-
-        DB.match([store.ucan, 'cid', store.cid]),
-        DB.match([store.ucan, 'capabilities', store.capabilities]),
-        DB.match([store.capabilities, DB._, store.capability]),
-        DB.match([store.capability, 'can', 'store/add']),
-        DB.match([store.capability, 'with', store.space]),
-      ],
+    const Delegation = deduce({
+      this: Object,
+      cid: String,
+      can: Object,
+      space: String,
     })
+      .with({ capabilities: Object, capability: Object })
+      .where(({ this: ucan, cid, capabilities, capability, space, can }) => [
+        match({ the: 'cid', of: ucan, is: cid }),
+        match({ the: 'capabilities', of: ucan, is: capabilities }),
+        match({ of: capabilities, is: capability }),
+        match({ the: 'can', of: capability, is: can }),
+        match({ the: 'with', of: capability, is: space }),
+      ])
 
-    assert.deepEqual(result, [
-      {
-        result: {
-          upload: {
-            cid: 'bafy...upload',
-            space: 'did:key:zAlice',
-          },
-          store: {
-            cid: 'bafy...store',
-            space: 'did:key:zAlice',
-          },
-        },
-      },
+    const Upload = Delegation.when(({ can }) => [
+      Data.same({ this: 'upload/add', as: can }),
     ])
-  },
 
-  'array selection': async (assert) => {
-    const space = DB.string()
-    const upload = {
-      ucan: DB.link(),
-      cid: DB.string(),
-      capabilities: DB.link(),
-      capability: DB.link(),
-      space,
-    }
+    const Store = Delegation.when(({ can }) => [
+      Data.same({ this: 'store/add', as: can }),
+    ])
 
-    const store = {
-      ucan: DB.link(),
-      cid: DB.string(),
-      capabilities: DB.link(),
-      capability: DB.link(),
-      space,
-    }
+    const Query = deduce({
+      upload: String,
+      store: String,
+      space: String,
+    }).where(({ upload, store, space }) => [
+      Upload.match({ space, cid: upload }),
+      Store.match({ space, cid: store }),
+    ])
 
-    const result = await DB.query(proofsDB, {
-      select: {
-        result: {
-          upload: {
-            cid: upload.cid,
-            space: upload.space,
-          },
-          store: {
-            cid: store.cid,
-            space: store.space,
-          },
-        },
-      },
-      where: [
-        DB.match([upload.ucan, 'cid', upload.cid]),
-        DB.match([upload.ucan, 'capabilities', upload.capabilities]),
-        DB.match([upload.capabilities, DB._, upload.capability]),
-        DB.match([upload.capability, 'can', 'upload/add']),
-        DB.match([upload.capability, 'with', upload.space]),
-
-        DB.match([store.ucan, 'cid', store.cid]),
-        DB.match([store.ucan, 'capabilities', store.capabilities]),
-        DB.match([store.capabilities, DB._, store.capability]),
-        DB.match([store.capability, 'can', 'store/add']),
-        DB.match([store.capability, 'with', store.space]),
-      ],
-    })
-
-    assert.deepEqual(result, [
+    assert.deepEqual(await Query().query({ from: proofsDB }), [
       {
-        result: {
-          upload: {
-            cid: 'bafy...upload',
-            space: 'did:key:zAlice',
-          },
-          store: {
-            cid: 'bafy...store',
-            space: 'did:key:zAlice',
-          },
-        },
+        space: 'did:key:zAlice',
+        upload: 'bafy...upload',
+        store: 'bafy...store',
       },
     ])
   },
