@@ -140,8 +140,8 @@ class Variables {
   }
 }
 
-const global = Variables.new()
-export default global
+export const $ = Variables.new()
+export default $
 
 /**
  * @param {string|symbol} [name]

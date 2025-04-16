@@ -2,15 +2,14 @@ import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Terms from './terms.js'
 import * as Term from './term.js'
-import { Link } from './constant.js'
-import $, { variable } from './$.js'
 import * as Constant from './constant.js'
 import { operators } from './formula.js'
 import { add } from './selector.js'
 import { indent, li } from './format.js'
 import * as Task from './task.js'
-import { _ } from './$.js'
+import { _, $ } from './$.js'
 import * as Cursor from './cursor.js'
+import * as Match from './match.js'
 
 export { $ }
 
@@ -231,16 +230,16 @@ export class SelectPlan {
         try {
           const match = new Map(bindings)
 
-          if (Variable.is(the)) {
-            Cursor.set(match, cursor, the, attribute)
+          if (Variable.is(selector.the)) {
+            Cursor.set(match, cursor, selector.the, attribute)
           }
 
-          if (Variable.is(of)) {
-            Cursor.set(match, cursor, of, entity)
+          if (Variable.is(selector.of)) {
+            Cursor.set(match, cursor, selector.of, entity)
           }
 
-          if (Variable.is(is)) {
-            Cursor.set(match, cursor, is, value)
+          if (Variable.is(selector.is)) {
+            Cursor.set(match, cursor, selector.is, value)
           }
 
           matches.push(match)
@@ -248,6 +247,69 @@ export class SelectPlan {
       }
     }
 
+    return matches
+  }
+
+  /**
+   * @param {API.EvaluationContext} context
+   */
+  *execute({ source, selection }) {
+    const { selector } = this
+    const matches = []
+    for (const frame of selection) {
+      const the = selector.the ? Match.resolve(frame, selector.the) : _
+      const of = selector.of ? Match.resolve(frame, selector.of) : _
+      const is = selector.is ? Match.resolve(frame, selector.is) : _
+
+      // Note: We expect that there will be LRUCache wrapping the db
+      // so calling scan over and over again will not actually cause new scans.
+      /** @type {API.FactsSelector} */
+      const query = {}
+      if (!Variable.is(of)) {
+        query.entity = of
+      }
+      if (!Variable.is(the)) {
+        query.attribute = the
+      }
+      if (!Variable.is(is)) {
+        query.value = is
+      }
+
+      const facts = yield* source.scan(query)
+
+      for (const [of, the, is] of facts) {
+        let match = Match.clone(frame)
+
+        if (Variable.is(selector.the)) {
+          let { ok } = Match.set(match, selector.the, the)
+          if (ok) {
+            match = ok
+          } else {
+            continue
+          }
+        }
+
+        if (Variable.is(selector.of)) {
+          let { ok } = Match.set(match, selector.of, of)
+          if (ok) {
+            match = ok
+          } else {
+            continue
+          }
+        }
+
+        if (Variable.is(selector.is)) {
+          let { ok } = Match.set(match, selector.is, is)
+          if (ok) {
+            match = ok
+          } else {
+            continue
+          }
+        }
+
+        matches.push(match)
+      }
+    }
     return matches
   }
 
@@ -296,7 +358,10 @@ class FormulaApplication {
 
     const from =
       Object.keys(rest).length > 0 ?
-        /** @type {Record<string, API.Term>} */ ({ ...rest, of })
+        /** @type {Record<string, API.Term>} */ ({
+          ...rest,
+          ...(of ? { of } : null),
+        })
       : /** @type {API.Term} */ (of)
 
     /** @type {Record<string, API.Term>} */
@@ -486,6 +551,74 @@ class FormulaApplicationPlan {
     return matches
   }
 
+  /**
+   * @param {API.EvaluationContext} context
+   */
+  *execute({ selection }) {
+    const { source } = this
+    const operator =
+      /** @type {(input: API.Operand) => Iterable<API.Operand>} */
+      (source.formula ?? operators[source.operator])
+
+    const matches = []
+    for (const frame of selection) {
+      for (const output of operator(this.read(frame))) {
+        // If function returns single output we treat it as { is: output }
+        // because is will be a cell in the formula application.
+        const extension = Constant.is(output) ? { is: output } : output
+        const frames = this.write(
+          frame,
+          /** @type {Record<string, API.Scalar>} */ (extension)
+        )
+        matches.push(...frames)
+      }
+    }
+
+    return matches
+  }
+
+  /**
+   * @template {API.Terms} Terms
+   * @param {API.MatchFrame} frame
+   * @returns {API.InferTerms<Terms>}
+   */
+  read(frame) {
+    const { from } = this
+    const result =
+      Term.is(from) ?
+        expect(Match.get(frame, from), 'Formula input was not present')
+      : Object.fromEntries(
+          Object.entries(from).map(([key, term]) => [
+            key,
+            expect(Match.get(frame, term), 'Formula input was not present'),
+          ])
+        )
+
+    return /** @type {API.InferTerms<Terms>} */ (result)
+  }
+
+  /**
+   * @param {API.MatchFrame} frame
+   * @param {Record<string, API.Scalar>} extension
+   */
+  write(frame, extension) {
+    const terms = Object.entries(this.to)
+    if (terms.length === 0) {
+      return [frame]
+    } else {
+      let match = Match.clone(frame)
+      for (const [key, term] of terms) {
+        const { ok } = Match.unify(match, term, extension[key])
+        if (ok) {
+          match = ok
+        } else {
+          return []
+        }
+      }
+      return [match]
+    }
+  }
+
   toJSON() {
     return {
       match: this.source.match,
@@ -497,6 +630,20 @@ class FormulaApplicationPlan {
     const { match, operator } = this.source
 
     return `{ match: ${Terms.toDebugString(match)}, operator: "${operator}" }`
+  }
+}
+
+/**
+ * @template T
+ * @param {T|undefined} value
+ * @param {string} message
+ * @returns {T}
+ */
+const expect = (value, message) => {
+  if (value === undefined) {
+    throw new RangeError(message)
+  } else {
+    return value
   }
 }
 
@@ -1017,7 +1164,6 @@ class RuleRecursion {
 
   /**
    * @param {API.Scope} scope
-   * @returns {API.EvaluationPlan}
    */
   plan(scope) {
     return this
@@ -1079,6 +1225,37 @@ class RuleRecursion {
 
       // We store pairs of [nextIterationBindings, originalContextBindings]
       // This allows us to combine results of recursive evaluation with the original context
+      recur.push([bindings, new Map(match)])
+    }
+
+    // Recur doesn't directly return matches - it schedules them for later
+    return []
+  }
+
+  /**
+   * Instead of direct recursion, we collect bindings to be processed later
+   * in a breadth-first fixed-point iteration.
+   *
+   * @param {API.EvaluationContext} context
+   */
+  *execute({ self, selection, recur }) {
+    const to = self.match
+
+    // For each match in our current selection
+    next: for (const match of selection) {
+      // Map variables from the current context to the recursive rule's variables
+      const bindings = new Map()
+      for (const [name, term] of Object.entries(this.terms)) {
+        const value = Match.get(match, term)
+        const variable = to[name]
+        if (value !== undefined && variable !== undefined) {
+          const result = Match.set(bindings, variable, value)
+          if (result.error) {
+            continue next
+          }
+        }
+      }
+
       recur.push([bindings, new Map(match)])
     }
 
@@ -1403,6 +1580,7 @@ class Join {
 /**
  * @typedef {Select|FormulaApplication|RuleApplication} Constraint
  * @typedef {Select|FormulaApplication|RuleApplication|Negation|RuleRecursion} Conjunct
+ * @typedef {SelectPlan|FormulaApplicationPlan|RuleApplicationPlan|NegationPlan|RuleRecursion} ConjunctPlan
  * @implements {API.Negation}
  */
 class Negation {
@@ -1465,7 +1643,7 @@ class Negation {
 
 class JoinPlan {
   /**
-   * @param {API.EvaluationPlan[]} conjuncts - Ordered plans
+   * @param {ConjunctPlan[]} conjuncts - Ordered plans
    * @param {API.Cursor} references - Variable references
    * @param {number} cost - Total cost of the plan
    */
@@ -1486,6 +1664,21 @@ class JoinPlan {
         self,
         selection,
         recur,
+      })
+    }
+
+    return selection
+  }
+
+  /**
+   * @param {API.EvaluationContext} context
+   */
+  *execute({ selection, ...context }) {
+    // Execute binding steps in planned order
+    for (const plan of this.conjuncts) {
+      selection = yield* plan.execute({
+        ...context,
+        selection,
       })
     }
 
@@ -1571,32 +1764,29 @@ class DeductiveRulePlan {
   }
 
   /**
-   * @param {object} input
-   * @param {API.Querier} input.source
-   */
-  *query({ source }) {
-    const { match: selector } = this
-
-    const frames = yield* this.evaluate({
-      source,
-      self: this,
-      selection: [new Map()],
-      recur: [], // Array for pairs of [nextBindings, originalContext]
-    })
-
-    return Selector.select(selector, frames)
-  }
-
-  /**
-   *
    * @param {API.EvaluationContext} context
-   * @returns
+   * @returns {API.Task<API.MatchFrame[], Error>}
    */
   *evaluate(context) {
     const matches = []
     // Run each branch and combine results
     for (const plan of Object.values(this.disjuncts)) {
       const bindings = yield* plan.evaluate(context)
+      matches.push(...bindings)
+    }
+    return matches
+  }
+
+  /**
+   * @param {API.EvaluationContext} context
+   * @returns {API.Task<API.MatchFrame[], Error>}
+   */
+  *execute(context) {
+    /** @type {API.MatchFrame[]} */
+    const matches = []
+    // Run each branch and combine results
+    for (const plan of Object.values(this.disjuncts)) {
+      const bindings = yield* plan.execute(context)
       matches.push(...bindings)
     }
     return matches
@@ -1974,6 +2164,178 @@ class RuleApplicationPlan {
     return matches
   }
 
+  /**
+   * @param {API.EvaluationContext} context
+   */
+  *execute({ source, selection }) {
+    // Map identity -> actual match for deduplication
+    const matches = new Map()
+    for (const frame of selection) {
+      for (const input of this.read(frame)) {
+        // Create evaluation context for the main evaluation
+        /** @type {API.EvaluationContext} */
+        const context = {
+          source,
+          self: this.plan,
+          selection: [input],
+          recur: [], // Array for recursive steps
+        }
+
+        // First evaluate the base case
+        const base = yield* this.plan.execute(context)
+
+        // Process base results
+        for (const output of base) {
+          for (const match of this.write(frame, output)) {
+            const id = identifyMatch(match)
+            if (!matches.has(id)) {
+              matches.set(id, match)
+            }
+          }
+        }
+
+        // Track all contexts to handle transitive relationships correctly
+        // Map from each binding to all its ancestor contexts
+        const contextChains = new Map()
+
+        // Initialize the context chains with the original recursive steps
+        for (const [nextBinding, originalContext] of context.recur) {
+          contextChains.set(nextBinding, [originalContext])
+        }
+
+        // Process recursion using breadth-first evaluation
+        let { recur } = context
+
+        while (recur.length > 0) {
+          /** @type {API.EvaluationContext['recur']} */
+          const next = []
+
+          for (const [nextBinding, origContext] of recur) {
+            // 🤔 Sounds like we need to map context
+
+            // Create a context for this step's evaluation
+            /** @type {API.EvaluationContext} */
+            const recursiveContext = {
+              source,
+              self: this.plan,
+              selection: [nextBinding],
+              recur: [],
+            }
+
+            // Evaluate this step
+            const stepResults = yield* this.plan.execute(recursiveContext)
+
+            // Process direct results
+            for (const output of stepResults) {
+              for (const match of this.write(frame, output)) {
+                const id = identifyMatch(match)
+                if (!matches.has(id)) {
+                  matches.set(id, match)
+                }
+              }
+
+              // Create transitive relationships with all ancestor contexts
+              const ancestorContexts = contextChains.get(nextBinding) || []
+              for (const context of ancestorContexts) {
+                // const transitiveMatch = this.createTransitiveMatch(
+                //   input,
+                //   ancestorContext,
+                //   directMatch
+                // )
+                for (const match of this.write(frame, context, output)) {
+                  const id = identifyMatch(match)
+                  if (!matches.has(id)) {
+                    matches.set(id, match)
+                  }
+                }
+              }
+            }
+
+            // Process new recursive steps
+            for (const [
+              newBinding,
+              originalBinding,
+            ] of recursiveContext.recur) {
+              // Track context chains for transitive relationships
+              const ancestorContexts = contextChains.get(nextBinding) || []
+              const newContexts = [origContext, ...ancestorContexts]
+              contextChains.set(newBinding, newContexts)
+
+              // Add to next batch
+              next.push([newBinding, origContext])
+            }
+          }
+
+          recur = next
+        }
+      }
+    }
+
+    return [...matches.values()]
+  }
+
+  get terms() {
+    return /** @type {[string, API.Term][]} */ (Object.entries(this.match))
+  }
+
+  /**
+   * @param {API.MatchFrame} frame
+   */
+  read(frame) {
+    const input = new Map()
+    // Copy any bound values from outer scope into rule scope
+    // based on the mapping defined in application.match
+    for (const [at, variable] of Object.entries(this.rule.match)) {
+      const term = /** @type {API.Term} */ (this.match[at])
+      const value = Match.get(frame, term)
+      if (value !== undefined) {
+        const { ok } = Match.set(input, variable, value)
+        if (!ok) {
+          return []
+        }
+      }
+    }
+
+    return [input]
+  }
+
+  /**
+   * @param {API.MatchFrame} frame
+   * @param {API.MatchFrame[]} outputs
+   */
+  write(frame, ...outputs) {
+    const match = Match.clone(frame)
+    next: for (const [at, variable] of Object.entries(this.rule.match)) {
+      const term = /** @type {API.Term} */ (this.match[at])
+      // We do not want to override frame values just add new members
+      const current = Match.get(frame, term)
+      if (current === undefined) {
+        for (const output of outputs) {
+          const value = Match.get(output, variable)
+          if (value !== undefined) {
+            const result = Match.unify(match, term, value)
+            if (!result.ok) {
+              return []
+            } else {
+              continue next
+            }
+          }
+        }
+      }
+    }
+
+    return [match]
+  }
+
+  /**
+   * @param {API.MatchFrame} frame
+   * @param {API.MatchFrame} input
+   * @param {API.MatchFrame} output
+   */
+  writeTransitive(frame, input, output) {
+    const match = Match.clone(frame)
+  }
+
   toJSON() {
     return {
       match: this.match,
@@ -1988,7 +2350,7 @@ class RuleApplicationPlan {
   *query({ from: source }) {
     const { match: selector } = this
 
-    const frames = yield* this.evaluate({
+    const frames = yield* this.execute({
       source,
       self: this.plan,
       selection: [new Map()],
@@ -2050,7 +2412,7 @@ const combineCosts = (total, cost) => {
 
 class NegationPlan {
   /**
-   * @param {API.EvaluationPlan} operand
+   * @param {SelectPlan|FormulaApplicationPlan|RuleApplicationPlan} operand
    */
   constructor(operand) {
     this.operand = operand
@@ -2071,6 +2433,25 @@ class NegationPlan {
 
       if (excluded.length === 0) {
         matches.push(bindings)
+      }
+    }
+
+    return matches
+  }
+
+  /**
+   * @param {API.EvaluationContext} context
+   */
+  *execute({ selection, ...context }) {
+    const matches = []
+    for (const frame of selection) {
+      const excluded = yield* this.operand.execute({
+        ...context,
+        selection: [frame],
+      })
+
+      if (excluded.length === 0) {
+        matches.push(frame)
       }
     }
 
