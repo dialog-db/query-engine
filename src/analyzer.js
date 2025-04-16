@@ -203,57 +203,6 @@ export class SelectPlan {
    * @param {API.EvaluationContext} context
    */
   *evaluate({ source, selection }) {
-    const matches = []
-    const { selector, parameters, cursor } = this
-    for (const bindings of selection) {
-      const the = this.resolve(selector.the, bindings)
-      const of = this.resolve(selector.of, bindings)
-      const is = this.resolve(selector.is, bindings)
-
-      // Note: We expect that there will be LRUCache wrapping the db
-      // so calling scan over and over again will not actually cause new scans.
-      /** @type {API.FactsSelector} */
-      const query = {}
-      if (!Variable.is(of)) {
-        query.entity = of
-      }
-      if (!Variable.is(the)) {
-        query.attribute = the
-      }
-      if (!Variable.is(is)) {
-        query.value = is
-      }
-
-      const facts = yield* source.scan(query)
-
-      for (const [entity, attribute, value] of facts) {
-        try {
-          const match = new Map(bindings)
-
-          if (Variable.is(selector.the)) {
-            Cursor.set(match, cursor, selector.the, attribute)
-          }
-
-          if (Variable.is(selector.of)) {
-            Cursor.set(match, cursor, selector.of, entity)
-          }
-
-          if (Variable.is(selector.is)) {
-            Cursor.set(match, cursor, selector.is, value)
-          }
-
-          matches.push(match)
-        } catch {}
-      }
-    }
-
-    return matches
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *execute({ source, selection }) {
     const { selector } = this
     const matches = []
     for (const frame of selection) {
@@ -506,42 +455,7 @@ class FormulaApplicationPlan {
   /**
    * @param {API.EvaluationContext} context
    */
-  *evaluate(context) {
-    const { from, to, source } = this
-    const operator =
-      /** @type {(input: API.Operand) => Iterable<API.Operand>} */
-      (source.formula ?? operators[this.source.operator])
-
-    const matches = []
-    for (const frame of context.selection) {
-      const input = this.resolve(from, frame)
-      for (const output of operator(input)) {
-        // If function returns single output we treat it as { is: output }
-        // because is will be a cell in the formula application.
-        const out = Constant.is(output) ? { is: output } : output
-        const cells = Object.entries(to)
-        if (cells.length === 0) {
-          matches.push(frame)
-        } else {
-          const match = cells.length > 0 ? new Map(frame) : frame
-          const extension = /** @type {Record<string, API.Scalar>} */ (out)
-          try {
-            for (const [key, cell] of cells) {
-              Cursor.merge(match, this.cursor, cell, extension[key])
-            }
-            matches.push(match)
-          } catch {}
-        }
-      }
-    }
-
-    return matches
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *execute({ selection }) {
+  *evaluate({ selection }) {
     const { source } = this
     const operator =
       /** @type {(input: API.Operand) => Iterable<API.Operand>} */
@@ -1180,55 +1094,6 @@ class RuleRecursion {
    */
   *evaluate({ self, selection, recur }) {
     const to = self.match
-    const from = this.terms
-
-    // For each match in our current selection
-    for (const match of selection) {
-      // Map variables from the current context to the recursive rule's variables
-      const bindings = new Map()
-      for (const [name, term] of Object.entries(from)) {
-        const value = match.get(term)
-        const variable = to[name]
-        if (value !== undefined && variable !== undefined) {
-          Cursor.set(bindings, self.scope.references, variable, value)
-        }
-      }
-
-      // // First, get all variables from original rule 'to' pattern
-      // // This ensures we maintain all variable bindings that should be preserved
-      // for (const key of Object.keys(to)) {
-      //   const targetVar = to[key]
-      //   if (match.has(targetVar)) {
-      //     // Preserve the binding if it exists in current match
-      //     terms.set(targetVar, match.get(targetVar))
-      //   }
-      // }
-
-      // // Then, map variables from this recursive call's pattern
-      // for (const [key, variable] of Object.entries(from)) {
-      //   const value = match.get(variable)
-      //   if (value !== undefined) {
-      //     terms.set(to[key], value)
-      //   }
-      // }
-
-      // We store pairs of [nextIterationBindings, originalContextBindings]
-      // This allows us to combine results of recursive evaluation with the original context
-      recur.push([bindings, new Map(match)])
-    }
-
-    // Recur doesn't directly return matches - it schedules them for later
-    return []
-  }
-
-  /**
-   * Instead of direct recursion, we collect bindings to be processed later
-   * in a breadth-first fixed-point iteration.
-   *
-   * @param {API.EvaluationContext} context
-   */
-  *execute({ self, selection, recur }) {
-    const to = self.match
 
     // For each match in our current selection
     next: for (const match of selection) {
@@ -1645,27 +1510,10 @@ class JoinPlan {
   /**
    * @param {API.EvaluationContext} context
    */
-  *evaluate({ source, self, selection, recur }) {
+  *evaluate({ selection, ...context }) {
     // Execute binding steps in planned order
     for (const plan of this.conjuncts) {
       selection = yield* plan.evaluate({
-        source,
-        self,
-        selection,
-        recur,
-      })
-    }
-
-    return selection
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *execute({ selection, ...context }) {
-    // Execute binding steps in planned order
-    for (const plan of this.conjuncts) {
-      selection = yield* plan.execute({
         ...context,
         selection,
       })
@@ -1757,25 +1605,11 @@ class DeductiveRulePlan {
    * @returns {API.Task<API.MatchFrame[], Error>}
    */
   *evaluate(context) {
-    const matches = []
-    // Run each branch and combine results
-    for (const plan of Object.values(this.disjuncts)) {
-      const bindings = yield* plan.evaluate(context)
-      matches.push(...bindings)
-    }
-    return matches
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   * @returns {API.Task<API.MatchFrame[], Error>}
-   */
-  *execute(context) {
     /** @type {API.MatchFrame[]} */
     const matches = []
     // Run each branch and combine results
     for (const plan of Object.values(this.disjuncts)) {
-      const bindings = yield* plan.execute(context)
+      const bindings = yield* plan.evaluate(context)
       matches.push(...bindings)
     }
     return matches
@@ -1897,155 +1731,6 @@ class RuleApplicationPlan {
    * @param {API.EvaluationContext} context
    */
   *evaluate({ source, selection }) {
-    const matches = []
-    const allResults = new Map() // Map identity -> actual match for deduplication
-
-    for (const input of selection) {
-      const bindings = new Map()
-      for (const [name, term] of Object.entries(this.match)) {
-        const value = Cursor.get(
-          input,
-          this.references,
-          /** @type {API.Term} */ (term)
-        )
-
-        const variable = this.plan.match[name]
-
-        if (value !== undefined && variable !== undefined) {
-          Cursor.set(bindings, this.references, variable, value)
-        }
-      }
-
-      // // Copy constant bindings from the application context
-      // const bindings = new Map(this.context.bindings)
-
-      // // Copy bindings for the references from the selected match
-      // for (const [inner, outer] of this.context.references.entries()) {
-      //   const value = input.get(outer)
-      //   if (value !== undefined) {
-      //     bindings.set(outer, value)
-      //   }
-      // }
-
-      // Create evaluation context for the main evaluation
-      /** @type {API.EvaluationContext} */
-      const context = {
-        source,
-        self: this.plan,
-        selection: [bindings],
-        recur: [], // Array for recursive steps
-      }
-
-      // First evaluate the base case
-      const base = yield* this.plan.evaluate(context)
-
-      // Process base results
-      for (const result of base) {
-        const match = this.createFullMatch(
-          input,
-          result,
-          this.references,
-          this.bindings
-        )
-
-        if (match) {
-          const matchId = identifyMatch(match)
-          if (!allResults.has(matchId)) {
-            allResults.set(matchId, match)
-            matches.push(match)
-          }
-        }
-      }
-
-      // Track all contexts to handle transitive relationships correctly
-      // Map from each binding to all its ancestor contexts
-      const contextChains = new Map()
-
-      // Initialize the context chains with the original recursive steps
-      for (const [nextBinding, originalContext] of context.recur) {
-        contextChains.set(nextBinding, [originalContext])
-      }
-
-      // Process recursion using breadth-first evaluation
-      let { recur } = context
-
-      while (recur.length > 0) {
-        /** @type {API.EvaluationContext['recur']} */
-        const next = []
-
-        for (const [nextBinding, origContext] of recur) {
-          // 🤔 Sounds like we need to map context
-
-          // Create a context for this step's evaluation
-          /** @type {API.EvaluationContext} */
-          const recursiveContext = {
-            source,
-            self: this.plan,
-            selection: [nextBinding],
-            recur: [],
-          }
-
-          // Evaluate this step
-          const stepResults = yield* this.plan.evaluate(recursiveContext)
-
-          // Process direct results
-          for (const stepResult of stepResults) {
-            // Create direct result from this step
-            const directMatch = this.createFullMatch(
-              input,
-              stepResult,
-              this.references,
-              this.bindings
-            )
-
-            if (directMatch) {
-              const directId = identifyMatch(directMatch)
-              if (!allResults.has(directId)) {
-                allResults.set(directId, directMatch)
-                matches.push(directMatch)
-              }
-            }
-
-            // Create transitive relationships with all ancestor contexts
-            const ancestorContexts = contextChains.get(nextBinding) || []
-            for (const ancestorContext of ancestorContexts) {
-              const transitiveMatch = this.createTransitiveMatch(
-                input,
-                ancestorContext,
-                stepResult
-              )
-
-              const transitiveId = identifyMatch(transitiveMatch)
-              if (!allResults.has(transitiveId)) {
-                allResults.set(transitiveId, transitiveMatch)
-                matches.push(transitiveMatch)
-              }
-            }
-          }
-
-          // Process new recursive steps
-          for (const [newBinding, originalBinding] of recursiveContext.recur) {
-            // Track context chains for transitive relationships
-            const ancestorContexts = contextChains.get(nextBinding) || []
-            const newContexts = [origContext, ...ancestorContexts]
-            contextChains.set(newBinding, newContexts)
-
-            // Add to next batch
-            next.push([newBinding, origContext])
-          }
-        }
-
-        recur = next
-      }
-    }
-
-    return matches
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *execute({ source, selection }) {
     // Map identity -> actual match for deduplication
     const matches = new Map()
     for (const frame of selection) {
@@ -2060,7 +1745,7 @@ class RuleApplicationPlan {
         }
 
         // First evaluate the base case
-        const base = yield* this.plan.execute(context)
+        const base = yield* this.plan.evaluate(context)
 
         // Process base results
         for (const output of base) {
@@ -2101,7 +1786,7 @@ class RuleApplicationPlan {
             }
 
             // Evaluate this step
-            const stepResults = yield* this.plan.execute(recursiveContext)
+            const stepResults = yield* this.plan.evaluate(recursiveContext)
 
             // Process direct results
             for (const output of stepResults) {
@@ -2220,7 +1905,7 @@ class RuleApplicationPlan {
    * @param {Selector} [input.selector]
    */
   *query({ from: source, selector = /** @type {Selector} */ (this.match) }) {
-    const frames = yield* this.execute({
+    const frames = yield* this.evaluate({
       source,
       self: this.plan,
       selection: [new Map()],
@@ -2283,31 +1968,10 @@ class NegationPlan {
   /**
    * @param {API.EvaluationContext} context
    */
-  *evaluate({ source, self, selection, recur }) {
-    const matches = []
-    for (const bindings of selection) {
-      const excluded = yield* this.operand.evaluate({
-        source,
-        self,
-        selection: [bindings],
-        recur,
-      })
-
-      if (excluded.length === 0) {
-        matches.push(bindings)
-      }
-    }
-
-    return matches
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *execute({ selection, ...context }) {
+  *evaluate({ selection, ...context }) {
     const matches = []
     for (const frame of selection) {
-      const excluded = yield* this.operand.execute({
+      const excluded = yield* this.operand.evaluate({
         ...context,
         selection: [frame],
       })
