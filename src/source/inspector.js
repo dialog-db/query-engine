@@ -12,9 +12,9 @@ class Inspector {
   /**
    * @param {API.FactsSelector} selector
    */
-  *scan(selector) {
+  *select(selector) {
     try {
-      const ok = yield* this.source.scan(selector)
+      const ok = yield* this.source.select(selector)
       this.log.set(selector, { ok })
       return ok
     } catch (error) {

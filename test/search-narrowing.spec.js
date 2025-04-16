@@ -25,8 +25,8 @@ export const testPlan = {
     assert.deepEqual(
       source.queries().slice(0, 2),
       [
-        { attribute: 'person/name', value: 'Arnold Schwarzenegger' },
-        { attribute: 'movie/cast', value: arnold },
+        { the: 'person/name', is: 'Arnold Schwarzenegger' },
+        { the: 'movie/cast', is: arnold },
       ],
       'narrows search space first'
     )
@@ -37,9 +37,9 @@ export const testPlan = {
         .slice(2)
         .every(
           (selector) =>
-            selector.attribute === 'movie/title' &&
-            selector.entity != null &&
-            selector.value == null
+            selector.the === 'movie/title' &&
+            selector.of != null &&
+            selector.is == null
         ),
       true,
       'rest queries are just lookups'

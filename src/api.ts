@@ -450,9 +450,9 @@ export interface Instantiation {
 }
 
 export interface FactsSelector {
-  entity?: Entity
-  attribute?: Attribute
-  value?: Scalar
+  the?: Attribute
+  of?: Entity
+  is?: Scalar
 }
 
 export type Instruction = Variant<{
@@ -468,7 +468,7 @@ export interface Transactor<Ok extends {} = {}> {
 }
 
 export interface Querier {
-  scan(selector?: FactsSelector): Task<Datum[], Error>
+  select(selector?: FactsSelector): Task<Datum[], Error>
 }
 
 export type Conclusion = Row<Variable> & {

@@ -216,16 +216,16 @@ export class SelectPlan {
       /** @type {API.FactsSelector} */
       const query = {}
       if (!Variable.is(of)) {
-        query.entity = of
+        query.of = of
       }
       if (!Variable.is(the)) {
-        query.attribute = the
+        query.the = the
       }
       if (!Variable.is(is)) {
-        query.value = is
+        query.is = is
       }
 
-      const facts = yield* source.scan(query)
+      const facts = yield* source.select(query)
 
       for (const [of, the, is] of facts) {
         let match = Match.clone(frame)

@@ -1520,7 +1520,7 @@ export const testAnalyzer = {
     ])
 
     assert.deepEqual(inspector.queries(), [
-      { attribute: 'person/name', value: 'Irakli' },
+      { the: 'person/name', is: 'Irakli' },
     ])
   },
 }

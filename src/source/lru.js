@@ -6,11 +6,11 @@ import * as Constant from '../constant.js'
  * @param {API.FactsSelector} selector
  * @returns {string}
  */
-export const identify = ({ entity, attribute, value }) =>
+export const identify = ({ the, of, is }) =>
   JSON.stringify({
-    the: attribute === undefined ? undefined : Constant.toString(attribute),
-    of: entity === undefined ? undefined : Constant.toString(entity),
-    value: value === undefined ? undefined : Constant.toString(value),
+    the: the === undefined ? undefined : Constant.toString(the),
+    of: of === undefined ? undefined : Constant.toString(of),
+    is: is === undefined ? undefined : Constant.toString(is),
   })
 
 /**
@@ -68,7 +68,7 @@ class LRUCache {
   /**
    * @param {API.FactsSelector} selector
    */
-  *scan(selector) {
+  *select(selector) {
     const key = identify(selector)
 
     // Check if we have it in cache
@@ -79,7 +79,7 @@ class LRUCache {
     }
 
     // Fetch from source
-    const facts = yield* this.source.scan(selector)
+    const facts = yield* this.source.select(selector)
 
     // Skip caching if the result set is larger than our total capacity
     if (facts.length > this.capacity) {
