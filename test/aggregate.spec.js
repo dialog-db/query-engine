@@ -97,40 +97,6 @@ export const testAggregate = {
       const db = Memory.create([])
       yield* db.transact([{ Import: source }])
 
-      // const tag = DB.variable()
-      // const file = DB.variable()
-      // const title = DB.string()
-      // const _tags = DB.link()
-      // const _tagAt = DB.string()
-      // const _files = DB.link()
-      // const _filesAt = DB.string()
-
-      // const match = yield* DB.query(db, {
-      //   select: {
-      //     title,
-      //     tag: [tag],
-      //     files: [file],
-      //   },
-      //   where: [
-      //     DB.match([lib, 'title', title]),
-      //     DB.match([lib, 'tags', _tags]),
-      //     DB.match([_tags, _tagAt, tag]),
-      //     DB.match([lib, 'files', _files]),
-      //     DB.match([_files, _filesAt, file]),
-      //   ],
-      // })
-      // const name = DB.string()
-      // const at = DB.string()
-      // const keyword = DB.string()
-      // const dependency = DB.string()
-      // const version = DB.string()
-      // const entity = DB.link()
-      // const dependencies = DB.link()
-      // const keywords = DB.link()
-      // const score = DB.variable()
-      // const dev = DB.boolean()
-      // const nil = DB.variable()
-
       const Package = deduce({
         this: Object,
         name: String,
