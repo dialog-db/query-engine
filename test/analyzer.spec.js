@@ -968,7 +968,7 @@ export const testAnalyzer = {
     )
   },
 
-  'only resolvable through unification': async (assert) => {
+  'resolvable through unification': async (assert) => {
     const rule = Analyzer.rule({
       match: { is: $.is },
       when: {
@@ -1006,7 +1006,7 @@ export const testAnalyzer = {
 
     assert.throws(
       () => rule.apply({ is: $.q }).prepare(),
-      /Rule application requires binding for \?as/
+      /Unbound \?x variable/
     )
   },
 

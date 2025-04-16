@@ -766,7 +766,10 @@ export class RuleApplication {
           // If we variable was set in scope we copy it into a local bindings.
           if (value !== undefined) {
             Cursor.set(bindings, references, inner, value)
+          } else if (Cursor.has(scope.bindings, scope.references, variable)) {
+            Cursor.markBound(bindings, references, inner)
           }
+          // TODO: Maybe we should copy NOTHING here to make things work
         }
       }
     }
@@ -1313,8 +1316,8 @@ class Join {
       // instead check if binding is set as opposed to copy values.
       ordered.push(
         top.current.plan({
-          bindings: scope.bindings,
-          // bindings: local,
+          // bindings: scope.bindings,
+          bindings: local,
           references: scope.references,
         })
       )
@@ -1326,7 +1329,7 @@ class Join {
       // be bound.
       for (const [cell] of unblocked) {
         if (!Cursor.has(local, scope.references, cell)) {
-          Cursor.set(local, scope.references, cell, NOTHING)
+          Cursor.markBound(local, scope.references, cell)
         }
       }
 
@@ -1788,7 +1791,9 @@ class RuleApplicationPlan {
 
     // Copy constant bindings from the context
     for (const [variable, value] of bindings) {
-      match.set(variable, value)
+      if (value !== Cursor.NOTHING) {
+        match.set(variable, value)
+      }
     }
 
     return match
@@ -2080,8 +2085,6 @@ class NegationPlan {
     return `{ not: ${toDebugString(this.operand)} }`
   }
 }
-
-export const NOTHING = Link.of({ '/': 'bafkqaaa' })
 
 /**
  *

@@ -2,6 +2,7 @@ import * as API from './api.js'
 import * as Constant from './constant.js'
 import * as Variable from './variable.js'
 import { _ } from './$.js'
+export const NOTHING = /** @type {never} */ (Symbol('NOTHING'))
 
 /**
  * Returns true if the variable is bound in this context.
@@ -95,7 +96,7 @@ export const link = (scope, local, remote) => {
 export const read = (selection, scope, variable) => {
   for (const candidate of resolve(scope, variable)) {
     const value = /** @type {T|undefined} */ (selection.get(candidate))
-    if (value !== undefined) {
+    if (value !== undefined && value !== NOTHING) {
       return value
     }
   }
@@ -115,7 +116,6 @@ export const get = (selection, scope, term) =>
   Variable.is(term) ? read(selection, scope, term) : term
 
 /**
- *
  * @template {API.Scalar} T
  * @param {API.MatchFrame} selection
  * @param {API.Cursor} scope
@@ -145,6 +145,14 @@ export const set = (selection, scope, variable, value) => {
     }
   }
 }
+
+/**
+ * @param {API.MatchFrame} selection
+ * @param {API.Cursor} scope
+ * @param {API.Variable} variable
+ */
+export const markBound = (selection, scope, variable) =>
+  set(selection, scope, variable, NOTHING)
 
 /**
  * @param {API.MatchFrame} selection

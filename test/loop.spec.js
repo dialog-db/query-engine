@@ -248,25 +248,7 @@ export const testRecursion = {
     )
   },
 
-  'only test recursion': async (assert) => {
-    // const list = DB.link()
-    // const item = DB.link()
-    // const head = DB.link()
-    // const Child = DB.rule({
-    //   case: { let: item, of: list },
-    //   when: [
-    //     DB.or(
-    //       // head of the list is the item
-    //       DB.match([list, 'list/next', item]),
-    //       // or item is a child of the head
-    //       DB.and(
-    //         DB.match([list, 'list/next', head]),
-    //         DB.recur({ let: item, of: head })
-    //       )
-    //     ),
-    //   ],
-    // })
-
+  'test recursion': async (assert) => {
     const Child = deduce({ of: Object, is: Object })
       .with({ head: Object })
       .when(({ of, is, head }) => ({
@@ -293,16 +275,16 @@ export const testRecursion = {
       Fact({ the: 'name', of: is, is: name }),
     ])
 
-    // const result = await NestRecursive().select({ from: db })
+    const result = await NestRecursive().select({ from: db })
 
-    // assert.deepEqual(result, [
-    //   { of: id(0), is: id(1), name: 'a' },
-    //   { of: id(1), is: id(2), name: 'b' },
-    //   { of: id(0), is: id(2), name: 'b' },
-    //   { of: id(2), is: id(3), name: 'c' },
-    //   { of: id(1), is: id(3), name: 'c' },
-    //   { of: id(0), is: id(3), name: 'c' },
-    // ])
+    assert.deepEqual(result, [
+      { of: id(0), is: id(1), name: 'a' },
+      { of: id(1), is: id(2), name: 'b' },
+      { of: id(0), is: id(2), name: 'b' },
+      { of: id(2), is: id(3), name: 'c' },
+      { of: id(1), is: id(3), name: 'c' },
+      { of: id(0), is: id(3), name: 'c' },
+    ])
 
     // return 'seems to enter infinite loop'
 
@@ -317,11 +299,11 @@ export const testRecursion = {
         Fact({ the: 'name', of: node, is: name }),
       ])
 
-    // assert.deepEqual(await RootedRecursion().select({ from: db }), [
-    //   { node: id(1), name: 'a' },
-    //   { node: id(2), name: 'b' },
-    //   { node: id(3), name: 'c' },
-    // ])
+    assert.deepEqual(await RootedRecursion().select({ from: db }), [
+      { node: id(1), name: 'a' },
+      { node: id(2), name: 'b' },
+      { node: id(3), name: 'c' },
+    ])
 
     const Implicit = deduce({
       the: String,
@@ -351,43 +333,12 @@ export const testRecursion = {
         }),
       ])
 
-    console.log(Query().form.prepare())
-
-    const matches = await Query().select({ from: db })
-    return console.log(matches)
-
-    // const root = DB.link()
-    // const each = DB.link()
-    // const next = DB.variable()
-
-    // const name = DB.string()
-
-    // const matches = await DB.query(db, {
-    //   select: {
-    //     id: each,
-    //     name,
-    //     next,
-    //   },
-    //   where: [
-    //     DB.match([root, 'data/type', 'list']),
-    //     Child.match({ let: each, of: root }),
-    //     DB.match([each, 'name', name]),
-    //     DB.or(
-    //       DB.match([each, 'list/next', next]),
-    //       DB.not(DB.match([each, 'list/next', next]))
-    //     ),
-    //   ],
-    // })
-
-    // assert.deepEqual(
-    //   [...matches],
-    //   [
-    //     { id: id(1), name: 'a', next: id(2) },
-    //     { id: id(2), name: 'b', next: id(3) },
-    //     // @ts-ignore
-    //     { id: id(3), name: 'c', next: undefined },
-    //   ]
-    // )
+    assert.deepEqual(await Query().select({ from: db }), [
+      { each: id(1), name: 'a', next: id(2) },
+      { each: id(2), name: 'b', next: id(3) },
+      // @ts-expect-error
+      { each: id(3), name: 'c', next: null },
+    ])
   },
 
   'test recursion termination': async (assert) => {
