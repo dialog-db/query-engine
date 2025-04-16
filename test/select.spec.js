@@ -1,10 +1,5 @@
-import * as DB from 'datalogia'
-import * as Analyzer from '../src/analyzer.js'
-import { deduce, Fact, Data } from '../src/syntax.js'
-import * as Link from '../src/data/link.js'
+import { deduce, match, Data } from './lib.js'
 import proofsDB from './proofs.db.js'
-import moviesDB from './movie.db.js'
-import employeeDB from './microshaft.db.js'
 
 /**
  * @type {import('entail').Suite}
@@ -19,11 +14,11 @@ export const testSelector = {
     })
       .with({ capabilities: Object, capability: Object })
       .where(({ this: ucan, cid, capabilities, capability, space, can }) => [
-        Fact({ the: 'cid', of: ucan, is: cid }),
-        Fact({ the: 'capabilities', of: ucan, is: capabilities }),
-        Fact({ of: capabilities, is: capability }),
-        Fact({ the: 'can', of: capability, is: can }),
-        Fact({ the: 'with', of: capability, is: space }),
+        match({ the: 'cid', of: ucan, is: cid }),
+        match({ the: 'capabilities', of: ucan, is: capabilities }),
+        match({ of: capabilities, is: capability }),
+        match({ the: 'can', of: capability, is: can }),
+        match({ the: 'with', of: capability, is: space }),
       ])
 
     const Permission = deduce({
@@ -53,11 +48,11 @@ export const testSelector = {
     })
       .with({ capabilities: Object, capability: Object })
       .where(({ this: ucan, cid, capabilities, capability, space, can }) => [
-        Fact({ the: 'cid', of: ucan, is: cid }),
-        Fact({ the: 'capabilities', of: ucan, is: capabilities }),
-        Fact({ of: capabilities, is: capability }),
-        Fact({ the: 'can', of: capability, is: can }),
-        Fact({ the: 'with', of: capability, is: space }),
+        match({ the: 'cid', of: ucan, is: cid }),
+        match({ the: 'capabilities', of: ucan, is: capabilities }),
+        match({ of: capabilities, is: capability }),
+        match({ the: 'can', of: capability, is: can }),
+        match({ the: 'with', of: capability, is: space }),
       ])
 
     const Upload = Delegation.when(({ can }) => [

@@ -1,8 +1,9 @@
 import * as API from './api.js'
 import * as Analyzer from './analyzer.js'
-import $ from './$.js'
+import { $, _ } from './$.js'
 import { Callable } from './syntax/callable.js'
 
+export { $, _ }
 /**
  * @template Terms
  * @template {(terms: any) => API.Constraint} F

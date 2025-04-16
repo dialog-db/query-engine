@@ -1,5 +1,4 @@
-import * as DB from 'datalogia'
-import { deduce as derive, Data, Fact, Text } from '../src/syntax.js'
+import { deduce as derive, Data, match, Text, Memory } from './lib.js'
 import * as Link from '../src/data/link.js'
 import proofsDB from './proofs.db.js'
 import moviesDB from './movie.db.js'
@@ -18,11 +17,11 @@ export const testDB = {
     })
       .with({ capabilities: Object, capability: Object })
       .where(({ this: ucan, cid, capabilities, capability, space, can }) => [
-        Fact({ the: 'cid', of: ucan, is: cid }),
-        Fact({ the: 'capabilities', of: ucan, is: capabilities }),
-        Fact({ of: capabilities, is: capability }),
-        Fact({ the: 'can', of: capability, is: can }),
-        Fact({ the: 'with', of: capability, is: space }),
+        match({ the: 'cid', of: ucan, is: cid }),
+        match({ the: 'capabilities', of: ucan, is: capabilities }),
+        match({ of: capabilities, is: capability }),
+        match({ the: 'can', of: capability, is: can }),
+        match({ the: 'with', of: capability, is: space }),
       ])
 
     const Query = derive({
@@ -45,7 +44,7 @@ export const testDB = {
   },
 
   'test basic': async (assert) => {
-    const db = DB.Memory.create([
+    const db = Memory.create([
       [Link.of('sally'), 'age', 21],
       [Link.of('fred'), 'age', 42],
       [Link.of('ethel'), 'age', 42],
@@ -55,7 +54,7 @@ export const testDB = {
     ])
 
     const Query = derive({ e: Object }).where(({ e }) => [
-      Fact({ the: 'age', of: e, is: 42 }),
+      match({ the: 'age', of: e, is: 42 }),
     ])
 
     assert.deepEqual(await Query().select({ from: db }), [
@@ -64,7 +63,7 @@ export const testDB = {
     ])
 
     const Likes = derive({ x: String }).where(({ x }) => [
-      Fact({ the: 'likes', is: x }),
+      match({ the: 'likes', is: x }),
     ])
 
     assert.deepEqual(await Likes().select({ from: db }), [
@@ -77,7 +76,7 @@ export const testDB = {
   'sketch pull pattern': async (assert) => {
     const Person = derive({ this: Object, name: String }).where(
       ({ this: person, name }) => [
-        Fact({ the: 'person/name', of: person, is: name }),
+        match({ the: 'person/name', of: person, is: name }),
       ]
     )
 
@@ -87,9 +86,9 @@ export const testDB = {
       director: Object,
       title: String,
     }).where(({ this: movie, cast, title, director }) => [
-      Fact({ the: 'movie/cast', of: movie, is: cast }),
-      Fact({ the: 'movie/director', of: movie, is: director }),
-      Fact({ the: 'movie/title', of: movie, is: title }),
+      match({ the: 'movie/cast', of: movie, is: cast }),
+      match({ the: 'movie/director', of: movie, is: director }),
+      match({ the: 'movie/title', of: movie, is: title }),
     ])
 
     const Query = derive({ title: String, director: String })
@@ -133,8 +132,8 @@ export const testDB = {
     })
       .with({ employee: Object })
       .where(({ employee, name }) => [
-        Fact({ the: 'job', of: employee, is: 'Computer programmer' }),
-        Fact({ the: 'name', of: employee, is: name }),
+        match({ the: 'job', of: employee, is: 'Computer programmer' }),
+        match({ the: 'name', of: employee, is: name }),
       ])
 
     assert.deepEqual(await Programmer().select({ from: employeeDB }), [
@@ -148,7 +147,7 @@ export const testDB = {
       this: Object,
       name: String,
     }).where(({ name, this: employee }) => [
-      Fact({ the: 'name', of: employee, is: name }),
+      match({ the: 'name', of: employee, is: name }),
     ])
 
     const Supervisor = derive({
@@ -158,7 +157,7 @@ export const testDB = {
       .with({ manager: Object, subordinate: Object })
       .where(({ supervisor, employee, subordinate, manager }) => [
         Employee({ this: subordinate, name: employee }),
-        Fact({ the: 'supervisor', of: subordinate, is: manager }),
+        match({ the: 'supervisor', of: subordinate, is: manager }),
         Employee({ this: manager, name: supervisor }),
       ])
     assert.deepEqual(
@@ -183,8 +182,8 @@ export const testDB = {
     })
       .with({ this: Object })
       .where(({ name, this: employee, salary }) => [
-        Fact({ the: 'name', of: employee, is: name }),
-        Fact({ the: 'salary', of: employee, is: salary }),
+        match({ the: 'name', of: employee, is: name }),
+        match({ the: 'salary', of: employee, is: salary }),
       ])
 
     const Above30K = Employee.when(({ salary }) => [
@@ -214,14 +213,14 @@ export const testDB = {
   'test disjunction': async (assert) => {
     const Employee = derive({ this: Object, name: String }).where(
       ({ this: employee, name }) => [
-        Fact({ the: 'name', of: employee, is: name }),
+        match({ the: 'name', of: employee, is: name }),
       ]
     )
 
     const Supervisor = derive({ this: Object, name: String, of: Object }).where(
       ({ this: supervisor, of, name }) => [
         Employee({ this: supervisor, name }),
-        Fact({ the: 'supervisor', of, is: supervisor }),
+        match({ the: 'supervisor', of, is: supervisor }),
       ]
     )
 
@@ -257,10 +256,10 @@ export const testDB = {
     const Query = derive({ name: String })
       .with({ supervisor: Object, employee: Object })
       .where(({ name, supervisor, employee }) => [
-        Fact({ the: 'name', of: supervisor, is: 'Bitdiddle Ben' }),
-        Fact({ the: 'supervisor', of: employee, is: supervisor }),
-        Fact({ the: 'name', of: employee, is: name }),
-        Fact.not({ the: 'job', of: employee, is: 'Computer programmer' }),
+        match({ the: 'name', of: supervisor, is: 'Bitdiddle Ben' }),
+        match({ the: 'supervisor', of: employee, is: supervisor }),
+        match({ the: 'name', of: employee, is: name }),
+        match.not({ the: 'job', of: employee, is: 'Computer programmer' }),
       ])
 
     assert.deepEqual(await Query().select({ from: employeeDB }), [

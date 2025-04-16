@@ -1,6 +1,14 @@
-import { Memory } from 'datalogia'
-import { Task, Link } from 'datalogia'
-import { deduce, Fact, Data, Text, UTF8, Math } from '../src/syntax.js'
+import {
+  Memory,
+  Task,
+  Link,
+  deduce,
+  match,
+  Text,
+  UTF8,
+  Math,
+  Data,
+} from './lib.js'
 
 const $ = Memory.entity
 
@@ -38,7 +46,7 @@ export const testRelation = {
         const Query = deduce({ type: String })
           .with({ q: Object })
           .where(({ type, q }) => [
-            Fact({ the: key, of: $(1), is: q }),
+            match({ the: key, of: $(1), is: q }),
             Data.Type({ of: q, is: type }),
           ])
 
@@ -102,7 +110,7 @@ export const testRelation = {
 
       for (const [key, value] of Object.entries(expert)) {
         const Query = deduce({ q: Object }).where(({ q }) => [
-          Fact({ the: key, of: $(1), is: q }),
+          match({ the: key, of: $(1), is: q }),
           Data.same({ this: q, as: value }),
         ])
 

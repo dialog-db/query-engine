@@ -1,5 +1,4 @@
-import { Memory, $ } from 'datalogia'
-import { deduce, Fact, Text } from '../src/syntax.js'
+import { Memory, $, deduce, match, Text } from './lib.js'
 
 const db = Memory.create([
   {
@@ -15,8 +14,8 @@ export const testConstraints = {
     const Piz = deduce({ word: String })
       .with({ words: Object })
       .where(({ word, words }) => [
-        Fact({ the: 'word', is: words }),
-        Fact({ of: words, is: word }),
+        match({ the: 'word', is: words }),
+        match({ of: words, is: word }),
         Text.match({
           this: word,
           pattern: 'piz*a',
@@ -30,8 +29,8 @@ export const testConstraints = {
     const Content = deduce({ word: String, match: String })
       .with({ words: Object })
       .where(({ word, words, match: like }) => [
-        Fact({ the: 'word', is: words }),
-        Fact({ of: words, is: word }),
+        match({ the: 'word', is: words }),
+        match({ of: words, is: word }),
         Text.match({
           this: word,
           pattern: like,
@@ -86,8 +85,8 @@ export const testConstraints = {
     const Content = deduce({ word: String })
       .with({ words: Object })
       .where(({ word, words }) => [
-        Fact({ the: 'word', is: words }),
-        Fact({ of: words, is: word }),
+        match({ the: 'word', is: words }),
+        match({ of: words, is: word }),
         Text.match({
           this: 'store/list',
           pattern: word,
@@ -104,8 +103,8 @@ export const testConstraints = {
     const Content = deduce({ word: String })
       .with({ words: Object })
       .where(({ word, words }) => [
-        Fact({ the: 'word', is: words }),
-        Fact({ of: words, is: word }),
+        match({ the: 'word', is: words }),
+        match({ of: words, is: word }),
         Text.match({
           this: word,
           pattern: '\\*',

@@ -1,7 +1,5 @@
-import * as DB from 'datalogia'
 import db from './microshaft.db.js'
-import { $ } from 'datalogia'
-import { deduce, Fact, Text, Data, same } from '../src/syntax.js'
+import { $, match, deduce, Memory, Text, Data, same } from './lib.js'
 
 const mallory = {
   'Person/name': 'Mallory',
@@ -37,7 +35,7 @@ export const testRules = {
   },
   'test basic': async (assert) => {
     const Name = deduce({ of: Object, is: String }).where(({ of, is }) => [
-      Fact({ the: 'name', of, is }),
+      match({ the: 'name', of, is }),
     ])
 
     const Alyssa = deduce({ of: Object, name: String }).where(
@@ -48,7 +46,7 @@ export const testRules = {
     )
 
     assert.deepEqual(await Alyssa().select({ from: db }), [
-      { of: DB.Memory.entity(1), name: 'Hacker Alyssa P' },
+      { of: Memory.entity(1), name: 'Hacker Alyssa P' },
     ])
   },
 
@@ -56,15 +54,15 @@ export const testRules = {
     const Wheel = deduce({ this: Object })
       .with({ manager: Object, employee: Object })
       .where(({ this: self, manager, employee }) => [
-        Fact({ the: 'supervisor', of: manager, is: self }),
-        Fact({ the: 'supervisor', of: employee, is: manager }),
+        match({ the: 'supervisor', of: manager, is: self }),
+        match({ the: 'supervisor', of: employee, is: manager }),
       ])
 
     const Query = deduce({ name: String })
       .with({ wheel: Object })
       .where(({ name, wheel }) => [
         Wheel({ this: wheel }),
-        Fact({ the: 'name', of: wheel, is: name }),
+        match({ the: 'name', of: wheel, is: name }),
       ])
 
     assert.deepEqual(
@@ -75,11 +73,11 @@ export const testRules = {
 
   'leaves near': async (assert) => {
     const Address = deduce({ of: Object, is: String }).where(({ of, is }) => [
-      Fact({ the: 'address', of, is }),
+      match({ the: 'address', of, is }),
     ])
 
     const Name = deduce({ of: Object, is: String }).where(({ of, is }) => [
-      Fact({ the: 'name', of, is }),
+      match({ the: 'name', of, is }),
     ])
 
     const Employee = deduce({
@@ -157,8 +155,8 @@ export const testRules = {
     })
       .with({ supervisor: Object })
       .where(({ employee, supervisor, name }) => [
-        Fact({ the: 'supervisor', of: employee, is: supervisor }),
-        Fact({ the: 'name', of: supervisor, is: name }),
+        match({ the: 'supervisor', of: employee, is: supervisor }),
+        match({ the: 'name', of: supervisor, is: name }),
       ])
 
     const Query = deduce({
@@ -167,7 +165,7 @@ export const testRules = {
     })
       .with({ $employee: Object })
       .where(({ supervisor, employee, $employee }) => [
-        Fact({ the: 'name', of: $employee, is: employee }),
+        match({ the: 'name', of: $employee, is: employee }),
         Supervisor({ employee: $employee, name: supervisor }),
       ])
 
@@ -185,7 +183,7 @@ export const testRules = {
 
   'test composite facts': async (assert) => {
     const Name = deduce({ of: Object, is: String }).where(({ of, is }) => [
-      Fact({ the: 'Person/name', of, is }),
+      match({ the: 'Person/name', of, is }),
     ])
 
     const Person = deduce({ this: Object, name: String }).where(
@@ -199,21 +197,18 @@ export const testRules = {
       .with({ $employee: Object, $manager: Object })
       .where(({ $manager, manager, $employee, employee }) => [
         Person({ this: $employee, name: employee }),
-        Fact({ the: 'Manages/employee', of: $manager, is: $employee }),
+        match({ the: 'Manages/employee', of: $manager, is: $employee }),
         Person({ this: $manager, name: manager }),
       ])
 
-    assert.deepEqual(
-      await Manages().select({ from: DB.Memory.create([alice]) }),
-      [
-        { manager: 'Alice', employee: 'Bob' },
-        { manager: 'Bob', employee: 'Mallory' },
-      ]
-    )
+    assert.deepEqual(await Manages().select({ from: Memory.create([alice]) }), [
+      { manager: 'Alice', employee: 'Bob' },
+      { manager: 'Bob', employee: 'Mallory' },
+    ])
 
     assert.deepEqual(
       await Manages({ employee: 'Bob', manager: $ }).select({
-        from: DB.Memory.create([alice]),
+        from: Memory.create([alice]),
       }),
       [{ manager: 'Alice', employee: 'Bob' }]
     )

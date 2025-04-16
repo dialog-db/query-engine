@@ -1,4 +1,4 @@
-import * as Task from '../src/task.js'
+import { Task } from './lib.js'
 
 /**
  * @type {import('entail').Suite}

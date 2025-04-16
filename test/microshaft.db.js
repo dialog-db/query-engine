@@ -1,4 +1,4 @@
-import { Memory } from 'datalogia'
+import { Memory } from './lib.js'
 const $ = Memory.entity
 
 export default Memory.create([

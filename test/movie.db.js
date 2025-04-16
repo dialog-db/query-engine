@@ -1,11 +1,13 @@
-import { Memory } from 'datalogia'
+import { Memory } from './lib.js'
 const $ = Memory.entity
 
+export const arnold = $(101)
+export const terminator = $(200)
 export default Memory.create([
   [$(100), 'person/name', 'James Cameron'],
   [$(100), 'person/born', '1954-08-16T00:00:00Z'],
-  [$(101), 'person/name', 'Arnold Schwarzenegger'],
-  [$(101), 'person/born', '1947-07-30T00:00:00Z'],
+  [arnold, 'person/name', 'Arnold Schwarzenegger'],
+  [arnold, 'person/born', '1947-07-30T00:00:00Z'],
   [$(102), 'person/name', 'Linda Hamilton'],
   [$(102), 'person/born', '1956-09-26T00:00:00Z'],
   [$(103), 'person/name', 'Michael Biehn'],
@@ -103,13 +105,13 @@ export default Memory.create([
   [$(148), 'person/born', '1939-11-26T00:00:00Z'],
   [$(149), 'person/name', 'Sophie Marceau'],
   [$(149), 'person/born', '1966-11-17T00:00:00Z'],
-  [$(200), 'movie/title', 'The Terminator'],
-  [$(200), 'movie/year', 1984],
-  [$(200), 'movie/director', $(100)],
-  [$(200), 'movie/cast', $(101)],
-  [$(200), 'movie/cast', $(102)],
-  [$(200), 'movie/cast', $(103)],
-  [$(200), 'movie/sequel', $(207)],
+  [terminator, 'movie/title', 'The Terminator'],
+  [terminator, 'movie/year', 1984],
+  [terminator, 'movie/director', $(100)],
+  [terminator, 'movie/cast', arnold],
+  [terminator, 'movie/cast', $(102)],
+  [terminator, 'movie/cast', $(103)],
+  [terminator, 'movie/sequel', $(207)],
   [$(201), 'movie/title', 'First Blood'],
   [$(201), 'movie/year', 1982],
   [$(201), 'movie/director', $(104)],
@@ -120,7 +122,7 @@ export default Memory.create([
   [$(202), 'movie/title', 'Predator'],
   [$(202), 'movie/year', 1987],
   [$(202), 'movie/director', $(108)],
-  [$(202), 'movie/cast', $(101)],
+  [$(202), 'movie/cast', arnold],
   [$(202), 'movie/cast', $(109)],
   [$(202), 'movie/cast', $(110)],
   [$(202), 'movie/sequel', $(211)],
@@ -140,7 +142,7 @@ export default Memory.create([
   [$(205), 'movie/title', 'Commando'],
   [$(205), 'movie/year', 1985],
   [$(205), 'movie/director', $(119)],
-  [$(205), 'movie/cast', $(101)],
+  [$(205), 'movie/cast', arnold],
   [$(205), 'movie/cast', $(120)],
   [$(205), 'movie/cast', $(121)],
   [
@@ -157,7 +159,7 @@ export default Memory.create([
   [$(207), 'movie/title', 'Terminator 2: Judgment Day'],
   [$(207), 'movie/year', 1991],
   [$(207), 'movie/director', $(100)],
-  [$(207), 'movie/cast', $(101)],
+  [$(207), 'movie/cast', arnold],
   [$(207), 'movie/cast', $(102)],
   [$(207), 'movie/cast', $(125)],
   [$(207), 'movie/cast', $(126)],
@@ -165,7 +167,7 @@ export default Memory.create([
   [$(208), 'movie/title', 'Terminator 3: Rise of the Machines'],
   [$(208), 'movie/year', 2003],
   [$(208), 'movie/director', $(127)],
-  [$(208), 'movie/cast', $(101)],
+  [$(208), 'movie/cast', arnold],
   [$(208), 'movie/cast', $(128)],
   [$(208), 'movie/cast', $(129)],
   [$(209), 'movie/title', 'Rambo: First Blood Part II'],

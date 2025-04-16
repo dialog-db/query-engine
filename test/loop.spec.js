@@ -1,11 +1,8 @@
-import * as DB from 'datalogia'
-import { $ } from 'datalogia'
-import { deduce, Fact, Data, Math } from '../src/syntax.js'
-import { derive } from '../src/fact.js'
+import { $, deduce, match, Data, Math, Memory, API } from './lib.js'
 
-const id = DB.Memory.entity
+const id = Memory.entity
 
-const db = DB.Memory.create([
+const db = Memory.create([
   // bafyr4ibnhlpn74i3mhyuzcdogwx2anttnxgypj2ne624cuicexiplexccm
   [id(0), 'data/type', 'list'],
   // bafyr4ici7rzb7o6bolqjex5cplywohpcew5je4juqauzrmikcvukdcdffm
@@ -26,7 +23,7 @@ export const testRecursion = {
   'test ancestor': async (assert) => {
     const Parent = deduce({ this: Object, of: Object }).where(
       ({ this: parent, of: child }) => [
-        Fact({ the: 'child/parent', of: child, is: parent }),
+        match({ the: 'child/parent', of: child, is: parent }),
       ]
     )
 
@@ -40,7 +37,7 @@ export const testRecursion = {
         ],
       }))
 
-    const alice = /** @type {DB.Entity & any} */ ('alice') //id('alice')
+    const alice = /** @type {API.Entity & any} */ ('alice') //id('alice')
     const bob = /** @type {any} */ ('bob')
     const mallory = /** @type {any} */ ('mallory')
     const jack = /** @type {any} */ ('jack')
@@ -48,7 +45,7 @@ export const testRecursion = {
     const eve = /** @type {any} */ ('eve')
 
     const ancestors = await Ancestor().select({
-      from: DB.Memory.create([
+      from: Memory.create([
         [alice, 'child/parent', bob],
         [bob, 'child/parent', mallory],
         [mallory, 'child/parent', jack],
@@ -88,7 +85,7 @@ export const testRecursion = {
   'complex ancestor test': async (assert) => {
     const Parent = deduce({ this: Object, of: Object }).where(
       ({ this: parent, of: child }) => [
-        Fact({ the: 'child/parent', of: child, is: parent }),
+        match({ the: 'child/parent', of: child, is: parent }),
       ]
     )
 
@@ -118,7 +115,7 @@ export const testRecursion = {
     // Note: Both mallory and dave have jack as parent
     // Note: There are multiple paths from alice to jack (and thus to adam and eve)
 
-    const alice = /** @type {DB.Entity & any} */ ('alice')
+    const alice = /** @type {API.Entity & any} */ ('alice')
     const bob = /** @type {any} */ ('bob')
     const charlie = /** @type {any} */ ('charlie')
     const david = /** @type {any} */ ('david')
@@ -129,7 +126,7 @@ export const testRecursion = {
     const dave = /** @type {any} */ ('dave')
 
     const ancestors = await Ancestor().select({
-      from: DB.Memory.create([
+      from: Memory.create([
         // First branch
         [alice, 'child/parent', bob],
         [bob, 'child/parent', mallory],
@@ -252,9 +249,9 @@ export const testRecursion = {
     const Child = deduce({ of: Object, is: Object })
       .with({ head: Object })
       .when(({ of, is, head }) => ({
-        head: [Fact({ the: 'list/next', of, is })],
+        head: [match({ the: 'list/next', of, is })],
         child: [
-          Fact({ the: 'list/next', of, is: head }),
+          match({ the: 'list/next', of, is: head }),
           Child({ of: head, is }),
         ],
       }))
@@ -272,7 +269,7 @@ export const testRecursion = {
       name: String,
     }).where(({ of, is, name }) => [
       Child({ of, is }),
-      Fact({ the: 'name', of: is, is: name }),
+      match({ the: 'name', of: is, is: name }),
     ])
 
     const result = await NestRecursive().select({ from: db })
@@ -294,9 +291,9 @@ export const testRecursion = {
     })
       .with({ root: Object })
       .where(({ node, name, root }) => [
-        Fact({ the: 'data/type', of: root, is: 'list' }),
+        match({ the: 'data/type', of: root, is: 'list' }),
         Child({ of: root, is: node }),
-        Fact({ the: 'name', of: node, is: name }),
+        match({ the: 'name', of: node, is: name }),
       ])
 
     assert.deepEqual(await RootedRecursion().select({ from: db }), [
@@ -311,8 +308,8 @@ export const testRecursion = {
       is: Object,
       default: { Null: {} },
     }).when(({ the, of, is, default: implicit, _ }) => ({
-      explicit: [Fact({ the, of, is }), Data.Type({ of: implicit, is: _ })],
-      implicit: [Fact.not({ the, of }), Data.same({ this: implicit, as: is })],
+      explicit: [match({ the, of, is }), Data.Type({ of: implicit, is: _ })],
+      implicit: [match.not({ the, of }), Data.same({ this: implicit, as: is })],
     }))
 
     const Query = deduce({
@@ -322,9 +319,9 @@ export const testRecursion = {
     })
       .with({ root: Object })
       .where(({ each, name, next, root }) => [
-        Fact({ the: 'data/type', of: root, is: 'list' }),
+        match({ the: 'data/type', of: root, is: 'list' }),
         Child({ of: root, is: each }),
-        Fact({ the: 'name', of: each, is: name }),
+        match({ the: 'name', of: each, is: name }),
         Implicit({
           the: 'list/next',
           of: each,
@@ -345,9 +342,9 @@ export const testRecursion = {
     const Child = deduce({ of: Object, is: Object })
       .with({ head: Object })
       .when(({ of, is, head }) => ({
-        head: [Fact({ the: 'list/next', of, is })],
+        head: [match({ the: 'list/next', of, is })],
         child: [
-          Fact({ the: 'list/next', of, is: head }),
+          match({ the: 'list/next', of, is: head }),
           Child({ of: head, is }),
         ],
       }))
@@ -358,9 +355,9 @@ export const testRecursion = {
     })
       .with({ root: Object })
       .where(({ node, name, root }) => [
-        Fact({ the: 'data/type', of: root, is: 'list' }),
+        match({ the: 'data/type', of: root, is: 'list' }),
         Child({ of: root, is: node }),
-        Fact({ the: 'name', of: node, is: name }),
+        match({ the: 'name', of: node, is: name }),
       ])
 
     assert.deepEqual(await RootedRecursion().select({ from: db }), [

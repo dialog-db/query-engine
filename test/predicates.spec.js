@@ -1,6 +1,5 @@
-import * as DB from 'datalogia'
 import testDB from './microshaft.db.js'
-import { deduce, Fact, Text, Data, text } from '../src/syntax.js'
+import { deduce, match, Text, Data, $ } from './lib.js'
 
 /**
  * @type {import('entail').Suite}
@@ -10,8 +9,8 @@ export const testMore = {
     const Employee = deduce({ name: String, job: String })
       .with({ of: Object })
       .where(({ of, name, job }) => [
-        Fact({ the: 'name', of, is: name }),
-        Fact({ the: 'job', of, is: job }),
+        match({ the: 'name', of, is: name }),
+        match({ the: 'job', of, is: job }),
       ])
 
     const job = 'Computer programmer'
@@ -45,8 +44,8 @@ export const testMore = {
       name: String,
       salary: Number,
     }).where(({ this: of, name, salary }) => [
-      Fact({ the: 'name', of, is: name }),
-      Fact({ the: 'salary', of, is: salary }),
+      match({ the: 'name', of, is: name }),
+      match({ the: 'salary', of, is: salary }),
     ])
 
     const Supervisor = deduce({
@@ -56,7 +55,7 @@ export const testMore = {
       .with({ subordinate: Object, manager: Object })
       .where(({ employee, supervisor, subordinate, manager, _ }) => [
         Employee({ this: subordinate, name: employee, salary: _ }),
-        Fact({ the: 'supervisor', of: subordinate, is: manager }),
+        match({ the: 'supervisor', of: subordinate, is: manager }),
         Employee({ this: manager, name: supervisor, salary: _ }),
       ])
 
@@ -72,7 +71,7 @@ export const testMore = {
     ])
 
     assert.deepEqual(
-      await Supervisor.match({ employee: DB.$.q }).select({ from: testDB }),
+      await Supervisor.match({ employee: $.q }).select({ from: testDB }),
       [
         { employee: 'Hacker Alyssa P' },
         { employee: 'Fect Cy D' },
@@ -117,8 +116,8 @@ export const testMore = {
       name: String,
       salary: Number,
     }).where(({ this: of, name, salary }) => [
-      Fact({ the: 'name', of, is: name }),
-      Fact({ the: 'salary', of, is: salary }),
+      match({ the: 'name', of, is: name }),
+      match({ the: 'salary', of, is: salary }),
     ])
 
     const NonPoorEmployees = deduce({ name: String, salary: Number }).where(
@@ -153,8 +152,8 @@ export const testMore = {
       name: String,
       address: String,
     }).where((employee) => [
-      Fact({ the: 'name', of: employee.this, is: employee.name }),
-      Fact({ the: 'address', of: employee.this, is: employee.address }),
+      match({ the: 'name', of: employee.this, is: employee.name }),
+      match({ the: 'address', of: employee.this, is: employee.address }),
     ])
 
     const WhoLivesInCambridge = deduce({
@@ -176,8 +175,8 @@ export const testMore = {
       name: String,
       job: String,
     }).where(({ name, job, this: of }) => [
-      Fact({ the: 'name', of, is: name }),
-      Fact({ the: 'job', of, is: job }),
+      match({ the: 'name', of, is: name }),
+      match({ the: 'job', of, is: job }),
     ])
 
     const Query = deduce({
@@ -196,7 +195,7 @@ export const testMore = {
           name: $.employeeName,
           job: $.employeeJob,
         }),
-        Fact({ the: 'supervisor', of: $.employee, is: $.supervisor }),
+        match({ the: 'supervisor', of: $.employee, is: $.supervisor }),
         Employee.match({
           this: $.supervisor,
           name: $.supervisorName,

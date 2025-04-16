@@ -1,13 +1,11 @@
-import * as DB from 'datalogia'
-import * as Analyzer from '../src/analyzer.js'
-import { Task, Link, $, API } from 'datalogia'
+import { Memory, Task, Link, $, Analyzer } from './lib.js'
 
 /**
  * @type {import('entail').Suite}
  */
 export const testEvaluation = {
   'plans negation last': async (assert) => {
-    const db = DB.Memory.create([alice])
+    const db = Memory.create([alice])
 
     const plan = Analyzer.rule({
       match: {
@@ -103,7 +101,7 @@ export const testEvaluation = {
   },
 
   'same variable as different binding': async (assert) => {
-    const db = DB.Memory.create([alice])
+    const db = Memory.create([alice])
 
     const rule = Analyzer.rule({
       match: {
@@ -175,7 +173,7 @@ export const testEvaluation = {
       'Person/name': 'Alice',
       'Manages/employee': bob,
     }
-    const db = DB.Memory.create([alice])
+    const db = Memory.create([alice])
 
     const rule = Analyzer.rule({
       match: {
