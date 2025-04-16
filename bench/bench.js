@@ -1,4 +1,4 @@
-import { query, Memory, API, variable } from '../src/lib.js'
+import { deduce, match } from '../src/lib.js'
 import * as Archive from './archive.js'
 import { assertEquals } from 'jsr:@std/assert'
 
@@ -7,23 +7,17 @@ const imdb = await Archive.open({
 })
 
 const moviesWithArnold = async () => {
-  const $ = {
-    movie: variable(),
-    title: variable(),
-    actor: variable(),
-  }
+  const Movie = deduce({
+    movie: Object,
+    title: String,
+    actor: Object,
+  }).where(({ movie, title, actor }) => [
+    match({ the: 'movie/title', of: movie, is: title }),
+    match({ the: 'movie/cast', of: movie, is: actor }),
+    match({ the: 'actor/name', of: actor, is: 'Arnold Schwarzenegger' }),
+  ])
 
-  const result = await query(imdb, {
-    select: {
-      title: $.title,
-      actor: $.actor,
-    },
-    where: [
-      { Case: [$.movie, 'movie/title', $.title] },
-      { Case: [$.movie, 'movie/cast', $.actor] },
-      { Case: [$.actor, 'actor/name', 'Arnold Schwarzenegger'] },
-    ],
-  })
+  const result = await await Movie().query({ from: imdb })
 
   assertEquals(result.length, 3)
 }

@@ -16,9 +16,9 @@ export const identify = ({ entity, attribute, value }) =>
 /**
  * @param {API.Querier} source - The underlying data source
  * @param {object} options
- * @param {number} options.capacity - Maximum number of individual facts to store in cache
+ * @param {number} [options.capacity] - Maximum number of individual facts to store in cache
  */
-export const create = (source, { capacity = 10_000 }) =>
+export const create = (source, { capacity = 10_000 } = {}) =>
   new LRUCache(source, capacity)
 
 /**
@@ -68,8 +68,8 @@ class LRUCache {
   /**
    * @param {API.FactsSelector} selector
    */
-  *scan({ entity, attribute, value }) {
-    const key = identify({ entity, attribute, value })
+  *scan(selector) {
+    const key = identify(selector)
 
     // Check if we have it in cache
     const cached = this.cache.get(key)
@@ -79,7 +79,7 @@ class LRUCache {
     }
 
     // Fetch from source
-    const facts = yield* this.source.scan({ entity, attribute, value })
+    const facts = yield* this.source.scan(selector)
 
     // Skip caching if the result set is larger than our total capacity
     if (facts.length > this.capacity) {

@@ -50,7 +50,7 @@
         "npm:multiformats@13",
         "npm:playwright-test@14.0.0",
         "npm:prettier@3.1.0",
-        "npm:typescript@5.3.3"
+        "npm:typescript@^5.7.3"
       ]
     }
   }

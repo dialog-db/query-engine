@@ -10,6 +10,7 @@ import * as Task from './task.js'
 import { _, $ } from './$.js'
 import * as Cursor from './cursor.js'
 import * as Match from './match.js'
+import * as LRU from './source/lru.js'
 
 export { $ }
 
@@ -1825,7 +1826,7 @@ class RuleApplicationPlan {
    */
   *query({ from: source, selector = /** @type {Selector} */ (this.match) }) {
     const frames = yield* this.evaluate({
-      source,
+      source: LRU.create(source),
       self: this.plan,
       selection: [new Map()],
       recur: [], // Array for pairs of [nextBindings, originalContext]
