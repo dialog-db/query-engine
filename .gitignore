@@ -7,3 +7,4 @@ test/commp/vector.csv.js
 profile
 .lsp
 .clj-kondo
+.claude
