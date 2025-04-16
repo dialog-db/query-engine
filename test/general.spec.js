@@ -17,7 +17,7 @@ export const testDB = {
       space: String,
     })
       .with({ capabilities: Object, capability: Object })
-      .when(({ this: ucan, cid, capabilities, capability, space, can }) => [
+      .where(({ this: ucan, cid, capabilities, capability, space, can }) => [
         Fact({ the: 'cid', of: ucan, is: cid }),
         Fact({ the: 'capabilities', of: ucan, is: capabilities }),
         Fact({ of: capabilities, is: capability }),
@@ -29,7 +29,7 @@ export const testDB = {
       space: String,
       upload: String,
       store: String,
-    }).when(({ space, upload, store }) => [
+    }).where(({ space, upload, store }) => [
       Delegation.match({ space, can: 'upload/add', cid: upload }),
       Delegation.match({ space, can: 'store/add', cid: store }),
     ])
@@ -54,7 +54,7 @@ export const testDB = {
       [Link.of('ethel'), 'likes', 'sushi'],
     ])
 
-    const Query = derive({ e: Object }).when(({ e }) => [
+    const Query = derive({ e: Object }).where(({ e }) => [
       Fact({ the: 'age', of: e, is: 42 }),
     ])
 
@@ -63,7 +63,7 @@ export const testDB = {
       { e: Link.of('ethel') },
     ])
 
-    const Likes = derive({ x: String }).when(({ x }) => [
+    const Likes = derive({ x: String }).where(({ x }) => [
       Fact({ the: 'likes', is: x }),
     ])
 
@@ -75,7 +75,7 @@ export const testDB = {
   },
 
   'sketch pull pattern': async (assert) => {
-    const Person = derive({ this: Object, name: String }).when(
+    const Person = derive({ this: Object, name: String }).where(
       ({ this: person, name }) => [
         Fact({ the: 'person/name', of: person, is: name }),
       ]
@@ -86,7 +86,7 @@ export const testDB = {
       cast: Object,
       director: Object,
       title: String,
-    }).when(({ this: movie, cast, title, director }) => [
+    }).where(({ this: movie, cast, title, director }) => [
       Fact({ the: 'movie/cast', of: movie, is: cast }),
       Fact({ the: 'movie/director', of: movie, is: director }),
       Fact({ the: 'movie/title', of: movie, is: title }),
@@ -94,7 +94,7 @@ export const testDB = {
 
     const Query = derive({ title: String, director: String })
       .with({ actor: Object, by: Object })
-      .when(({ title, director, by, actor }) => [
+      .where(({ title, director, by, actor }) => [
         Movie.match({ cast: actor, director: by, title }),
         Person({ this: by, name: director }),
         Person({ this: actor, name: 'Arnold Schwarzenegger' }),
@@ -132,7 +132,7 @@ export const testDB = {
       name: String,
     })
       .with({ employee: Object })
-      .when(({ employee, name }) => [
+      .where(({ employee, name }) => [
         Fact({ the: 'job', of: employee, is: 'Computer programmer' }),
         Fact({ the: 'name', of: employee, is: name }),
       ])
@@ -147,7 +147,7 @@ export const testDB = {
     const Employee = derive({
       this: Object,
       name: String,
-    }).when(({ name, this: employee }) => [
+    }).where(({ name, this: employee }) => [
       Fact({ the: 'name', of: employee, is: name }),
     ])
 
@@ -156,7 +156,7 @@ export const testDB = {
       supervisor: String,
     })
       .with({ manager: Object, subordinate: Object })
-      .when(({ supervisor, employee, subordinate, manager }) => [
+      .where(({ supervisor, employee, subordinate, manager }) => [
         Employee({ this: subordinate, name: employee }),
         Fact({ the: 'supervisor', of: subordinate, is: manager }),
         Employee({ this: manager, name: supervisor }),
@@ -182,7 +182,7 @@ export const testDB = {
       salary: Number,
     })
       .with({ this: Object })
-      .when(({ name, this: employee, salary }) => [
+      .where(({ name, this: employee, salary }) => [
         Fact({ the: 'name', of: employee, is: name }),
         Fact({ the: 'salary', of: employee, is: salary }),
       ])
@@ -212,13 +212,13 @@ export const testDB = {
   },
 
   'test disjunction': async (assert) => {
-    const Employee = derive({ this: Object, name: String }).when(
+    const Employee = derive({ this: Object, name: String }).where(
       ({ this: employee, name }) => [
         Fact({ the: 'name', of: employee, is: name }),
       ]
     )
 
-    const Supervisor = derive({ this: Object, name: String, of: Object }).when(
+    const Supervisor = derive({ this: Object, name: String, of: Object }).where(
       ({ this: supervisor, of, name }) => [
         Employee({ this: supervisor, name }),
         Fact({ the: 'supervisor', of, is: supervisor }),
@@ -256,7 +256,7 @@ export const testDB = {
   'test negation': async (assert) => {
     const Query = derive({ name: String })
       .with({ supervisor: Object, employee: Object })
-      .when(({ name, supervisor, employee }) => [
+      .where(({ name, supervisor, employee }) => [
         Fact({ the: 'name', of: supervisor, is: 'Bitdiddle Ben' }),
         Fact({ the: 'supervisor', of: employee, is: supervisor }),
         Fact({ the: 'name', of: employee, is: name }),

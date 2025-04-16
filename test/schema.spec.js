@@ -629,7 +629,9 @@ export const testSchema = {
     const title = Schema.fact({
       the: 'content/title',
       is: Schema.string(),
-    }).implicit('Untitled')
+    })
+      // @ts-expect-error
+      .implicit('Untitled')
 
     const hello = { 'article/content': 'Hello, World!' }
     const goodbye = {
@@ -684,7 +686,7 @@ export const testSchema = {
 
     const Email = Schema.entity({ email: String }).when(
       ({ this: of, email }) => [
-        EmailAddress({ of, is: email }),
+        EmailAddress({ this: of, is: email }),
         Like({ text: email, pattern: '*@*.*' }),
       ]
     )

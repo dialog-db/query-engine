@@ -673,7 +673,7 @@ class Deduce {
     return new Deduce(this.descriptor, { ...extension, ...this.locals })
   }
   /**
-   * @param {API.WhenBuilder<Descriptor & Locals>} build
+   * @param {API.SomeBuilder<Descriptor & Locals>} build
    * @returns {Deduction<Descriptor, Locals>}
    */
   when(build) {
@@ -685,7 +685,7 @@ class Deduce {
    * @returns {Deduction<Descriptor, Locals>}
    */
   where(build) {
-    return this.when(build)
+    return new Deduction(this.descriptor, this.locals, build)
   }
 }
 

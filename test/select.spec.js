@@ -18,7 +18,7 @@ export const testSelector = {
       space: String,
     })
       .with({ capabilities: Object, capability: Object })
-      .when(({ this: ucan, cid, capabilities, capability, space, can }) => [
+      .where(({ this: ucan, cid, capabilities, capability, space, can }) => [
         Fact({ the: 'cid', of: ucan, is: cid }),
         Fact({ the: 'capabilities', of: ucan, is: capabilities }),
         Fact({ of: capabilities, is: capability }),
@@ -30,7 +30,7 @@ export const testSelector = {
       space: String,
       upload: String,
       store: String,
-    }).when(({ space, upload, store }) => [
+    }).where(({ space, upload, store }) => [
       Delegation.match({ space, can: 'upload/add', cid: upload }),
       Delegation.match({ space, can: 'store/add', cid: store }),
     ])
@@ -52,7 +52,7 @@ export const testSelector = {
       space: String,
     })
       .with({ capabilities: Object, capability: Object })
-      .when(({ this: ucan, cid, capabilities, capability, space, can }) => [
+      .where(({ this: ucan, cid, capabilities, capability, space, can }) => [
         Fact({ the: 'cid', of: ucan, is: cid }),
         Fact({ the: 'capabilities', of: ucan, is: capabilities }),
         Fact({ of: capabilities, is: capability }),
@@ -72,7 +72,7 @@ export const testSelector = {
       upload: String,
       store: String,
       space: String,
-    }).when(({ upload, store, space }) => [
+    }).where(({ upload, store, space }) => [
       Upload.match({ space, cid: upload }),
       Store.match({ space, cid: store }),
     ])

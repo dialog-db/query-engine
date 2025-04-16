@@ -1,7 +1,6 @@
 import * as DB from 'datalogia'
 import db from './microshaft.db.js'
 import { $ } from 'datalogia'
-import * as Analyzer from '../src/analyzer.js'
 import { deduce, Fact, Text, Data, same } from '../src/syntax.js'
 import { rule } from '../src/rule.js'
 
@@ -153,26 +152,27 @@ export const testRules = {
   },
 
   'test rules do not share a scope': async (assert) => {
-    const Supervisor = rule({
-      case: { this: $.this, name: $.name },
-      when: [
-        { Case: [$.this, 'supervisor', $.supervisor] },
-        { Case: [$.supervisor, 'name', $.name] },
-      ],
+    const Supervisor = deduce({
+      employee: Object,
+      name: String,
     })
+      .with({ supervisor: Object })
+      .where(({ employee, supervisor, name }) => [
+        Fact({ the: 'supervisor', of: employee, is: supervisor }),
+        Fact({ the: 'name', of: supervisor, is: name }),
+      ])
 
-    const match = await DB.query(db, {
-      select: {
-        employee: $.name,
-        supervisor: $.supervisor,
-      },
-      where: [
-        { Case: [$.employee, 'name', $.name] },
-        Supervisor.match({ this: $.employee, name: $.supervisor }),
-      ],
+    const Query = deduce({
+      employee: String,
+      supervisor: String,
     })
+      .with({ $employee: Object })
+      .where(({ supervisor, employee, $employee }) => [
+        Fact({ the: 'name', of: $employee, is: employee }),
+        Supervisor({ employee: $employee, name: supervisor }),
+      ])
 
-    assert.deepEqual(match, [
+    assert.deepEqual(await Query().select({ from: db }), [
       { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
       { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
       { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },

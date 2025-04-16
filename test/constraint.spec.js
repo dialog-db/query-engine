@@ -14,7 +14,7 @@ export const testConstraints = {
   like: async (assert) => {
     const Piz = deduce({ word: String })
       .with({ words: Object })
-      .when(({ word, words }) => [
+      .where(({ word, words }) => [
         Fact({ the: 'word', is: words }),
         Fact({ of: words, is: word }),
         Text.match({
@@ -29,7 +29,7 @@ export const testConstraints = {
   'make pattern rule': async (assert) => {
     const Content = deduce({ word: String, match: String })
       .with({ words: Object })
-      .when(({ word, words, match: like }) => [
+      .where(({ word, words, match: like }) => [
         Fact({ the: 'word', is: words }),
         Fact({ of: words, is: word }),
         Text.match({
@@ -85,7 +85,7 @@ export const testConstraints = {
   'test find patterns that match text': async (assert) => {
     const Content = deduce({ word: String })
       .with({ words: Object })
-      .when(({ word, words }) => [
+      .where(({ word, words }) => [
         Fact({ the: 'word', is: words }),
         Fact({ of: words, is: word }),
         Text.match({
@@ -103,7 +103,7 @@ export const testConstraints = {
   'test revers pattern': async (assert) => {
     const Content = deduce({ word: String })
       .with({ words: Object })
-      .when(({ word, words }) => [
+      .where(({ word, words }) => [
         Fact({ the: 'word', is: words }),
         Fact({ of: words, is: word }),
         Text.match({

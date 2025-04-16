@@ -9,7 +9,7 @@ export const testMore = {
   'test facts': async (assert) => {
     const Employee = deduce({ name: String, job: String })
       .with({ of: Object })
-      .when(({ of, name, job }) => [
+      .where(({ of, name, job }) => [
         Fact({ the: 'name', of, is: name }),
         Fact({ the: 'job', of, is: job }),
       ])
@@ -23,7 +23,7 @@ export const testMore = {
       ]
     )
 
-    const ComputerPeople = deduce({ name: String, job: String }).when(
+    const ComputerPeople = deduce({ name: String, job: String }).where(
       ({ name, job }) => [
         Employee({ name, job }),
         Text.match({ this: job, pattern: 'Computer*' }),
@@ -44,7 +44,7 @@ export const testMore = {
       this: Object,
       name: String,
       salary: Number,
-    }).when(({ this: of, name, salary }) => [
+    }).where(({ this: of, name, salary }) => [
       Fact({ the: 'name', of, is: name }),
       Fact({ the: 'salary', of, is: salary }),
     ])
@@ -54,7 +54,7 @@ export const testMore = {
       supervisor: String,
     })
       .with({ subordinate: Object, manager: Object })
-      .when(({ employee, supervisor, subordinate, manager, _ }) => [
+      .where(({ employee, supervisor, subordinate, manager, _ }) => [
         Employee({ this: subordinate, name: employee, salary: _ }),
         Fact({ the: 'supervisor', of: subordinate, is: manager }),
         Employee({ this: manager, name: supervisor, salary: _ }),
@@ -116,12 +116,12 @@ export const testMore = {
       this: Object,
       name: String,
       salary: Number,
-    }).when(({ this: of, name, salary }) => [
+    }).where(({ this: of, name, salary }) => [
       Fact({ the: 'name', of, is: name }),
       Fact({ the: 'salary', of, is: salary }),
     ])
 
-    const NonPoorEmployees = deduce({ name: String, salary: Number }).when(
+    const NonPoorEmployees = deduce({ name: String, salary: Number }).where(
       ({ name, salary }) => [
         Employee.match({ name, salary }),
         Data.greater({ this: salary, than: 30_000 }),
@@ -152,7 +152,7 @@ export const testMore = {
       this: Object,
       name: String,
       address: String,
-    }).when((employee) => [
+    }).where((employee) => [
       Fact({ the: 'name', of: employee.this, is: employee.name }),
       Fact({ the: 'address', of: employee.this, is: employee.address }),
     ])
@@ -160,7 +160,7 @@ export const testMore = {
     const WhoLivesInCambridge = deduce({
       name: String,
       address: String,
-    }).when(({ name, address }) => [
+    }).where(({ name, address }) => [
       Employee.match({ name, address }),
       Text.includes({ this: address, slice: 'Campridge' }),
     ])
@@ -175,7 +175,7 @@ export const testMore = {
       this: Object,
       name: String,
       job: String,
-    }).when(({ name, job, this: of }) => [
+    }).where(({ name, job, this: of }) => [
       Fact({ the: 'name', of, is: name }),
       Fact({ the: 'job', of, is: job }),
     ])
@@ -190,7 +190,7 @@ export const testMore = {
         supervisor: Object,
         supervisorJob: String,
       })
-      .when(($) => [
+      .where(($) => [
         Employee.match({
           this: $.employee,
           name: $.employeeName,

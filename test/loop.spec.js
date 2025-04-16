@@ -24,7 +24,7 @@ const db = DB.Memory.create([
  */
 export const testRecursion = {
   'test ancestor': async (assert) => {
-    const Parent = deduce({ this: Object, of: Object }).when(
+    const Parent = deduce({ this: Object, of: Object }).where(
       ({ this: parent, of: child }) => [
         Fact({ the: 'child/parent', of: child, is: parent }),
       ]
@@ -86,7 +86,7 @@ export const testRecursion = {
   },
 
   'complex ancestor test': async (assert) => {
-    const Parent = deduce({ this: Object, of: Object }).when(
+    const Parent = deduce({ this: Object, of: Object }).where(
       ({ this: parent, of: child }) => [
         Fact({ the: 'child/parent', of: child, is: parent }),
       ]

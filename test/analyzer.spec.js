@@ -1,5 +1,5 @@
 import * as Analyzer from '../src/analyzer.js'
-import { Task, Link, $, Var, API, Memory } from 'datalogia'
+import { Link, $, API, Memory } from 'datalogia'
 import * as Inspector from './inspector.js'
 
 /**
