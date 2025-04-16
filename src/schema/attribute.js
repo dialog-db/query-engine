@@ -31,7 +31,7 @@ export class Attribute extends Schema {
    */
   constructor({ the, is }) {
     super()
-    this.the = the
+    this.the = /** @type {The} */ (the)
     this.is = is
 
     this.members = {
@@ -106,6 +106,7 @@ export class Attribute extends Schema {
 
   /**
    * @param {View} value
+   * @returns {API.AttributeSchema<The, Model, View>}
    */
   implicit(value) {
     return new ImplicitAttribute({
@@ -142,7 +143,7 @@ export class Attribute extends Schema {
  * @template {{}|null} Model
  * @template View
  * @extends {Schema<{ of: { this: API.Entity }, is: Model }>}
- * @implements {API.Schema<{ of: { this: API.Entity }, is: Model }, View>}
+ * @implements {API.AttributeSchema<The, Model, View>}
  */
 class ImplicitAttribute extends Schema {
   /**
@@ -167,6 +168,14 @@ class ImplicitAttribute extends Schema {
 
     /** @type {API.Conjunct[]} */
     this.where = []
+  }
+
+  /**
+   * @param {View} value
+   * @returns {API.AttributeSchema<The, Model, View>}
+   */
+  implicit(value) {
+    return this
   }
 
   /**

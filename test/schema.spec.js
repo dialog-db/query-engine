@@ -2,7 +2,7 @@ import * as DB from 'datalogia'
 import * as Analyzer from '../src/analyzer.js'
 import * as Schema from '../src/schema.js'
 import { $, Task } from 'datalogia'
-import * as Link from '../src/link.js'
+import * as Link from '../src/data/link.js'
 
 const db = DB.Memory.create([
   {

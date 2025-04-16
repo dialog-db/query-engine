@@ -1,54 +1,9 @@
 import * as API from './api.js'
-
-export class Variable {
-  static id = 1
-  #name
-  /**
-   * @param {number} id
-   * @param {string|symbol} name
-   */
-  constructor(id, name = Symbol()) {
-    this['?'] = { id }
-    this.#name = name
-  }
-
-  /**
-   * @template {API.Scalar} T
-   * @param {{name?: string} & API.Variable<T>} origin
-   * @returns {API.Variable<T>}
-   */
-  static fork({ name }) {
-    return new Variable(++Variable.id, name)
-  }
-
-  /**
-   * @param {string|symbol} name
-   */
-  static new(name = Symbol()) {
-    return new Variable(++Variable.id, name)
-  }
-  get id() {
-    return this['?'].id
-  }
-  get name() {
-    return this.#name
-  }
-  toString() {
-    return typeof this.#name === 'symbol' ?
-        `?@${this.#name.description ?? this.id}`
-      : `?${this.#name.toString()}`
-  }
-  get [Symbol.toStringTag]() {
-    return this.toString()
-  }
-  [Symbol.for('nodejs.util.inspect.custom')]() {
-    return this.toString()
-  }
-}
+import * as Variable from './variable.js'
 
 /** @type {API.Variable} */
-export const _ = new Variable(0, '_')
-const anonymous = new Variable(1, '$')
+export const _ = Variable._
+const anonymous = Variable.create('$').with({ id: 1 })
 
 class Variables {
   /**
@@ -100,7 +55,7 @@ class Variables {
     if (variable) {
       return variable
     } else {
-      const variable = new Variable(++Variable.id, key)
+      const variable = Variable.create(key)
       vars.set(key, variable)
       return variable
     }
@@ -142,8 +97,3 @@ class Variables {
 
 export const $ = Variables.new()
 export default $
-
-/**
- * @param {string|symbol} [name]
- */
-export const variable = (name = Symbol()) => global[name]

@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import * as DB from 'datalogia'
 import Movies from './movie.db.js'
 

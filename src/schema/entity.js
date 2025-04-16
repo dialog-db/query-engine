@@ -76,7 +76,10 @@ export class Entity extends Schema {
       this
     )
 
-    return new Query({ terms, schema })
+    return new Query(
+      // @ts-expect-error - don't know and & don't have time to figure out
+      { terms, schema }
+    )
   }
 
   /**

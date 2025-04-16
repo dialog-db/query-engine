@@ -11,7 +11,7 @@ export class Fact extends Schema {
   /**
    * @param {API.FactMembers} members
    * @param {API.FactTerms} selector
-   * @param {API.Every} where
+   * @param {API.Conjunct[]} where
    * @param {Model['the']} [the]
    */
   constructor(members, selector, where, the) {

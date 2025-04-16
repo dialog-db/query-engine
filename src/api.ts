@@ -363,7 +363,6 @@ import * as DataOperators from './formula/data.js'
 import * as TextOperators from './formula/text.js'
 import * as UTF8Operators from './formula/utf8.js'
 import * as MathOperators from './formula/math.js'
-import { variable } from './$.js'
 
 export type Formula =
   | InferFormula<'==', typeof DataOperators.is>
@@ -1185,7 +1184,7 @@ export interface FactSchema<Model extends FactModel = FactModel, View = Model>
   (terms?: InferFactTerms<Model>): RuleApplicationView<View>
 }
 
-export interface AttributeSchema<T extends The, Model, View>
+export interface AttributeSchema<T extends string, Model, View>
   extends Schema<{ of: { this: Entity }; is: Model }, View> {
   the: T
   is: Schema<Model, View>

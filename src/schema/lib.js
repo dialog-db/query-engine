@@ -154,7 +154,7 @@ export const fact = (descriptor) => {
     new Fact(
       members,
       selector,
-      /** @type {API.Every} */ (where),
+      /** @type {API.Conjunct[]} */ (where),
       /** @type {API.InferFact<{the: The, of: Of, is:Is}>['the']} */ (
         descriptor.the
       )

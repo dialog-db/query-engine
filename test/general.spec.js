@@ -1,6 +1,6 @@
 import * as DB from 'datalogia'
 import { deduce as derive, Data, Fact, Text } from '../src/syntax.js'
-import * as Link from '../src/link.js'
+import * as Link from '../src/data/link.js'
 import proofsDB from './proofs.db.js'
 import moviesDB from './movie.db.js'
 import employeeDB from './microshaft.db.js'

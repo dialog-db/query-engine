@@ -1,7 +1,7 @@
 import * as API from './api.js'
 import * as Variable from './variable.js'
-import * as Bytes from './bytes.js'
-import * as Link from './link.js'
+import * as Bytes from './data/bytes.js'
+import * as Link from './data/link.js'
 import * as Constant from './constant.js'
 
 /**
@@ -27,72 +27,6 @@ export function* variables(source) {
         yield term
       }
     }
-  }
-}
-
-/**
- *
- * @param {API.Terms|API.Term[]} terms
- * @param {API.Terms|API.Term[]} to
- * @returns {-1|0|1}
- */
-export const compare = (terms, to) => {
-  if (Variable.is(terms)) {
-    return Variable.is(to) ? Variable.compare(terms, to) : 1
-  } else if (Constant.is(terms)) {
-    return Constant.is(to) ? Constant.compare(terms, to) : -1
-  } else if (Array.isArray(terms)) {
-    return Array.isArray(to) ? compareTuple(terms, to) : -1
-  } else {
-    return compareRecord(terms, /** @type {Record<string, API.Term>} */ (to))
-  }
-}
-
-/**
- * @param {API.Term[]} terms
- * @param {API.Term[]} to
- * @returns {-1|0|1}
- */
-const compareTuple = (terms, to) => {
-  const delta = terms.length - to.length
-  if (delta < 0) {
-    return -1
-  } else if (delta > 0) {
-    return 1
-  } else {
-    for (const [index, term] of terms.entries()) {
-      const order = compare(term, to[index])
-      if (order !== 0) {
-        return order
-      }
-    }
-    return 0
-  }
-}
-
-/**
- *
- * @param {Record<string, API.Term>} terms
- * @param {Record<string, API.Term>} to
- * @returns {-1|0|1}
- */
-const compareRecord = (terms, to) => {
-  const keys = Object.keys(terms).sort()
-  const other = Object.keys(to).sort()
-  const delta = keys.length - other.length
-  if (delta < 0) {
-    return -1
-  } else if (delta > 0) {
-    return 1
-  } else {
-    for (const key of keys) {
-      const value = to[key]
-      const order = value === undefined ? 1 : compare(terms[key], to[key])
-      if (order !== 0) {
-        return order
-      }
-    }
-    return 0
   }
 }
 

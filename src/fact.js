@@ -1,6 +1,6 @@
 import * as API from './api.js'
 import * as Constant from './constant.js'
-import * as Link from './link.js'
+import * as Link from './data/link.js'
 
 /**
  * @param {API.Instantiation} source

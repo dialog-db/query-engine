@@ -1,7 +1,7 @@
-import * as API from './api.js'
-import { Constant } from './lib.js'
-import * as Link from './link.js'
-import * as Fact from './fact.js'
+import * as API from '../api.js'
+import { Constant } from '../lib.js'
+import * as Link from '../data/link.js'
+import * as Fact from '../fact.js'
 
 /**
  * @param {{}} source

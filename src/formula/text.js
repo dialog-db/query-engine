@@ -1,4 +1,4 @@
-import * as Pattern from '../pattern.js'
+import * as Pattern from '../data/string/pattern.js'
 
 /**
  * @param {object} input

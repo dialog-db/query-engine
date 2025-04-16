@@ -1,8 +1,7 @@
 import * as API from './api.js'
-import * as Link from './link.js'
-import * as Bytes from './bytes.js'
-import * as Entity from './entity.js'
-import * as Type from './type.js'
+import * as Link from './data/link.js'
+import * as Bytes from './data/bytes.js'
+import * as Entity from './data/entity.js'
 
 export { Link, Bytes }
 

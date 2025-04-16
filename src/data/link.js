@@ -1,11 +1,11 @@
-import * as API from './api.js'
+import * as API from '../api.js'
 import * as Link from 'multiformats/link'
 import * as Bytes from './bytes.js'
 import * as CBOR from '@ipld/dag-cbor'
 import * as Blake3 from '@noble/hashes/blake3'
 import * as Digest from 'multiformats/hashes/digest'
 
-export * from './api.js'
+export * from '../api.js'
 
 /**
  * @template {{} | null} T

@@ -14,7 +14,9 @@ export class Query {
    * @param {API.Schema<Model, View>} source.schema
    */
   constructor({ terms, schema }) {
-    const match = Selector.deriveMatch(schema.selector)
+    const match = Selector.deriveMatch(
+      /** @type {API.SchemaTerms} */ (schema.selector)
+    )
 
     /** @type {Record<string, API.Term>} */
     const application = { ...match }
@@ -34,7 +36,9 @@ export class Query {
         [
           {
             match: {
-              of: /** @type {API.Term<API.Entity>} */ (schema.selector.this),
+              of: /** @type {{ this: API.Term<API.Entity> }} */ (
+                schema.selector
+              ).this,
             },
           },
         ]

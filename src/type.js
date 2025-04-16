@@ -1,5 +1,5 @@
 import * as API from './api.js'
-import { is as isLink } from './link.js'
+import { is as isLink } from './data/link.js'
 
 /**
  * Checks given `value` against the given `type` and returns `true` if type

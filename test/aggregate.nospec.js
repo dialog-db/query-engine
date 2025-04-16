@@ -1,3 +1,4 @@
+// @ts-nocheck
 import * as DB from 'datalogia'
 import { Task, Link, $ } from 'datalogia'
 import { rule } from '../src/rule.js'

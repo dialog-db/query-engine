@@ -3,9 +3,9 @@ import * as Variable from './variable.js'
 import * as Terms from './terms.js'
 import * as Term from './term.js'
 import * as Constant from './constant.js'
-import { operators } from './formula.js'
-import { add } from './selector.js'
-import { indent, li } from './format.js'
+import * as Selector from './selector.js'
+import operators from './formula/lib.js'
+import { indent, li } from './data/string/format.js'
 import * as Task from './task.js'
 import { _, $ } from './$.js'
 import * as Cursor from './cursor.js'
@@ -451,19 +451,6 @@ class FormulaApplication {
     const { match, operator } = this.source
 
     return `{ match: ${Terms.toDebugString(match)}, operator: "${operator}" }`
-  }
-
-  /**
-   * @param {FormulaApplication} other
-   */
-  compare({ source: to }) {
-    const { match, operator } = this.source
-    let order = Terms.compare(match, to.match)
-    if (order !== 0) {
-      return order
-    }
-
-    return Constant.compare(operator, to.operator)
   }
 }
 
@@ -1793,117 +1780,6 @@ class DeductiveRulePlan {
   }
 }
 
-class Selector {
-  /**
-   * @template {API.Selector} Selector
-   * @param {Selector} selector
-   * @param {Iterable<API.MatchFrame>} frames
-   * @returns {API.InferBindings<Selector>[]}
-   */
-  static select(selector, frames) {
-    /** @type {API.InferBindings<Selector>[]} */
-    const selection = []
-    for (const frame of frames) {
-      if (selection.length === 0) {
-        selection.push(this.match(selector, frame))
-      } else {
-        let joined = false
-        for (const [offset, match] of selection.entries()) {
-          const merged = this.merge(selector, frame, match)
-          if (merged) {
-            selection[offset] = merged
-            joined = true
-          }
-        }
-
-        if (!joined) {
-          selection.push(this.match(selector, frame))
-        }
-      }
-    }
-
-    return selection
-  }
-  /**
-   * @template {API.Selector} Selector
-   * @param {Selector} selector
-   * @param {API.MatchFrame} bindings
-   * @returns {API.InferBindings<Selector>}
-   */
-  static match(selector, bindings) {
-    return Array.isArray(selector) ?
-        [
-          Variable.is(selector[0]) ? bindings.get(selector[0])
-          : Constant.is(selector[0]) ? selector[0]
-          : this.match(selector[0], bindings),
-        ]
-      : Object.fromEntries(
-          Object.entries(selector).map(([key, term]) => {
-            if (Variable.is(term)) {
-              const value = bindings.get(term)
-              return [key, value]
-            } else if (Constant.is(term)) {
-              return [key, term]
-            } else {
-              return [key, this.match(term, bindings)]
-            }
-          })
-        )
-  }
-
-  /**
-   * @template {API.Selector} Selector
-   * @param {Selector} selector
-   * @param {API.MatchFrame} bindings
-   * @param {API.InferBindings<Selector>} base
-   * @returns {API.InferBindings<Selector>|null}
-   */
-  static merge(selector, bindings, base) {
-    if (Array.isArray(selector)) {
-      const [term] = selector
-      const extension =
-        Variable.is(term) ? bindings.get(term)
-        : Constant.is(term) ? term
-        : this.match(term, bindings)
-      return /** @type {API.InferBindings<Selector>} */ (
-        add(/** @type {unknown[]} */ (base), extension)
-      )
-    } else {
-      const entries = []
-      for (const [key, term] of Object.entries(selector)) {
-        const id = /** @type {keyof API.InferBindings<Selector>} */ (key)
-        if (Term.is(term)) {
-          const value = /** @type {API.Scalar|undefined} */ (
-            Variable.is(term) ? bindings.get(term) : term
-          )
-
-          if (value === undefined) {
-            return null
-          } else {
-            if (Constant.equal(/** @type {API.Scalar} */ (base[id]), value)) {
-              entries.push([key, value])
-            } else {
-              return null
-            }
-          }
-        } else {
-          const value = this.merge(
-            term,
-            bindings,
-            /** @type {any} */ (base[id])
-          )
-          if (value === null) {
-            return null
-          } else {
-            entries.push([key, value])
-          }
-        }
-      }
-      return Object.fromEntries(entries)
-    }
-  }
-}
-
 /**
  *
  * @param {{}} source
@@ -2237,11 +2113,6 @@ class RuleApplicationPlan {
               // Create transitive relationships with all ancestor contexts
               const ancestorContexts = contextChains.get(nextBinding) || []
               for (const context of ancestorContexts) {
-                // const transitiveMatch = this.createTransitiveMatch(
-                //   input,
-                //   ancestorContext,
-                //   directMatch
-                // )
                 for (const match of this.write(frame, context, output)) {
                   const id = identifyMatch(match)
                   if (!matches.has(id)) {
@@ -2252,10 +2123,7 @@ class RuleApplicationPlan {
             }
 
             // Process new recursive steps
-            for (const [
-              newBinding,
-              originalBinding,
-            ] of recursiveContext.recur) {
+            for (const [newBinding] of recursiveContext.recur) {
               // Track context chains for transitive relationships
               const ancestorContexts = contextChains.get(nextBinding) || []
               const newContexts = [origContext, ...ancestorContexts]

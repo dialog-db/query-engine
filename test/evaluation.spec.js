@@ -1,6 +1,6 @@
 import * as DB from 'datalogia'
 import * as Analyzer from '../src/analyzer.js'
-import { Task, Link, $, Var, API } from 'datalogia'
+import { Task, Link, $, API } from 'datalogia'
 
 /**
  * @type {import('entail').Suite}

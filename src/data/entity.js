@@ -1,4 +1,4 @@
-import * as API from './api.js'
+import * as API from '../api.js'
 import * as Link from './link.js'
 
 /**

@@ -1,7 +1,55 @@
 import * as API from './api.js'
 import * as Type from './type.js'
-import { Variable, _ } from './$.js'
 import * as Constant from './constant.js'
+
+export class Variable {
+  static id = 1
+  #name
+  /**
+   * @param {string|symbol} name
+   */
+  constructor(name = Symbol(), id = ++Variable.id) {
+    this['?'] = { id }
+    this.#name = name
+  }
+
+  get id() {
+    return this['?'].id
+  }
+  get name() {
+    return this.#name
+  }
+  toString() {
+    return typeof this.#name === 'symbol' ?
+        `?@${this.#name.description ?? this.id}`
+      : `?${this.#name.toString()}`
+  }
+  get [Symbol.toStringTag]() {
+    return this.toString()
+  }
+  [Symbol.for('nodejs.util.inspect.custom')]() {
+    return this.toString()
+  }
+
+  /**
+   *
+   * @param {object} context
+   * @param {number} context.id
+   */
+  with({ id }) {
+    return new Variable(this.name, id)
+  }
+}
+
+/**
+ * @param {string|symbol} name
+ */
+export const create = (name) => new Variable(name)
+
+/**
+ * @type {API.Variable<any>}
+ */
+export const _ = create('_').with({ id: 0 })
 
 /**
  * @param {unknown} source
@@ -37,37 +85,10 @@ export const is = (term) =>
   typeof (/** @type {{['?']?: {id?:unknown}}} */ (term)?.['?']?.id) === 'number'
 
 /**
- * @template {API.Scalar} T
- * @param {API.Variable<T>} variable
- * @returns {API.Type<T>|undefined}
- */
-export const toType = (variable) => variable['?'].type
-
-/**
  * @param {API.Variable} variable
  * @returns {API.VariableID}
  */
 export const id = (variable) => variable['?'].id
-
-/**
- * @param {API.Variable} variable
- * @returns
- */
-export const toKey = (variable) => `$${id(variable)}`
-
-/**
- *
- * @param {API.Variable} variable
- * @param {API.Scalar} term
- */
-export const check = (variable, term) => {
-  const type = toType(variable)
-  if (type) {
-    return Type.check(type, term)
-  } else {
-    return { ok: Type.infer(term) }
-  }
-}
 
 /**
  * @template {API.Scalar} T
@@ -94,81 +115,6 @@ export { toJSON as inspect }
  */
 export const toString = (variable) => JSON.stringify(toJSON(variable))
 
-/**
- * @template {API.Scalar} T
- * @param {API.Type<T>} [type]
- * @returns {TypedVariable<T>}
- */
-export const variable = (type) => new TypedVariable(type)
-export const boolean = Object.assign(() => variable(Type.Boolean), Type.Boolean)
-export const int32 = Object.assign(() => variable(Type.Int32), Type.Int32)
-export const int64 = () => Object.assign(variable(Type.Int64), Type.Int64)
-export const float32 = () => Object.assign(variable(Type.Float32), Type.Float32)
-export const string = Object.assign(() => variable(Type.String), Type.String)
-
-export const bytes = Object.assign(() => variable(Type.Bytes), Type.Bytes)
-export const link = Object.assign(() => variable(Type.Link), Type.Link)
-
-export const entity = Object.assign(() => variable(Type.Link), Type.Link)
-export { int32 as integer, float32 as float }
-
-/**
- * @template {API.Scalar} T
- * @extends {Variable}
- * @implements {API.Variable<T>}
- */
-class TypedVariable extends Variable {
-  /**
-   * @param {API.Type<T>} [type]
-   */
-  constructor(type) {
-    super(++Variable.id)
-    this.type = type
-  }
-  toJSON() {
-    return toJSON(this)
-  }
-  /**
-   * @param {{
-   *   '=='?: API.Term
-   *   '>'?: API.Term
-   *   '>='?: API.Term
-   *   '<'?: API.Term
-   *   '<='?: API.Term
-   * }} operand
-   * @returns {API.Clause}
-   */
-  match({
-    '==': equal,
-    '>': greater,
-    '>=': greaterOrEqual,
-    '<': less,
-    '<=': lessOrEqual,
-  }) {
-    /** @type {API.Clause[]} */
-    const where = []
-    if (equal) {
-      where.push({ Is: [this, equal] })
-    }
-
-    if (greater) {
-      where.push({ Match: [[this, greater], '>'] })
-    }
-    if (less) {
-      where.push({ Match: [[this, less], '<'] })
-    }
-    if (greaterOrEqual) {
-      where.push({ Match: [[this, greaterOrEqual], '>='] })
-    }
-    if (lessOrEqual) {
-      where.push({ Match: [[this, lessOrEqual], '<='] })
-    }
-
-    return { And: where }
-  }
-}
-
-export { _ }
 /**
  * @param {API.Variable} variable
  * @returns {boolean}

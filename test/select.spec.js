@@ -1,7 +1,7 @@
 import * as DB from 'datalogia'
 import * as Analyzer from '../src/analyzer.js'
 import { deduce, Fact, Data } from '../src/syntax.js'
-import * as Link from '../src/link.js'
+import * as Link from '../src/data/link.js'
 import proofsDB from './proofs.db.js'
 import moviesDB from './movie.db.js'
 import employeeDB from './microshaft.db.js'

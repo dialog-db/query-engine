@@ -2,7 +2,6 @@ import * as DB from 'datalogia'
 import db from './microshaft.db.js'
 import { $ } from 'datalogia'
 import { deduce, Fact, Text, Data, same } from '../src/syntax.js'
-import { rule } from '../src/rule.js'
 
 const mallory = {
   'Person/name': 'Mallory',

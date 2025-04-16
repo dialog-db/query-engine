@@ -1,7 +1,7 @@
 import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Constant from './constant.js'
-import { _, variable } from './$.js'
+import { _ } from './$.js'
 
 /**
  * @template {API.Scalar} T
