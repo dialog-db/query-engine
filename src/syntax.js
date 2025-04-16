@@ -3,6 +3,90 @@ import * as Analyzer from './analyzer.js'
 import { $, _ } from './$.js'
 import { Callable } from './syntax/callable.js'
 
+/**
+ * @template {API.RuleDescriptor} Descriptor
+ * @param {Descriptor} descriptor
+ */
+export const fact = (descriptor) => new Fact({ ...descriptor, this: Object })
+
+/**
+ * @template {API.RuleDescriptor} Descriptor
+ @extends {Callable<(terms?: API.InferRuleTerms<Descriptor>) => Application<Descriptor, {}>>}
+ */
+class Fact extends Callable {
+  /**
+   * @param {Descriptor} descriptor
+   */
+  constructor(descriptor) {
+    super(
+      /** @type {typeof this.match} */
+      (terms) => this.match(terms)
+    )
+    this.descriptor = descriptor
+  }
+
+  /**
+   * @param {API.InferRuleVariables<Descriptor>} variables
+   * @returns {API.EveryView}
+   */
+
+  buildWhen({ _, this: self, ...variables }) {
+    const when = []
+    for (const [name, is] of Object.entries(variables)) {
+      when.push({
+        match: {
+          the: /** @type {API.The} */ (name),
+          of: /** @type {API.Variable<API.Entity>} */ (self),
+          is,
+        },
+        fact: {},
+      })
+    }
+    return when
+  }
+
+  /** @type {API.Deduction<API.InferRuleVariables<Descriptor>>|undefined} */
+  #source
+
+  get source() {
+    const source = this.#source
+    if (source) {
+      return source
+    } else {
+      const match = Deduce.buildMatch(this.descriptor)
+      const variables = Deduce.buildVariables(this.descriptor)
+      const where = this.buildWhen(variables)
+      const source = { match, when: /** @type {API.Some} */ ({ where }) }
+      this.#source = source
+      return source
+    }
+  }
+  /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>|undefined} */
+  #form
+  get form() {
+    const form = this.#form
+    if (form) {
+      return form
+    } else {
+      const form = Analyzer.rule(this.source)
+      this.#form = form
+      return form
+    }
+  }
+  /**
+   * @template {Partial<API.InferRuleTerms<Descriptor>>} Selection
+   * @param {Selection} [terms]
+   * @returns {Application<{[K in keyof Selection]: Descriptor[K]}, {}>}
+   */
+  match(terms) {
+    const match =
+      /** @type {API.InferRuleVariables<{[K in keyof Selection & keyof Descriptor]: Descriptor[K]}>} */ (
+        terms ?? this.form.match
+      )
+
+    return new Application(match, this)
+  }
+}
 export { $, _ }
 /**
  * @template Terms
@@ -923,7 +1007,7 @@ class Application {
   #form
   /**
    * @param {API.InferRuleVariables<Descriptor>} match
-   * @param {Deduction<Descriptor, Locals>} rule
+   * @param {Deduction<Descriptor, Locals> | Fact<Descriptor>} rule
    * @param {Selector} [selector]
    */
   constructor(match, rule, selector) {
@@ -933,6 +1017,7 @@ class Application {
   }
 
   get form() {
+    this.match
     if (!this.#form) {
       this.#form =
         /** @type {Analyzer.RuleApplication<API.InferRuleVariables<Descriptor>>} */ (
