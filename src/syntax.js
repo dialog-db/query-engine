@@ -1,7 +1,7 @@
 import * as API from './api.js'
 import * as Analyzer from './analyzer.js'
 import $ from './$.js'
-import { Callable } from './schema/callable.js'
+import { Callable } from './syntax/callable.js'
 
 /**
  * @template Terms
