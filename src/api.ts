@@ -116,17 +116,11 @@ export type New<T, Type = Tagged<T>> = Tagged<T>[keyof Tagged<T>] &
 export interface Unit {}
 
 /**
- * Signed 32-bit integer type.
+ * Variable integer.
  */
-export type Int32 = New<{ Int32: number }>
-/**
- * Signed 64-bit integer type.
- */
-export type Int64 = New<{ Int64: bigint }>
-/**
- * 32-bit floating point number type.
- */
-export type Float32 = New<{ Float32: number }>
+export type Integer = New<{ Integer: number }>
+
+export type Float = New<{ Float: number }>
 
 /**
  * Type representing a raw bytes.
@@ -134,6 +128,12 @@ export type Float32 = New<{ Float32: number }>
 export type Bytes = Uint8Array
 
 export type Null = null
+
+export type Reference = New<{ Reference: string }>
+
+export type Name = New<{ Name: string }>
+
+export type Position = New<{ Position: string }>
 
 /**
  * Type representing an IPLD link.
@@ -155,9 +155,9 @@ export interface Link<
 export type Scalar =
   | null
   | boolean
-  | Int32
-  | Float32
-  | Int64
+  | bigint
+  | Integer
+  | Float
   | string
   | Bytes
   | Link
@@ -177,14 +177,16 @@ export type Constant = Scalar
  */
 export type Type<T extends Scalar = Scalar> = Phantom<T> &
   Variant<{
-    Null: { order: 0 }
-    Boolean: { order: 1 }
-    Int32: { order: 2 }
-    Int64: { order: 3 }
-    Float32: { order: 4 }
-    String: { order: 5 }
-    Bytes: { order: 6 }
-    Link: { order: 9 }
+    Null: {}
+    Boolean: {}
+    Integer: {}
+    Float: {}
+    String: {}
+    Bytes: {}
+    Entity: {}
+    Name: {}
+    Position: {}
+    Reference: {}
   }>
 
 // /**
@@ -294,7 +296,7 @@ export interface Row<T = Term> {
   [Key: string]: T
 }
 
-export type Numeric = Int32 | Int64 | Float32
+export type Numeric = Integer | Float
 
 /**
  * Describes operand of the operator.
@@ -338,9 +340,8 @@ export type TypeName =
   | 'boolean'
   | 'string'
   | 'bigint'
-  | 'int64'
-  | 'int32'
-  | 'float32'
+  | 'integer'
+  | 'float'
   | 'bytes'
   | 'reference'
 
@@ -401,7 +402,7 @@ export type InferTerms<T extends Terms> =
 export type Frame = Record<PropertyKey, Term>
 
 export type Entity = Link
-export type Attribute = string | Float32 | Int32 | Int64 | Bytes
+export type Attribute = string
 
 /**
  * An atomic fact in the database, associating an `entity` , `attribute` ,
@@ -926,7 +927,7 @@ export type UnknownDescriptor = {
 export type TypeDescriptor =
   | Scalar
   | ScalarConstructor
-  | ScalarDescriptor
+  | Type
   | ObjectDescriptor
   | ArrayDescriptor
   | EntitySchema<any>
@@ -943,13 +944,12 @@ export type InferDescriptorType<T extends TypeDescriptor> =
   : T extends StringConstructor ? string
   : T extends { String: {} } ? string
   : T extends string ? T
-  : T extends NumberConstructor ? Int32
-  : T extends { Int32: {} } ? Int32
-  : T extends { Float32: {} } ? Float32
+  : T extends NumberConstructor ? Integer
+  : T extends { Integer: {} } ? Integer
+  : T extends { Float: {} } ? Float
   : T extends number ? T
-  : T extends BigIntConstructor ? Int64
+  : T extends BigIntConstructor ? bigint
   : T extends bigint ? T
-  : T extends { Int64: {} } ? Int64
   : T extends Uint8ArrayConstructor ? Bytes
   : T extends { Bytes: {} } ? Bytes
   : T extends Uint8Array ? T
@@ -971,18 +971,8 @@ export type ScalarConstructor =
   | BigIntConstructor
   | Uint8ArrayConstructor
   | ObjectConstructor
-
-export type ScalarDescriptor = Variant<{
-  Null: {}
-  Boolean: {}
-  String: {}
-  Int32: {}
-  Float32: {}
-  Int64: {}
-  Bytes: {}
-  Reference: {}
-  Entity: {}
-}> & { Object?: undefined; Fact?: undefined; Scalar?: undefined }
+  | SymbolConstructor
+  | null
 
 export type ModelDescriptor<
   Descriptor extends ObjectDescriptor = ObjectDescriptor,
@@ -999,16 +989,15 @@ export type InferSchemaType<T extends TypeDescriptor> =
   : T extends StringConstructor ? string
   : T extends { String: {} } ? string
   : T extends string ? T
-  : T extends NumberConstructor ? Int32
-  : T extends { Int32: {} } ? Int32
-  : T extends { Float32: {} } ? Float32
+  : T extends NumberConstructor ? Integer
+  : T extends { Integer: {} } ? Integer
+  : T extends { Float: {} } ? Float
   : T extends number ? T
-  : T extends BigIntConstructor ? Int64
+  : T extends BigIntConstructor ? Integer
   : T extends bigint ? T
-  : T extends { Int64: {} } ? Int64
   : T extends Uint8ArrayConstructor ? Bytes
   : T extends { Bytes: {} } ? Bytes
-  : T extends Uint8Array ? T
+  : T extends Uint8Array ? Bytes
   : T extends UnknownDescriptor ? Scalar
   : T extends ScalarSchema<infer Scalar> ? Scalar
   : T extends ModelDescriptor<infer Descriptor> ? InferSchemaType<Descriptor>
@@ -1030,13 +1019,12 @@ export type InferSchema<T extends TypeDescriptor> =
   : T extends StringConstructor ? Schema<string>
   : T extends { String: {} } ? Schema<string>
   : T extends string ? Schema<string, T>
-  : T extends NumberConstructor ? Schema<Int32>
-  : T extends { Int32: {} } ? Schema<Int32>
-  : T extends { Float32: {} } ? Schema<Float32>
+  : T extends NumberConstructor ? Schema<Integer>
+  : T extends { Integer: {} } ? Schema<Integer>
+  : T extends { Float: {} } ? Schema<Float>
   : T extends number ? Schema<T>
-  : T extends BigIntConstructor ? Schema<Int64>
+  : T extends BigIntConstructor ? Schema<Integer>
   : T extends bigint ? Schema<T>
-  : T extends { Int64: {} } ? Schema<Int64>
   : T extends Uint8ArrayConstructor ? Schema<Bytes>
   : T extends { Bytes: {} } ? Schema<Bytes>
   : T extends Uint8Array ? Schema<Bytes, T>
@@ -1070,7 +1058,7 @@ export type InferTypeVariables<T, U = T> = T extends Scalar ?
   }
 
 export interface RuleDescriptor {
-  [key: string]: ScalarConstructor | ScalarDescriptor | ObjectConstructor
+  [key: string]: ScalarConstructor | Type | Scalar
 }
 export type InferRuleVariables<T extends RuleDescriptor> = {
   [Key in keyof T]: Variable<InferDescriptorType<T[Key]>>

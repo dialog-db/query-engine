@@ -2,6 +2,138 @@ import * as API from './api.js'
 import * as Analyzer from './analyzer.js'
 import { $, _ } from './$.js'
 import { Callable } from './syntax/callable.js'
+import * as Link from './data/link.js'
+
+/**
+ * @param {unknown} descriptor
+ * @returns {API.Type|undefined}
+ */
+const fromConstructor = (descriptor) => {
+  switch (descriptor) {
+    case globalThis.Boolean:
+      return { Boolean: {} }
+    case globalThis.String:
+      return { String: {} }
+    case globalThis.Symbol:
+      return { Name: {} }
+    case globalThis.Number:
+      return { Integer: {} }
+    case globalThis.BigInt:
+      return { Integer: {} }
+    case globalThis.Uint8Array:
+      return { Bytes: {} }
+    case globalThis.Object:
+      return { Entity: {} }
+    case null:
+      return { Null: {} }
+  }
+}
+
+/**
+ * @param {Record<string, unknown>|null|undefined} descriptor
+ * @returns {API.Type|undefined}
+ */
+const fromDescriptor = (descriptor) => {
+  if (descriptor?.Null) {
+    return { Null: {} }
+  } else if (descriptor?.Boolean) {
+    return { Boolean: {} }
+  } else if (descriptor?.String) {
+    return { String: {} }
+  } else if (descriptor?.Integer) {
+    return { Integer: {} }
+  } else if (descriptor?.Float) {
+    return { Float: {} }
+  } else if (descriptor?.Bytes) {
+    return { Bytes: {} }
+  } else if (descriptor?.Entity) {
+    return { Entity: {} }
+  } else if (descriptor?.Name) {
+    return { Name: {} }
+  } else if (descriptor?.Position) {
+    return { Position: {} }
+  } else if (descriptor?.Reference) {
+    return { Reference: {} }
+  }
+}
+
+/**
+ *
+ * @param {unknown} source
+ * @returns {API.Scalar|undefined}
+ */
+const fromScalar = (source) => {
+  switch (typeof source) {
+    case 'string':
+    case 'number':
+    case 'bigint':
+    case 'boolean':
+      return source
+    case 'object':
+      return source == null || source instanceof Uint8Array ? source : undefined
+    default:
+      return undefined
+  }
+}
+
+/**
+ * @param {unknown} source
+ * @returns {{'/': string} & Record<string, API.Type>|undefined}
+ */
+
+const fromObject = (source) => {
+  if (typeof source === 'object' && !Array.isArray(source) && source) {
+    return schema(/** @type {API.RuleDescriptor} */ (source))
+  }
+}
+
+/**
+ * @template {API.RuleDescriptor} Descriptor
+ * @param {Descriptor} source
+ */
+export const schema = (source) => {
+  const properties = []
+  const references = []
+  for (const [name, member] of Object.entries(source)) {
+    const descriptor =
+      fromConstructor(member) ??
+      fromDescriptor(/** @type {{}|null|undefined} */ (member)) ??
+      fromScalar(member)
+
+    if (name === 'this') {
+      throw new RangeError(`Can not use "this" field name`)
+    }
+
+    if (descriptor !== undefined) {
+      properties.push([name, descriptor])
+    } else {
+      const nested = fromObject(member)
+      if (nested) {
+        properties.push([name, nested])
+        references.push([name, Link.fromJSON({ ['/']: nested['#'] })])
+      }
+    }
+  }
+
+  const descriptor = Object.fromEntries(properties)
+  const id = Link.of({
+    ...descriptor,
+    ...Object.fromEntries(references),
+  }).toString()
+
+  const members = []
+  for (const [name, descriptor] of properties) {
+    members.push([name, { the: `${id}/${name}`, is: descriptor }])
+  }
+  members.push(['this', { the: `${id}/this`, is: descriptor }])
+
+  return Object.assign(class extends Schema {}, {
+    ['#']: id,
+    ...Object.fromEntries(members),
+  })
+}
+
+class Schema extends Callable {}
 
 /**
  * @template {API.RuleDescriptor} Descriptor
@@ -85,6 +217,17 @@ class Fact extends Callable {
       )
 
     return new Application(match, this)
+  }
+
+  /**
+   * @param {API.InferRuleVariables<Descriptor>} match
+   * @returns {API.Conjunct}
+   */
+  apply(match) {
+    return {
+      match,
+      rule: this.source,
+    }
   }
 }
 export { $, _ }

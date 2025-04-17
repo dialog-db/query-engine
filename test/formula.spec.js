@@ -32,9 +32,9 @@ export const testRelation = {
     Task.spawn(function* () {
       const expert = /** @type {const} */ ({
         text: 'string',
-        int: 'int32',
-        bigint: 'int64',
-        float: 'float32',
+        int: 'integer',
+        bigint: 'bigint',
+        float: 'float',
         true: 'boolean',
         false: 'boolean',
         bytes: 'bytes',

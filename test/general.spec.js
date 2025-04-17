@@ -1,4 +1,4 @@
-import { deduce as derive, Data, match, Text, Memory } from './lib.js'
+import { deduce as derive, Data, match, Text, Memory, $ } from './lib.js'
 import * as Link from '../src/data/link.js'
 import proofsDB from './proofs.db.js'
 import moviesDB from './movie.db.js'

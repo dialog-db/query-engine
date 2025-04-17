@@ -18,11 +18,11 @@ export const type =
       case 'string':
         return ['string']
       case 'bigint':
-        return ['int64']
+        return ['bigint']
       case 'number':
         return (
-          Number.isInteger(of) ? ['int32']
-          : Number.isFinite(of) ? ['float32']
+          Number.isInteger(of) ? ['integer']
+          : Number.isFinite(of) ? ['float']
           : []
         )
       default: {
