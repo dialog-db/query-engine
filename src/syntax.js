@@ -9,12 +9,12 @@ export { $, _ }
  * @template {(terms: any) => API.Constraint} F
  * @extends {Callable<F>}
  */
-export class Operator extends Callable {
+export class Predicate extends Callable {
   /**
    * @template Terms
    * @template {(terms: Terms) => API.Constraint} Formula
    * @param {Formula} match
-   * @returns {Operator<Terms, Formula>}
+   * @returns {Predicate<Terms, Formula>}
    */
   static for(match) {
     return new this(match)
@@ -36,7 +36,7 @@ export class Operator extends Callable {
   }
 }
 
-export const Fact = Operator.for(
+export const match = Predicate.for(
   /**
    * @template {API.Select} Select
    * @param {Select} terms
@@ -44,6 +44,7 @@ export const Fact = Operator.for(
    */
   (terms) => ({ match: terms, fact: {} })
 )
+
 
 /**
  * @param {API.Term<string>} term
@@ -161,7 +162,7 @@ export class Text {
     this.#this = source
   }
 
-  static match = Operator.for(
+  static match = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.this
@@ -182,7 +183,7 @@ export class Text {
     return { not: this.match(terms) }
   }
 
-  static includes = Operator.for(
+  static includes = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.this
@@ -196,7 +197,7 @@ export class Text {
     }
   )
 
-  static Concat = Operator.for(
+  static Concat = Predicate.for(
     /**
      * @param {object} terms
      * @param {[left:API.Term<string>, right: API.Term<string>]} terms.of
@@ -211,7 +212,7 @@ export class Text {
     }
   )
 
-  static Words = Operator.for(
+  static Words = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.of
@@ -225,7 +226,7 @@ export class Text {
     }
   )
 
-  static Lines = Operator.for(
+  static Lines = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.of
@@ -239,7 +240,7 @@ export class Text {
     }
   )
 
-  static UpperCase = Operator.for(
+  static UpperCase = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.of
@@ -253,7 +254,7 @@ export class Text {
     }
   )
 
-  static LowerCase = Operator.for(
+  static LowerCase = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.of
@@ -268,7 +269,7 @@ export class Text {
     }
   )
 
-  static Trim = Operator.for(
+  static Trim = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.of
@@ -282,7 +283,7 @@ export class Text {
     }
   )
 
-  static TrimStart = Operator.for(
+  static TrimStart = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.of
@@ -296,7 +297,7 @@ export class Text {
     }
   )
 
-  static TrimEnd = Operator.for(
+  static TrimEnd = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.of
@@ -310,7 +311,7 @@ export class Text {
     }
   )
 
-  static Length = Operator.for(
+  static Length = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.of
@@ -326,7 +327,7 @@ export class Text {
 }
 
 export class UTF8 {
-  static ToText = Operator.for(
+  static ToText = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<Uint8Array>} terms.of
@@ -341,7 +342,7 @@ export class UTF8 {
     }
   )
 
-  static FromText = Operator.for(
+  static FromText = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<string>} terms.of
@@ -386,7 +387,7 @@ export class Data {
     }
   )
 
-  static greater = Operator.for(
+  static greater = Predicate.for(
     /**
      * @template {number|string} T
      * @param {object} terms
@@ -403,7 +404,7 @@ export class Data {
   )
   static ['>'] = this.greater
 
-  static greaterOrEqual = Operator.for(
+  static greaterOrEqual = Predicate.for(
     /**
      * @template {number|string} T
      * @param {object} terms
@@ -420,7 +421,7 @@ export class Data {
   )
   static ['>='] = this.greaterOrEqual
 
-  static less = Operator.for(
+  static less = Predicate.for(
     /**
      * @template {number|string} T
      * @param {object} terms
@@ -437,7 +438,7 @@ export class Data {
   )
   static ['<'] = this.less
 
-  static lessOrEqual = Operator.for(
+  static lessOrEqual = Predicate.for(
     /**
      * @template {number|string} T
      * @param {object} terms
@@ -455,7 +456,7 @@ export class Data {
 
   static ['<='] = this.lessOrEqual
 
-  static Type = Operator.for(
+  static Type = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<API.Scalar>} terms.of
@@ -470,7 +471,7 @@ export class Data {
     }
   )
 
-  static Reference = Operator.for(
+  static Reference = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<any>} terms.of
@@ -486,7 +487,7 @@ export class Data {
 }
 
 export class Math {
-  static Sum = Operator.for(
+  static Sum = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<API.Numeric>} terms.of
@@ -503,7 +504,7 @@ export class Math {
   )
   static ['+'] = this.Sum
 
-  static Subtraction = Operator.for(
+  static Subtraction = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<API.Numeric>} terms.of
@@ -520,7 +521,7 @@ export class Math {
   )
   static ['-'] = this.Subtraction
 
-  static Multiplication = Operator.for(
+  static Multiplication = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<API.Numeric>} terms.of
@@ -537,7 +538,7 @@ export class Math {
   )
   static ['*'] = this.Multiplication
 
-  static Division = Operator.for(
+  static Division = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<API.Numeric>} terms.of
@@ -554,7 +555,7 @@ export class Math {
   )
   static ['/'] = this.Division
 
-  static Modulo = Operator.for(
+  static Modulo = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<API.Numeric>} terms.of
@@ -571,7 +572,7 @@ export class Math {
   )
   static ['%'] = this.Modulo
 
-  static Power = Operator.for(
+  static Power = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<API.Numeric>} terms.of
@@ -588,7 +589,7 @@ export class Math {
   )
   static ['**'] = this.Power
 
-  static Absolute = Operator.for(
+  static Absolute = Predicate.for(
     /**
      * @param {object} terms
      * @param {API.Term<API.Numeric>} terms.of
@@ -612,7 +613,7 @@ export const deduce = (descriptor) => new Deduce(descriptor, {})
 
 const Same = Analyzer.rule({ match: { this: $.this, as: $.this } })
 
-export const same = Operator.for(
+export const same = Predicate.for(
   /**
    * @template {API.Scalar} This
    * @template {API.Scalar} As
@@ -939,6 +940,10 @@ class Application {
         )
     }
     return this.#form
+  }
+
+  toJSON() {
+    return this.form.toJSON()
   }
   /**
    * @param {{ from: API.Querier }} source

@@ -5,7 +5,7 @@
 ## Example
 
 ```js
-import { deduce, Fact } from "@dialog-db/query"
+import { deduce, match } from "@dialog-db/query"
 
 export const demo = async (db) => {
   // We will be trying to find movie titles and director names for movies
@@ -30,9 +30,9 @@ export const demo = async (db) => {
     director: Object,
     cast: Object
   }).where(({ this: movie, title, director, cast }) => [
-      Fact({ the: 'movie/title', of: movie, is: title }),
-      Fact({ the: 'movie/director', of: movie, is: director }),
-      Fact({ the: 'movie/cast', of: movie, is: cast })
+      match({ the: 'movie/title', of: movie, is: title }),
+      match({ the: 'movie/director', of: movie, is: director }),
+      match({ the: 'movie/cast', of: movie, is: cast })
     ])
   
   // We want find movie titles and their directors that
@@ -41,7 +41,7 @@ export const demo = async (db) => {
     .where(({ movie, director, actor, $movie, $director, $actor }) => [
       Movie.match({ title: movie, director: $director, cast: $.actor }),
       Person({ this: $director, name: director }),
-      Porson({ this: $actor, name: 'Arnold Schwarzenegger' })
+      Person({ this: $actor, name: 'Arnold Schwarzenegger' })
     ])
 
   

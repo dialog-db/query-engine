@@ -7,16 +7,5 @@ export * as Constant from './constant.js'
 export * as Syntax from './syntax.js'
 export * as Analyzer from './analyzer.js'
 export { Link } from './constant.js'
-
-export {
-  deduce,
-  text,
-  same,
-  Fact as match,
-  $,
-  _,
-  Text,
-  UTF8,
-  Data,
-  Math,
-} from './syntax.js'
+export * from './syntax.js'
+export { $ } from './syntax.js'
