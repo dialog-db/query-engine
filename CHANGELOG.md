@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.1](https://github.com/dialog-db/query-engine/compare/v0.10.0...v0.10.1) (2025-04-18)
+
+
+### Bug Fixes
+
+* add toJSON methods ([85440f2](https://github.com/dialog-db/query-engine/commit/85440f2607d1a7601f5ef1653cd9f1f70a9f621c))
+* exported names ([e74c5ca](https://github.com/dialog-db/query-engine/commit/e74c5ca3ac3895d27c0618198c6121168662eae7))
+* generated typeds ([8688390](https://github.com/dialog-db/query-engine/commit/8688390b51d45846e8af187782dab64ef8359052))
+* generated typeds ([#70](https://github.com/dialog-db/query-engine/issues/70)) ([ee999bf](https://github.com/dialog-db/query-engine/commit/ee999bfa2a2ccb63b37d4af4505266906987ec61))
+
 ## [0.10.0](https://github.com/dialog-db/query-engine/compare/v0.9.2...v0.10.0) (2025-04-16)
 
 
