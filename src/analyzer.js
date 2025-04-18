@@ -860,6 +860,14 @@ export class RuleApplication {
       /** @type {{}} */ (match)
     )}, rule: ${toDebugString(rule)} }`
   }
+
+  toJSON() {
+    const { match, rule } = this
+    return {
+      match: Terms.toJSON(/** @type {API.Terms} */ (match)),
+      rule: rule.toJSON(),
+    }
+  }
 }
 
 /**
@@ -1024,6 +1032,18 @@ export class DeductiveRule {
   match: ${Terms.toDebugString(this.match)},
   ${body}}
 }`)
+  }
+
+  toJSON() {
+    return {
+      match: Terms.toJSON(this.match),
+      when: Object.fromEntries(
+        Object.entries(this.when).map(([name, disjunct]) => [
+          name,
+          disjunct.toJSON(),
+        ])
+      ),
+    }
   }
 }
 

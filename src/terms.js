@@ -62,6 +62,24 @@ export const toDebugString = (terms) => {
 }
 
 /**
+ * @param {API.Terms|API.Term[]} terms
+ * @returns {API.Scalar|object}
+ */
+export const toJSON = (terms) => {
+  if (Variable.is(terms)) {
+    return Variable.toJSON(terms)
+  } else if (Constant.is(terms)) {
+    return Constant.toJSON(terms)
+  } else if (Array.isArray(terms)) {
+    return terms.map(toJSON)
+  } else {
+    return Object.fromEntries(
+      Object.entries(terms).map(([key, value]) => [key, toJSON(value)])
+    )
+  }
+}
+
+/**
  * @param {string} key
  */
 const toKey = (key) => (/^[a-zA-Z_]\w*$/.test(key) ? key : JSON.stringify(key))
