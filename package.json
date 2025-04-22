@@ -31,6 +31,10 @@
       "types": "./dist/src/lib.d.ts",
       "import": "./src/lib.js"
     },
+    "./interface": {
+      "types": "./dist/src/api.d.ts",
+      "import": "./src/api.js"
+    },
     "./syntax": {
       "types": "./dist/src/syntax.d.ts",
       "import": "./src/syntax.js"
@@ -59,7 +63,7 @@
   },
   "devDependencies": {
     "c8": "8.0.1",
-    "entail": "^2.1.2",
+    "entail": "^3.0.1",
     "playwright-test": "14.0.0",
     "prettier": "3.1.0",
     "typescript": "^5.7.3",

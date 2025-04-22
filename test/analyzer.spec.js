@@ -1514,13 +1514,54 @@ export const testAnalyzer = {
       },
     ])
     const inspector = Inspector.from(source)
+    const results = await Task.perform(plan.query({ from: inspector }))
 
-    assert.deepEqual(await Task.perform(plan.query({ from: inspector })), [
-      { person: Link.of({ 'person/name': 'Irakli' }), name: 'Irakli' },
+    // console.log([...results.values()])
+    assert.deepEqual(results, [
+      new Map([[$.q, Link.of({ 'person/name': 'Irakli' })]]),
     ])
+
+    // assert.deepEqual(
+    //   [...results.entries()],
+    //   [
+    //     [$.q, Link.of({ 'person/name': 'Irakli' })],
+    //     [$.name, 'Irakli'],
+    //   ]
+    //   // [{ person: Link.of({ 'person/name': 'Irakli' }), name: 'Irakli' }]
+    // )
 
     assert.deepEqual(inspector.queries(), [
       { the: 'person/name', is: 'Irakli' },
     ])
+  },
+
+  'plan nested unification': async (assert) => {
+    const plan = Analyzer.rule({
+      match: { counter: $.counter },
+      when: {
+        where: [
+          // { not: { match: { the: 'counter/count', of: $.counter } } },
+          {
+            match: { this: Link.of({}), as: $.counter },
+            rule: { match: { this: $.this, as: $.this }, when: {} },
+          },
+        ],
+      },
+    })
+      .apply({ counter: $.q })
+      .prepare()
+
+    assert.ok(plan)
+  },
+
+  'test unification example': async (assert) => {
+    const plan = Analyzer.rule({
+      match: { this: $.a, as: $.a },
+      when: {},
+    })
+      .apply({ this: $.q, as: 2 })
+      .prepare()
+
+    assert.equal(plan.bindings.get($.q), 2)
   },
 }

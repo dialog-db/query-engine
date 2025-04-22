@@ -80,3 +80,9 @@ export const unify = (frame, term, value) => {
  * @param {API.MatchFrame} frame
  */
 export const clone = (frame) => new Map(frame)
+
+/**
+ * @param {Iterable<[API.Variable, API.Scalar]>} entries
+ * @returns {API.MatchFrame}
+ */
+export const from = (entries) => new Map(entries)
