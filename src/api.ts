@@ -982,6 +982,7 @@ export type ScalarDescriptor = Variant<{
   Bytes: {}
   Reference: {}
   Entity: {}
+  Unknown: {}
 }> & { Object?: undefined; Fact?: undefined; Scalar?: undefined }
 
 export type ModelDescriptor<
