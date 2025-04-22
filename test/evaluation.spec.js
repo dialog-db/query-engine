@@ -1,4 +1,5 @@
 import { Memory, Task, Link, $, Analyzer } from './lib.js'
+import * as Match from '../src/match.js'
 
 /**
  * @type {import('entail').Suite}
@@ -84,20 +85,23 @@ export const testEvaluation = {
 
     const result = await Task.perform(plan.query({ from: db }))
 
-    assert.deepEqual(result, [
-      {
-        manager: Link.of(alice),
-        employee: Link.of(bob),
-        managerName: 'Alice',
-        employeeName: 'Bob',
-      },
-      {
-        manager: Link.of(bob),
-        employee: Link.of(mallory),
-        managerName: 'Bob',
-        employeeName: 'Mallory',
-      },
-    ])
+    assert.deepEqual(
+      [...result],
+      [
+        Match.from([
+          [$.$manager, Link.of(alice)],
+          [$.$employee, Link.of(bob)],
+          [$.$managerName, 'Alice'],
+          [$.$employeeName, 'Bob'],
+        ]),
+        Match.from([
+          [$.$manager, Link.of(bob)],
+          [$.$employee, Link.of(mallory)],
+          [$.$managerName, 'Bob'],
+          [$.$employeeName, 'Mallory'],
+        ]),
+      ]
+    )
   },
 
   'same variable as different binding': async (assert) => {
@@ -141,26 +145,44 @@ export const testEvaluation = {
 
     const result = await Task.perform(plan.query({ from: db }))
 
-    assert.deepEqual(result, [
-      {
-        a: Link.of(alice),
-        actual: 'Alice',
-        b: Link.of(alice),
-        expect: 'Alice',
-      },
-      {
-        a: Link.of(bob),
-        actual: 'Bob',
-        b: Link.of(bob),
-        expect: 'Bob',
-      },
-      {
-        a: Link.of(mallory),
-        actual: 'Mallory',
-        b: Link.of(mallory),
-        expect: 'Mallory',
-      },
-    ])
+    assert.deepEqual(
+      [...result],
+      [
+        Match.from([
+          [$.subject, Link.of(alice)],
+          [$.actual, 'Alice'],
+          [$.expect, 'Alice'],
+        ]),
+        Match.from([
+          [$.subject, Link.of(bob)],
+          [$.actual, 'Bob'],
+          [$.expect, 'Bob'],
+        ]),
+        Match.from([
+          [$.subject, Link.of(mallory)],
+          [$.actual, 'Mallory'],
+          [$.expect, 'Mallory'],
+        ]),
+        // {
+        //   a: Link.of(alice),
+        //   actual: 'Alice',
+        //   b: Link.of(alice),
+        //   expect: 'Alice',
+        // },
+        // {
+        //   a: Link.of(bob),
+        //   actual: 'Bob',
+        //   b: Link.of(bob),
+        //   expect: 'Bob',
+        // },
+        // {
+        //   a: Link.of(mallory),
+        //   actual: 'Mallory',
+        //   b: Link.of(mallory),
+        //   expect: 'Mallory',
+        // },
+      ]
+    )
   },
 
   'test generate query': async (assert) => {
@@ -275,30 +297,29 @@ export const testEvaluation = {
       },
     })
 
-    const result = await rule.apply().query({ from: db })
+    const result = await Task.perform(rule.apply().query({ from: db }))
 
-    assert.deepEqual(result, [
-      {
-        this: Link.of(alice),
-        'name.the': 'Person/name',
-        'name.is': 'Alice',
-        'name.of': Link.of(alice),
-        'manages.of': Link.of(alice),
-        'manages.the': 'Manages/employee',
-        'manages.is.name.the': 'Person/name',
-        'manages.is.name.is': 'Bob',
-      },
-      {
-        this: Link.of(bob),
-        'name.the': 'Person/name',
-        'name.is': 'Bob',
-        'name.of': Link.of(bob),
-        'manages.of': Link.of(bob),
-        'manages.the': 'Manages/employee',
-        'manages.is.name.the': 'Person/name',
-        'manages.is.name.is': 'Mallory',
-      },
-    ])
+    assert.deepEqual(
+      [...result],
+      [
+        Match.from([
+          [$.this, Link.of(alice)],
+          [$['name.the'], 'Person/name'],
+          [$['name.is'], 'Alice'],
+          [$['manages.the'], 'Manages/employee'],
+          [$['manages.is.name.the'], 'Person/name'],
+          [$['manages.is.name.is'], 'Bob'],
+        ]),
+        Match.from([
+          [$.this, Link.of(bob)],
+          [$['name.the'], 'Person/name'],
+          [$['name.is'], 'Bob'],
+          [$['manages.the'], 'Manages/employee'],
+          [$['manages.is.name.the'], 'Person/name'],
+          [$['manages.is.name.is'], 'Mallory'],
+        ]),
+      ]
+    )
   },
 }
 

@@ -1,5 +1,5 @@
 import db from './microshaft.db.js'
-import { $, match, deduce, Memory, Text, Data, same } from './lib.js'
+import { $, match, deduce, Memory, Text, Data, same, Link } from './lib.js'
 
 const mallory = {
   'Person/name': 'Mallory',
@@ -20,19 +20,33 @@ const alice = {
  */
 export const testRules = {
   'unifying variables': async (assert) => {
-    assert.deepEqual(await same({ this: 1, as: $.q }).query({ from: db }), [
-      { this: 1, as: 1 },
-    ])
+    const result = await same({ this: 1, as: $.q }).query({ from: db })
+    assert.deepEqual([...result], [{ this: 1, as: 1 }])
 
-    assert.deepEqual(await same({ this: $.q, as: 2 }).query({ from: db }), [
-      { this: 2, as: 2 },
-    ])
+    assert.deepEqual(
+      [...(await same({ this: $.q, as: 2 }).query({ from: db }))],
+      [{ this: 2, as: 2 }]
+    )
 
     assert.throws(
       () => same({ this: $.q, as: $.q2 }).query({ from: db }),
       /Rule application requires binding for \?this/
     )
   },
+
+  'test nested same': async (assert) => {
+    const Init = deduce({
+      counter: Object,
+    }).where(($) => [
+      match.not({ the: 'counter/count', of: $.counter }),
+      same({ this: Link.of({ v: 0 }), as: $.counter }),
+    ])
+
+    assert.deepEqual(await Init().query({ from: db }), [
+      { counter: Link.of({ v: 0 }) },
+    ])
+  },
+
   'test basic': async (assert) => {
     const Name = deduce({ of: Object, is: String }).where(({ of, is }) => [
       match({ the: 'name', of, is }),

@@ -6,11 +6,11 @@ import * as Constant from './constant.js'
 import * as Selector from './selector.js'
 import operators from './formula/lib.js'
 import { indent } from './data/string/format.js'
-import * as Task from './task.js'
 import { _, $ } from './$.js'
 import * as Cursor from './cursor.js'
 import * as Match from './match.js'
 import * as LRU from './source/lru.js'
+import * as Task from './task.js'
 
 export { $ }
 
@@ -674,6 +674,14 @@ export class RuleApplication {
     // variables.
     for (const [variable, term] of constants) {
       Cursor.set(bindings, references, variable, term)
+
+      // Also if we do have a constant term for a variable we need to reset
+      // corresponding cells to 0 as they will costs nothing. This is important
+      // because some cells may have cost of `Infinity` otherwise rendering
+      // rule application unplannable.
+      for (const cell of Cursor.resolve(references, variable)) {
+        cells.set(cell, 0)
+      }
     }
 
     return application
@@ -808,9 +816,12 @@ export class RuleApplication {
         for (const variable of Cursor.resolve(scope.references, source)) {
           Cursor.link(references, inner, variable)
 
-          // If there was a `variable` was alread bound to a constant in the scope
-          // we want to retain it which is what we are doing below.
-          const value = Cursor.get(scope.bindings, scope.references, variable)
+          // If rule application was binding this variable we propagate it
+          const constant = Cursor.get(bindings, this.references, inner)
+          const value =
+            constant !== undefined ? constant
+              // `variable` also may be bound to a constant in the outer scope
+            : Cursor.get(scope.bindings, scope.references, variable)
 
           // If we variable was set in scope we copy it into a local bindings.
           if (value !== undefined) {
@@ -818,7 +829,6 @@ export class RuleApplication {
           } else if (Cursor.has(scope.bindings, scope.references, variable)) {
             Cursor.markBound(bindings, references, inner)
           }
-          // TODO: Maybe we should copy NOTHING here to make things work
         }
       }
     }
@@ -845,13 +855,11 @@ export class RuleApplication {
   /**
    * Runs this rule application as a query in on a given `input`.
    *
-   * @template {API.Selector} [Selector=Match]
    * @param {object} input
    * @param {API.Querier} input.from
-   * @param {Selector} [input.selector]
    */
   query(input) {
-    return Task.perform(this.prepare().query(input))
+    return this.prepare().query(input)
   }
 
   toDebugString() {
@@ -1657,7 +1665,7 @@ export const toDebugString = (source) =>
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
  */
-class RuleApplicationPlan {
+export class RuleApplicationPlan {
   /**
    * @param {Partial<API.RuleBindings<Match>>} match
    * @param {DeductiveRule<Match>} rule
@@ -1681,6 +1689,7 @@ class RuleApplicationPlan {
    */
   *evaluate({ source, selection }) {
     // Map identity -> actual match for deduplication
+    /** @type {Map<string, API.MatchFrame>} */
     const matches = new Map()
     for (const frame of selection) {
       for (const input of this.read(frame)) {
@@ -1839,20 +1848,21 @@ class RuleApplicationPlan {
   }
 
   /**
-   * @template {API.Selector} [Selector=Match]
    * @param {object} input
    * @param {API.Querier} input.from
-   * @param {Selector} [input.selector]
    */
-  *query({ from: source, selector = /** @type {Selector} */ (this.match) }) {
-    const frames = yield* this.evaluate({
+  *query({ from: source }) {
+    return yield* this.evaluate({
       source: LRU.create(source),
       self: this.plan,
       selection: [new Map()],
       recur: [], // Array for pairs of [nextBindings, originalContext]
     })
 
-    return Selector.select(/** @type {Selector} */ (selector), frames)
+    // return new Selection(/** @type {Match} */ (this.match), frames)
+
+    // return Selector.select(/** @type {Selector} */ (selector), frames)
+    // return new Query(this.rule.match, frames)
   }
 
   toDebugString() {
@@ -1864,6 +1874,44 @@ class RuleApplicationPlan {
 }`)
   }
 }
+
+/**
+ * @template {API.Selector} [Selector=API.NamedSelector]
+ */
+class Selection {
+  /**
+   * @param {Selector} selector
+   * @param {API.MatchFrame[]} matches
+   */
+  constructor(selector, matches) {
+    this.selector = selector
+    this.matches = matches
+  }
+  values() {
+    return Selector.select(this.selector, this.matches)
+  }
+  *[Symbol.iterator]() {
+    yield* Selector.select(this.selector, this.matches)
+  }
+  *entries() {
+    for (const match of this.values()) {
+      yield [match, match]
+    }
+  }
+  get size() {
+    return this.matches.length
+  }
+
+  /**
+   * @template {API.Selector} Match
+   * @param {Match} selector
+   * @returns {Selection<Match>}
+   */
+  select(selector) {
+    return new Selection(selector, this.matches)
+  }
+}
+
 /**
  * Calculates cost of the executing this operation.
  *

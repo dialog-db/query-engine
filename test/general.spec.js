@@ -33,14 +33,16 @@ export const testDB = {
       Delegation.match({ space, can: 'store/add', cid: store }),
     ])
 
-    const result = await Query().query({ from: proofsDB })
-    assert.deepEqual(result, [
-      {
-        upload: 'bafy...upload',
-        store: 'bafy...store',
-        space: 'did:key:zAlice',
-      },
-    ])
+    assert.deepEqual(
+      [...(await Query().query({ from: proofsDB }))],
+      [
+        {
+          upload: 'bafy...upload',
+          store: 'bafy...store',
+          space: 'did:key:zAlice',
+        },
+      ]
+    )
   },
 
   'test basic': async (assert) => {

@@ -964,8 +964,19 @@ export type ScalarConstructor =
   | BigIntConstructor
   | Uint8ArrayConstructor
   | ObjectConstructor
-  | SymbolConstructor
-  | null
+
+export type ScalarDescriptor = Variant<{
+  Null: {}
+  Boolean: {}
+  String: {}
+  Int32: {}
+  Float32: {}
+  Int64: {}
+  Bytes: {}
+  Reference: {}
+  Entity: {}
+  Unknown: {}
+}> & { Object?: undefined; Fact?: undefined; Scalar?: undefined }
 
 export type ModelDescriptor<
   Descriptor extends ObjectDescriptor = ObjectDescriptor,

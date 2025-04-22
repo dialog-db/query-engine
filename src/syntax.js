@@ -1,7 +1,9 @@
 import * as API from './api.js'
 import * as Analyzer from './analyzer.js'
+import * as Task from './task.js'
 import { $, _ } from './$.js'
 import { Callable } from './syntax/callable.js'
+import * as Selector from './selector.js'
 import * as Link from './data/link.js'
 import { toDebugString } from './analyzer.js'
 
@@ -327,7 +329,6 @@ export const match = Predicate.for(
    */
   (terms) => ({ match: terms, fact: {} })
 )
-
 
 /**
  * @param {API.Term<string>} term
@@ -896,14 +897,12 @@ export const deduce = (descriptor) => new Deduce(descriptor, {})
 
 const Same = Analyzer.rule({ match: { this: $.this, as: $.this } })
 
-export const same = Predicate.for(
-  /**
-   * @template {API.Scalar} This
-   * @template {API.Scalar} As
-   * @param {{this: API.Term<This>, as: API.Term<As>}} terms
-   */
-  (terms) => Same.apply(terms)
-)
+/**
+ * @template {API.Scalar} This
+ * @template {API.Scalar} As
+ * @param {{this: API.Term<This>, as: API.Term<As>}} terms
+ */
+export const same = (terms) => new Match(terms, Same)
 
 /**
  * @template {API.RuleDescriptor} Descriptor
@@ -1173,7 +1172,7 @@ class Deduction extends Callable {
    * @param {API.ProjectionBuilder<Descriptor & Locals, Selector>} build
    * @returns {Select<Descriptor, Locals, Selector>}
    */
-  select(build) {
+  select(build = (variables) => /** @type {Selector} */ (variables)) {
     return new Select(build, this)
   }
 
@@ -1231,14 +1230,83 @@ class Application {
   /**
    * @param {{ from: API.Querier }} source
    */
+  *execute(source) {
+    const selection = yield* this.form.query(source)
+    // const result = this.selector ? selection.select(this.selector) : selection
+    // return result.values()
+    return Selector.select(this.selector ?? this.match, selection)
+    // return selection
+  }
+
+  /**
+   * @param {{ from: API.Querier }} source
+   */
   query(source) {
-    return this.form.query(
-      this.selector ? { ...source, selector: this.selector } : source
-    )
+    return Task.perform(this.execute(source))
   }
 
   *[Symbol.iterator]() {
     yield this.rule.apply(this.match)
+  }
+}
+
+/**
+ * @template {API.Conclusion} Match
+ */
+class Match {
+  /**
+   * @param {API.RuleBindings<Match>} terms
+   * @param {Analyzer.DeductiveRule<Match>} rule
+   */
+  constructor(terms, rule) {
+    this.terms = terms
+    this.rule = rule
+  }
+
+  /** @type {Analyzer.RuleApplication<Match>|undefined} */
+  #form
+  get form() {
+    if (!this.#form) {
+      this.#form = /** @type {Analyzer.RuleApplication<Match>} */ (
+        this.rule.apply(this.terms)
+      )
+    }
+    return this.#form
+  }
+
+  /** @type {Analyzer.RuleApplicationPlan<Match>|undefined} */
+  #plan
+  get plan() {
+    if (!this.#plan) {
+      this.#plan = this.form.prepare()
+    }
+
+    return this.#plan
+  }
+
+  toJSON() {
+    return this.form.toJSON()
+  }
+  /**
+   * @param {{ from: API.Querier }} source
+   */
+  *execute(source) {
+    const selection = yield* this.plan.query(source)
+    return Selector.select(this.terms, selection)
+  }
+
+  /**
+   * @param {{ from: API.Querier }} source
+   */
+  query(source) {
+    // 😵‍💫 Here we force plan compilation because we want to get planning error
+    // before we get a
+    this.plan
+    return Task.perform(this.execute(source))
+  }
+
+  *[Symbol.iterator]() {
+    yield this.form
   }
 }
 
