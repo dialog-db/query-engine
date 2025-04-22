@@ -3,6 +3,7 @@ import * as Analyzer from './analyzer.js'
 import { $, _ } from './$.js'
 import { Callable } from './syntax/callable.js'
 import * as Link from './data/link.js'
+import { toDebugString } from './analyzer.js'
 
 /**
  * @param {unknown} descriptor
@@ -77,69 +78,124 @@ const fromScalar = (source) => {
 }
 
 /**
- * @param {unknown} source
- * @returns {{'/': string} & Record<string, API.Type>|undefined}
- */
-
-const fromObject = (source) => {
-  if (typeof source === 'object' && !Array.isArray(source) && source) {
-    return schema(/** @type {API.RuleDescriptor} */ (source))
-  }
-}
-
-/**
- * @template {API.RuleDescriptor} Descriptor
+ * @template {string} The
+ * @template {API.RuleDescriptor & {the?: The}} Descriptor
  * @param {Descriptor} source
  */
-export const schema = (source) => {
+export const schema = ({ the, ...source }) => {
   const properties = []
-  const references = []
-  for (const [name, member] of Object.entries(source)) {
+  for (const [name, member] of Object.entries({ this: Object, ...source })) {
     const descriptor =
       fromConstructor(member) ??
       fromDescriptor(/** @type {{}|null|undefined} */ (member)) ??
       fromScalar(member)
 
-    if (name === 'this') {
-      throw new RangeError(`Can not use "this" field name`)
-    }
-
-    if (descriptor !== undefined) {
-      properties.push([name, descriptor])
+    if (descriptor === undefined) {
+      throw new TypeError(
+        `Unsupported schema member ${toDebugString(/** @type {{}} */ (member))}`
+      )
     } else {
-      const nested = fromObject(member)
-      if (nested) {
-        properties.push([name, nested])
-        references.push([name, Link.fromJSON({ ['/']: nested['#'] })])
-      }
+      properties.push([name, descriptor])
     }
   }
 
   const descriptor = Object.fromEntries(properties)
-  const id = Link.of({
-    ...descriptor,
-    ...Object.fromEntries(references),
-  }).toString()
+  the =
+    typeof the === 'string' ? the : (
+      /** @type {The} */ (Link.of(descriptor).toString())
+    )
 
-  const members = []
-  for (const [name, descriptor] of properties) {
-    members.push([name, { the: `${id}/${name}`, is: descriptor }])
-  }
-  members.push(['this', { the: `${id}/this`, is: descriptor }])
+  return new Schema(the, descriptor)
+  // const members = []
+  // for (const [name, descriptor] of properties) {
+  //   members.push([name, { the: `${the}/${name}`, is: descriptor }])
+  // }
+  // members.push(['this', { the: `${the}/this`, is: descriptor }])
 
-  return Object.assign(class extends Schema {}, {
-    ['#']: id,
-    ...Object.fromEntries(members),
-  })
+  // return Object.assign(class extends Schema {}, {
+  //   the,
+  //   ...Object.fromEntries(members),
+  // })
 }
 
-class Schema extends Callable {}
+/**
+ * @template {string} The
+ * @template {API.RuleDescriptor & { this: ObjectConstructor }} Descriptor
+ */
+class Schema extends Callable {
+  /**
+   * @param {The} the
+   * @param {Descriptor} descriptor
+   */
+  constructor(the, descriptor) {
+    super(
+      /** @type {typeof this.match} */
+      (terms) => this.match(terms)
+    )
+    this.the = the
+    this.descriptor = descriptor
+  }
+
+  /**
+   * @returns {API.Deduction<API.InferRuleVariables<Descriptor>>}
+   */
+  build() {
+    const { the, descriptor } = this
+    const match = Deduce.buildMatch(descriptor)
+    const where = []
+    for (const [name, member] of Object.entries(descriptor)) {
+      where.push({
+        match: {
+          the: `${the}/${name}`,
+          of: match.this,
+          is: match[name],
+        },
+        fact: {},
+      })
+    }
+
+    return {
+      match,
+      when: { where },
+    }
+  }
+
+  /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>|undefined} */
+  #form
+
+  get form() {
+    const form = this.#form
+    if (form) {
+      return form
+    } else {
+      const form = Analyzer.rule(this.build())
+      this.#form = form
+      return form
+    }
+  }
+
+  /**
+   * @template {Partial<API.InferRuleTerms<Descriptor>>} Selection
+   * @param {Selection} [terms]
+   * @returns {Application<{[K in keyof Selection]: Descriptor[K]}, {}>}
+   */
+  match(terms) {
+    const match =
+      /** @type {API.InferRuleVariables<{[K in keyof Selection & keyof Descriptor]: Descriptor[K]}>} */ (
+        terms ?? this.form.match
+      )
+
+    return new Application(match, this)
+  }
+}
 
 /**
- * @template {API.RuleDescriptor} Descriptor
+ * @template {API.RuleDescriptor & {the?: The}} Descriptor
+ * @template {string} [The=string]
  * @param {Descriptor} descriptor
  */
-export const fact = (descriptor) => new Fact({ ...descriptor, this: Object })
+export const fact = (descriptor) =>
+  new Fact({ the: '', ...descriptor, this: Object })
 
 /**
  * @template {API.RuleDescriptor} Descriptor
@@ -954,13 +1010,7 @@ function* iterateDisjuncts(source) {
  * @extends {Callable<(terms?: API.InferRuleTerms<Descriptor>) => Application<Descriptor, Locals>>}
  */
 class Deduction extends Callable {
-  /** @type {API.Deduction<API.InferRuleVariables<Descriptor>>|undefined} */
-  #source
-
   #compiling = false
-
-  /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>|undefined} */
-  #form
 
   /**
    * @param {Descriptor} descriptor
@@ -1036,6 +1086,8 @@ class Deduction extends Callable {
     return /** @type {API.Some} */ (when)
   }
 
+  /** @type {API.Deduction<API.InferRuleVariables<Descriptor>>|undefined} */
+  #source
   get source() {
     const source = this.#source
     if (source) {
@@ -1053,6 +1105,9 @@ class Deduction extends Callable {
       return source
     }
   }
+
+  /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>|undefined} */
+  #form
 
   get form() {
     const form = this.#form

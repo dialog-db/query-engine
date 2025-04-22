@@ -1,4 +1,14 @@
-import { deduce, fact, Data, match, Text, Memory, $, schema } from './lib.js'
+import {
+  deduce,
+  fact,
+  Data,
+  match,
+  Text,
+  Memory,
+  $,
+  schema,
+  Math,
+} from './lib.js'
 import proofsDB from './proofs.db.js'
 import moviesDB from './movie.db.js'
 import employeeDB from './microshaft.db.js'
@@ -9,6 +19,7 @@ import employeeDB from './microshaft.db.js'
 export const testDB = {
   'test capabilities across ucans': async (assert) => {
     const Employee = fact({
+      the: 'employee',
       name: String,
       address: String,
       job: String,
@@ -35,6 +46,7 @@ export const testDB = {
 
   'test schema generation': async (assert) => {
     const Name = schema({
+      the: 'name',
       name: String,
     })
 
@@ -97,20 +109,51 @@ export const testDB = {
     // )
   },
   'skip test data modeling': async (assert) => {
-    const Person = schema({
+    const Employee = schema({
+      the: 'employee',
       name: String,
+      address: String,
+      job: String,
+      salary: Number,
+      supervisor: Object,
     })
 
-    const alice = Person.assert({ name: 'Alice' })
+    const Counter = schema({
+      the: 'io.gozala.counter',
+      count: Number,
+      lastUpdate: Number,
+      title: String,
+    })
 
-    const [fact] = await Person({ name: 'Alice' }).query({ from: employeeDB })
+    const Increment = schema({
+      the: 'io.gozala.increment',
+      command: Object,
+    })
 
-    fact.assert({ address: '123 Main St' })
+    const View = schema({
+      the: 'io.gozala.view',
+      this: Object,
+      as: Object,
+    })
 
-    alice.assert({ name: 'Alice' })
+    Counter.$$
 
-    Person.assert({ name: 'Bob' })
+    const Behavior = Counter.with({ last: Number }).when(($) => ({
+      new: [
+        Counter.not({ this: $.this }),
+        Counter.assert({ count: 0, lastUpdate: 0, title: 'basic counter' }),
+      ],
+      increment: [
+        Counter({ ...$, count: $.last }),
+        Increment({ this: $.this, command: $._ }),
+        Math.Sum({ of: $.last, with: 1, is: $.count }),
+        Counter.assert({ ...$, count: $.count }),
+      ],
+    }))
 
-    Person.retract({ this: alice.this, name: 'Alice' })
+    const UI = View.with({ count: Number }).where(($) => [
+      Counter.match({ this: $.this, count: $.count }),
+      View.assert({ this: $.this, as: html`<div>${$.count}</div>` }),
+    ])
   },
 }
