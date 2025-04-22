@@ -10,7 +10,6 @@ import { _, $ } from './$.js'
 import * as Cursor from './cursor.js'
 import * as Match from './match.js'
 import * as LRU from './source/lru.js'
-import * as Task from './task.js'
 
 export { $ }
 
@@ -1402,28 +1401,21 @@ class Join {
           if (waiting) {
             for (const conjunct of waiting) {
               let unblock = true
-              // Go over all the cells in this assertion that was blocked on this
-              // variable and check if it can be planned now.
-              for (const [cell, cost] of conjunct.cells) {
-                // const variable = Cursor.resolve(local.references, cell)
-                for (const variable of Cursor.resolve(references, cell)) {
-                  // If cell is required and is still not available, we can't
-                  // unblock it yet.
-                  if (
-                    cost >= Infinity &&
-                    !Cursor.has(bindings, references, variable)
-                  ) {
-                    unblock = false
-                    break
-                  }
-                }
+              for (const varibale of unbound(conjunct, {
+                references: scope.references,
+                bindings,
+              })) {
+                // If there is a wariable that is still not bound this conjunct is
+                // still not ready
+                unblock = false
+                break
               }
 
               if (unblock) {
                 ready.add(conjunct)
               }
             }
-            // blocked.delete(variable)
+
             blocked.delete(variable)
           }
         }

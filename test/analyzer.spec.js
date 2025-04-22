@@ -1564,4 +1564,23 @@ export const testAnalyzer = {
 
     assert.equal(plan.bindings.get($.q), 2)
   },
+
+  'unification in nested predicate propagates': async (assert) => {
+    const plan = Analyzer.rule({
+      match: { name: $.userName, this: $.user },
+      when: {
+        where: [
+          { match: { the: 'user/name', of: $.userAccount, is: $.userName } },
+          {
+            match: { this: $.userAccount, as: $.user },
+            rule: { match: { this: $.this, as: $.this }, when: {} },
+          },
+        ],
+      },
+    })
+      .apply()
+      .prepare()
+
+    assert.ok(plan)
+  },
 }
