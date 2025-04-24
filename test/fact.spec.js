@@ -142,7 +142,7 @@ export const testDB = {
     }
 
     const db = Memory.create([marije, bjorn])
-    const out = await Person.match({ name: Person.$.name }).query({
+    const out = await Person.match({ name: Person.ports.name }).query({
       from: db,
     })
 
@@ -434,6 +434,7 @@ export const testDB = {
       Counter.match({ this: $.this, count: $.count }),
       View.claim({
         this: $.this,
+        // @ts-expect-error
         ui: html`<div>${$.count}<button onclick=${Increment}>+</button></div>`,
       }),
     ])
