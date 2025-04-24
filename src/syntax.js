@@ -2,6 +2,7 @@ import * as API from './api.js'
 import * as Analyzer from './analyzer.js'
 import * as Task from './task.js'
 import { $, _ } from './$.js'
+import * as Variable from './variable.js'
 import { Callable } from './syntax/callable.js'
 import * as Selector from './selector.js'
 import * as Link from './data/link.js'
@@ -81,11 +82,12 @@ const fromScalar = (source) => {
 
 /**
  * @template {string} The
- * @template {API.RuleDescriptor & {the?: The}} Descriptor
- * @param {Descriptor} source
+ * @template {API.RuleDescriptor & {the?: The}} Schema
+ * @param {Schema} source
+ * @returns {Fact<The, Omit<Schema, 'the'> & { this: ObjectConstructor }, {}>}
  */
-export const schema = ({ the, ...source }) => {
-  const properties = []
+export const fact = ({ the, ...source }) => {
+  const members = []
   for (const [name, member] of Object.entries({ this: Object, ...source })) {
     const descriptor =
       fromConstructor(member) ??
@@ -97,74 +99,92 @@ export const schema = ({ the, ...source }) => {
         `Unsupported schema member ${toDebugString(/** @type {{}} */ (member))}`
       )
     } else {
-      properties.push([name, descriptor])
+      members.push([name, descriptor])
     }
   }
 
-  const descriptor = Object.fromEntries(properties)
+  const schema = Object.fromEntries(members)
   the =
     typeof the === 'string' ? the : (
-      /** @type {The} */ (Link.of(descriptor).toString())
+      /** @type {The} */ (Link.of(schema).toString())
     )
 
-  return new Schema(the, descriptor)
-  // const members = []
-  // for (const [name, descriptor] of properties) {
-  //   members.push([name, { the: `${the}/${name}`, is: descriptor }])
-  // }
-  // members.push(['this', { the: `${the}/this`, is: descriptor }])
-
-  // return Object.assign(class extends Schema {}, {
-  //   the,
-  //   ...Object.fromEntries(members),
-  // })
+  return new Fact(the, schema, {})
 }
 
 /**
  * @template {string} The
- * @template {API.RuleDescriptor & { this: ObjectConstructor }} Descriptor
+ * @template {API.RuleDescriptor & { this: ObjectConstructor }} Schema
+ * @template {API.RuleDescriptor} [Locals={}]
+ * @extends {Callable<(terms?: API.InferRuleTerms<Schema>) => FactSelector<The, Schema>>}
  */
-class Schema extends Callable {
+class Fact extends Callable {
   /**
    * @param {The} the
-   * @param {Descriptor} descriptor
+   * @param {Schema} schema
+   * @param {Locals} locals
    */
-  constructor(the, descriptor) {
+  constructor(the, schema, locals) {
     super(
-      /** @type {typeof this.match} */
-      (terms) => this.match(terms)
+      /**
+       * @param {API.InferRuleTerms<Schema>} [terms]
+       * @returns {FactSelector<The, Schema, Schema>}
+       */
+      (terms = this.$) => new FactSelector(this.the, this.form, this.$, terms)
     )
     this.the = the
-    this.descriptor = descriptor
+    this.schema = schema
+    this.locals = locals
+  }
+
+  /** @type {API.InferRuleVariables<Schema>|undefined} */
+  #$
+  /**
+   * Map of variables corresponding to the fact members.
+   *
+   * @type {API.InferRuleVariables<Schema>}
+   */
+  get $() {
+    const $ = this.#$
+    if ($ == null) {
+      const $ = Deduce.buildMatch(this.schema)
+      this.#$ = $
+      return $
+    } else {
+      return $
+    }
   }
 
   /**
-   * @returns {API.Deduction<API.InferRuleVariables<Descriptor>>}
+   * Builds a deduction form for the this fact.
+   *
+   * @returns {API.Deduction<API.InferRuleVariables<Schema>>}
    */
   build() {
-    const { the, descriptor } = this
-    const match = Deduce.buildMatch(descriptor)
+    const { the, schema, $ } = this
     const where = []
-    for (const [name, member] of Object.entries(descriptor)) {
-      where.push({
-        match: {
-          the: `${the}/${name}`,
-          of: match.this,
-          is: match[name],
-        },
-        fact: {},
-      })
+    for (const name of Object.keys(schema)) {
+      if (name !== 'this') {
+        where.push({
+          match: {
+            the: `${the}/${name}`,
+            of: $.this,
+            is: $[name],
+          },
+          fact: {},
+        })
+      }
     }
 
-    return {
-      match,
-      when: { where },
-    }
+    return { match: $, when: { where } }
   }
 
-  /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>|undefined} */
+  /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Schema>>|undefined} */
   #form
 
+  /**
+   * Deductive rule correpsonding to this fact.
+   */
   get form() {
     const form = this.#form
     if (form) {
@@ -177,82 +197,369 @@ class Schema extends Callable {
   }
 
   /**
-   * @template {Partial<API.InferRuleTerms<Descriptor>>} Selection
-   * @param {Selection} [terms]
-   * @returns {Application<{[K in keyof Selection]: Descriptor[K]}, {}>}
+   * Creates predicate for this fact that matches given terms.
+   *
+   * @template {Partial<Schema>} Selector
+   * @param {API.InferRuleTerms<Selector>} [terms]
+   * @returns {FactSelector<The, Schema, Selector>}
    */
   match(terms) {
-    const match =
-      /** @type {API.InferRuleVariables<{[K in keyof Selection & keyof Descriptor]: Descriptor[K]}>} */ (
-        terms ?? this.form.match
-      )
+    return new FactSelector(
+      this.the,
+      this.form,
+      this.$,
+      /** @type {API.InferRuleTerms<Selector>} */ (terms ?? this.$)
+    )
+  }
 
-    return new Application(match, this)
+  /**
+   * Creates a predicate for this fact that excludes ones that match given
+   * terms.
+   *
+   * @template {Partial<Schema>} Terms
+   * @param {API.InferRuleTerms<Terms>} terms
+   * @returns {Negation<Schema>}
+   */
+  not(terms) {
+    return new Negation(this.match(terms).form)
+  }
+
+  /**
+   * Asserts this fact with a given data. If data does not conforms this fact
+   * throws an error.
+   *
+   * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Entity}} data
+   */
+  assert(data) {
+    return FactView.assert(this.the, this.schema, data)
+  }
+
+  /**
+   * Defines local variables so they could be used in the `.when` and `.where`
+   * methods without makeing those part of the fact.
+   *
+   * @template {Omit<API.RuleDescriptor, keyof Schema | keyof Locals>} Extension
+   * @param {Extension} extension
+   * @returns {Fact<The, Schema, Locals & Extension>}
+   */
+  with(extension) {
+    return new Fact(this.the, this.schema, { ...extension, ...this.locals })
+  }
+
+  /**
+   * Defines a rule that deduces this fact whenever any of the branches are true.
+   * Takes a `build` function that will be given set of variables corresponding
+   * to the fact members which must return object where keys represent disjuncts
+   * and values are arrays representing conjuncts for those disjuncts. In other
+   * works each member of the returned object represent OR branches where each
+   * branch is an AND joined predicates by passed variables.
+   *
+   * @param {API.SomeBuilder<Schema & Locals>} build
+   * @returns {FactDeduction<The, Schema, Locals>}
+   */
+  when(build) {
+    return new FactDeduction(this.the, this.schema, this.locals, build)
+  }
+
+  /**
+   * Defines a rule that dudces this fact whenever all of the predicates are
+   * true. This is a shortuct of `.when` which is convinient in cases where
+   * only one branch is needed.
+   *
+   * @param {API.EveryBuilder<Schema & Locals>} build
+   * @returns {FactDeduction<The, Schema, Locals>}
+   */
+  where(build) {
+    return new FactDeduction(this.the, this.schema, this.locals, build)
   }
 }
 
 /**
- * @template {API.RuleDescriptor & {the?: The}} Descriptor
- * @template {string} [The=string]
- * @param {Descriptor} descriptor
+ * @template {string} The
+ * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
+ * @template {Partial<Schema>} [Terms=Schema]
  */
-export const fact = (descriptor) =>
-  new Fact({ the: '', ...descriptor, this: Object })
+class FactSelector {
+  /**
+   * @param {The} the
+   * @param {Analyzer.DeductiveRule<API.InferRuleVariables<Schema>>} rule
+   * @param {API.InferRuleVariables<Schema>} variables
+   * @param {API.InferRuleTerms<Terms>} terms
+   */
+  constructor(the, rule, variables, terms) {
+    this.the = the
+    this.rule = rule
+    this.variables = variables
+    this.terms = terms
+    const selector = /** @type {Record<string, API.Term>} */ ({})
+    for (const key of Object.keys(variables)) {
+      if (terms[key] === undefined) {
+        selector[key] = $[Symbol()]
+      } else {
+        selector[key] = terms[key]
+      }
+    }
+
+    this.selector = /** @type {API.InferRuleTerms<Schema>} */ (selector)
+  }
+
+  /** @type {Analyzer.RuleApplication<API.InferRuleVariables<Schema>>|undefined} */
+  #form
+  get form() {
+    if (!this.#form) {
+      this.#form = this.rule.apply(this.terms)
+    }
+    return this.#form
+  }
+
+  *[Symbol.iterator]() {
+    yield this.form
+  }
+
+  /** @type {Analyzer.RuleApplicationPlan<API.InferRuleVariables<Schema>>|undefined} */
+  #plan
+  get plan() {
+    if (!this.#plan) {
+      this.#plan =
+        // If selector and terms match we can reuse the form, but if they do not
+        // we need to create new form which will include all the terms.
+        this.terms === /** @type {object} */ (this.variables) ?
+          this.form.prepare()
+        : this.rule.apply(this.selector).prepare()
+    }
+
+    return this.#plan
+  }
+
+  toJSON() {
+    return this.form.toJSON()
+  }
+  /**
+   * @param {{ from: API.Querier }} source
+   */
+  *execute(source) {
+    const { selector, plan } = this
+    const selection = yield* plan.query(source)
+
+    console.log()
+
+    const facts = []
+    for (const match of selection) {
+      /** @type {Record<string, API.Scalar>} */
+      const model = {}
+      for (const [key, term] of Object.entries(selector)) {
+        model[key] = /** @type {API.Scalar} */ (
+          Variable.is(term) ? match.get(term) : term
+        )
+      }
+      model.the = this.the
+      facts.push(
+        FactView.new(
+          /** @type {API.InferFact<Schema> & {this: API.Entity, the: The }}} */ (
+            model
+          )
+        )
+      )
+    }
+
+    return /** @type {API.InferFact<Schema>[]} */ (facts)
+  }
+
+  /**
+   * @param {{ from: API.Querier }} source
+   */
+  query(source) {
+    // 😵‍💫 Here we force plan compilation because we want to get planning error
+    // before we get a
+    this.plan
+    return Task.perform(this.execute(source))
+  }
+}
 
 /**
- * @template {API.RuleDescriptor} Descriptor
- @extends {Callable<(terms?: API.InferRuleTerms<Descriptor>) => Application<Descriptor, {}>>}
+ * @template {string} The
+ * @template {{ this: API.Entity, the: The }} Model
  */
-class Fact extends Callable {
+class FactView {
   /**
-   * @param {Descriptor} descriptor
+   * @template {string} The
+   * @template {API.RuleDescriptor & { this: ObjectConstructor }} Schema
+   * @param {The} the
+   * @param {Schema} schema
+   * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Entity}} data
    */
-  constructor(descriptor) {
-    super(
-      /** @type {typeof this.match} */
-      (terms) => this.match(terms)
-    )
-    this.descriptor = descriptor
-  }
+  static assert(the, schema, data) {
+    /** @type {Record<string, API.Scalar>} */
+    const model = { the, this: data.this ?? Link.of({ of: data }) }
 
-  /**
-   * @param {API.InferRuleVariables<Descriptor>} variables
-   * @returns {API.EveryView}
-   */
+    for (const key of Object.keys(schema)) {
+      const value = data[key]
+      if (key === 'the' && the !== /** @type {API.Scalar} */ (value)) {
+        throw new TypeError(
+          `Optional property "the" does not match the schema "${the}"`
+        )
+      }
 
-  buildWhen({ _, this: self, ...variables }) {
-    const when = []
-    for (const [name, is] of Object.entries(variables)) {
-      when.push({
-        match: {
-          the: /** @type {API.The} */ (name),
-          of: /** @type {API.Variable<API.Entity>} */ (self),
-          is,
-        },
-        fact: {},
-      })
+      if (key !== 'this') {
+        if (value === undefined) {
+          throw new TypeError(`Required property "${key}" is missing`)
+        }
+
+        model[key] = /** @type {API.Scalar} */ (value)
+      }
     }
-    return when
+
+    return FactView.new(
+      /** @type {API.InferFact<Schema> & {the: The}} */ (model)
+    )
   }
 
-  /** @type {API.Deduction<API.InferRuleVariables<Descriptor>>|undefined} */
-  #source
+  /**
+   * @template {string} The
+   * @template {{ this: API.Entity, the: The }} Model
+   * @param {Model} model
+   * @returns {FactView<The, Model> & Model}
+   */
+  static new(model) {
+    return /** @type {FactView<The, Model> & Model} */ (new this(model))
+  }
 
+  /**
+   * @param {Model} model
+   */
+  constructor(model) {
+    this.#model = model
+    const { the, this: _, ...data } = model
+    Object.assign(this, data)
+  }
+  #model
+  get the() {
+    return this.#model.the
+  }
+  get this() {
+    return this.#model.this
+  }
+  *[Symbol.iterator]() {
+    const assertions = /** @type {API.Instruction[]} */ ([])
+    const { the, this: entity } = this
+    for (const [name, value] of Object.entries(this.#model)) {
+      assertions.push({ Assert: [entity, `${the}/${name}`, value] })
+    }
+
+    yield* assertions
+  }
+}
+
+/**
+ * @template {API.RuleDescriptor} Schema
+ */
+class Negation {
+  /**
+   * @param {Analyzer.RuleApplication<API.InferRuleVariables<Schema>>} predicate
+   */
+  constructor(predicate) {
+    this.predicate = predicate
+  }
+  toJSON() {
+    return { not: this.predicate.toJSON() }
+  }
+
+  /** @type {Analyzer.Negation|undefined} */
+  #form
+  get form() {
+    if (!this.#form) {
+      this.#form = Analyzer.Negation.new(this.predicate)
+    }
+    return this.#form
+  }
+
+  *[Symbol.iterator]() {
+    yield this.form
+  }
+}
+
+/**
+ * @template {string} The
+ * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
+ * @template {API.RuleDescriptor} Locals
+ * @extends {Callable<(terms?: API.InferRuleTerms<Schema>) => FactSelector<The, Schema>>}
+ */
+class FactDeduction extends Callable {
+  #compiling = false
+
+  /**
+   * @param {The} the
+   * @param {Schema} schema
+   * @param {Locals} locals
+   * @param {API.WhenBuilder<Schema & Locals>} build
+   */
+  constructor(the, schema, locals, build) {
+    super(
+      /**
+       * @param {API.InferRuleTerms<Schema>} [terms]
+       * @returns {FactSelector<The, Schema, Schema>}
+       */
+      (terms = this.$) => new FactSelector(this.the, this.form, this.$, terms)
+    )
+
+    this.the = the
+    this.schema = schema
+    this.locals = locals
+    this.build = build
+  }
+
+  /** @type {API.InferRuleVariables<Schema>|undefined} */
+  #$
+  /**
+   * Map of variables corresponding to the fact members.
+   *
+   * @type {API.InferRuleVariables<Schema>}
+   */
+  get $() {
+    const $ = this.#$
+    if ($ == null) {
+      const $ = Deduce.buildMatch(this.schema)
+      this.#$ = $
+      return $
+    } else {
+      return $
+    }
+  }
+
+  compile() {
+    const variables = Deduce.buildVariables({ ...this.locals, ...this.schema })
+
+    const when = /** @type {Record<string, API.Every>} */ ({})
+    for (const [name, disjunct] of iterateDisjuncts(this.build(variables))) {
+      when[name] = /** @type {[API.Conjunct, ...API.Conjunct[]]} */ ([
+        ...iterateConjuncts(disjunct),
+      ])
+    }
+
+    return {
+      match: this.$,
+      when: /** @type {API.Some} */ (when),
+    }
+  }
+
+  /** @type {API.Deduction<API.InferRuleVariables<Schema>>|undefined} */
+  #source
   get source() {
     const source = this.#source
     if (source) {
       return source
     } else {
-      const match = Deduce.buildMatch(this.descriptor)
-      const variables = Deduce.buildVariables(this.descriptor)
-      const where = this.buildWhen(variables)
-      const source = { match, when: /** @type {API.Some} */ ({ where }) }
+      this.#compiling = true
+      const source = this.compile()
+      this.#compiling = false
       this.#source = source
       return source
     }
   }
-  /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>|undefined} */
+
+  /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Schema>>|undefined} */
   #form
+
   get form() {
     const form = this.#form
     if (form) {
@@ -263,31 +570,89 @@ class Fact extends Callable {
       return form
     }
   }
-  /**
-   * @template {Partial<API.InferRuleTerms<Descriptor>>} Selection
-   * @param {Selection} [terms]
-   * @returns {Application<{[K in keyof Selection]: Descriptor[K]}, {}>}
-   */
-  match(terms) {
-    const match =
-      /** @type {API.InferRuleVariables<{[K in keyof Selection & keyof Descriptor]: Descriptor[K]}>} */ (
-        terms ?? this.form.match
-      )
-
-    return new Application(match, this)
-  }
 
   /**
-   * @param {API.InferRuleVariables<Descriptor>} match
+   * @param {API.InferRuleVariables<Schema>} match
    * @returns {API.Conjunct}
    */
   apply(match) {
-    return {
-      match,
-      rule: this.source,
+    if (this.#compiling) {
+      return {
+        // @ts-expect-error
+        recur: match,
+      }
+    } else {
+      return {
+        match,
+        rule: this.source,
+      }
     }
   }
+
+  /**
+   * @template {Partial<Schema>} Selector
+   * @param {API.InferRuleTerms<Selector>} [terms]
+   * @returns {FactSelector<The, Schema, Selector>}
+   */
+  match(terms) {
+    return new FactSelector(
+      this.the,
+      this.form,
+      this.$,
+      /** @type {API.InferRuleTerms<Selector>} */ (terms ?? this.$)
+    )
+  }
+
+  /**
+   * Creates a predicate for this fact that excludes ones that match given
+   * terms.
+   *
+   * @template {Partial<Schema>} Terms
+   * @param {API.InferRuleTerms<Terms>} terms
+   * @returns {Negation<Schema>}
+   */
+  not(terms) {
+    return new Negation(this.match(terms).form)
+  }
+
+  /**
+   * Asserts this fact with a given data. If data does not conforms this fact
+   * throws an error.
+   *
+   * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Entity}} data
+   */
+  assert(data) {
+    return FactView.assert(this.the, this.schema, data)
+  }
+
+  /**
+   * @param {API.InferRuleTerms<Schema & { this?: ObjectConstructor }>} fact
+   */
+  claim(fact) {
+    const predicates = []
+    const variables = this.$
+    for (const [name, member] of Object.entries(this.schema)) {
+      predicates.push(
+        ...same({
+          this: /** @type {API.Scalar} */ (fact[name]),
+          as: variables[name],
+        })
+      )
+    }
+
+    return new Claim(predicates)
+  }
+
+  // /**
+  //  * @template {API.Selector} Selector
+  //  * @param {API.ProjectionBuilder<Schema & Locals, Selector>} build
+  //  * @returns {Select<Schema, Locals, Selector>}
+  //  */
+  // select(build = (variables) => /** @type {Selector} */ (variables)) {
+  //   return new Select(build, this)
+  // }
 }
+
 export { $, _ }
 /**
  * @template Terms
@@ -1061,8 +1426,6 @@ class Deduction extends Callable {
     }
   }
 
-  static compileVariables() {}
-
   /**
    * @template {API.RuleDescriptor} T
    * @param {API.WhenBuilder<T>} build
@@ -1191,6 +1554,35 @@ class Deduction extends Callable {
   where(build) {
     return this.when(build)
   }
+
+  /**
+   * @param {API.InferRuleTerms<Descriptor & { this?: ObjectConstructor }>} fact
+   */
+  claim(fact) {
+    const predicates = []
+    const variables = Deduce.buildMatch(this.descriptor)
+    for (const [name, member] of Object.entries(this.descriptor)) {
+      const value = fact[name]
+      const variable = variables[name]
+      predicates.push(
+        ...same({ this: /** @type {API.Scalar} */ (value), as: variable })
+      )
+    }
+
+    return new Claim(predicates)
+  }
+}
+
+class Claim {
+  /**
+   * @param {API.Conjunct[]} predicates
+   */
+  constructor(predicates) {
+    this.predicates = predicates
+  }
+  *[Symbol.iterator]() {
+    yield* this.predicates
+  }
 }
 
 /**
@@ -1204,7 +1596,7 @@ class Application {
   #form
   /**
    * @param {API.InferRuleVariables<Descriptor>} match
-   * @param {Deduction<Descriptor, Locals> | Fact<Descriptor>} rule
+   * @param {Deduction<Descriptor, Locals>} rule
    * @param {Selector} [selector]
    */
   constructor(match, rule, selector) {

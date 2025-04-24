@@ -931,7 +931,7 @@ export type TypeDescriptor =
   | ObjectDescriptor
   | ArrayDescriptor
 
-export type InferDescriptorType<T extends TypeDescriptor> =
+export type InferDescriptorType<T> =
   T extends null ? null
   : T extends { Null: {} } ? null
   : T extends BooleanConstructor ? boolean
@@ -951,10 +951,6 @@ export type InferDescriptorType<T extends TypeDescriptor> =
   : T extends Uint8Array ? T
   : T extends ObjectConstructor ? Entity
   : T extends UnknownDescriptor ? Scalar
-  : T extends ObjectDescriptor ?
-    {
-      [Key in keyof T]: InferDescriptorType<T[Key]>
-    }
   : never
 
 export type ScalarConstructor =
@@ -1008,12 +1004,16 @@ export type InferTypeVariables<T, U = T> = T extends Scalar ?
 export interface RuleDescriptor {
   [key: string]: ScalarConstructor | Type | Scalar
 }
-export type InferRuleVariables<T extends RuleDescriptor> = {
+export type InferRuleVariables<T> = {
   [Key in keyof T]: Variable<InferDescriptorType<T[Key]>>
 }
 
-export type InferRuleTerms<T extends RuleDescriptor> = {
+export type InferRuleTerms<T> = {
   [Key in keyof T]: Term<InferDescriptorType<T[Key]>>
+}
+
+export type InferFact<Schema extends RuleDescriptor> = {
+  [Key in keyof Schema]: InferDescriptorType<Schema[Key]>
 }
 
 export type InferRuleAssert<T extends RuleDescriptor> = {

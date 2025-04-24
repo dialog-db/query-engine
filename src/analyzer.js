@@ -1455,26 +1455,30 @@ class Join {
  * @typedef {SelectPlan|FormulaApplicationPlan|RuleApplicationPlan|NegationPlan|RuleRecursion} ConjunctPlan
  * @implements {API.Negation}
  */
-class Negation {
+export class Negation {
   /**
    * @param {API.Negation} source
    * @returns {Negation}
    */
   static from({ not: constraint }) {
-    const operation = /** @type {Constraint} */ (from(constraint))
+    return this.new(/** @type {Constraint} */ (from(constraint)))
+  }
 
+  /**
+   * @param {Constraint} constraint
+   */
+  static new(constraint) {
     // Not's cost includes underlying operation
     const cells = new Map()
-    for (const [variable, cost] of operation.cells) {
+    for (const [variable, cost] of constraint.cells) {
       // Not marks all the cells as required inputs as they
       // need to be bound before not can be evaluated, since it
       // only eliminates matches.
       cells.set(variable, Infinity)
     }
 
-    return new this(operation, cells)
+    return new this(constraint, cells)
   }
-
   get recurs() {
     return null
   }
@@ -1937,7 +1941,7 @@ const combineCosts = (total, cost) => {
   }
 }
 
-class NegationPlan {
+export class NegationPlan {
   /**
    * @param {SelectPlan|FormulaApplicationPlan|RuleApplicationPlan} operand
    */
