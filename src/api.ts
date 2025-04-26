@@ -1029,7 +1029,8 @@ export type InferRuleAssert<T extends RuleDescriptor> = {
 
 export type ScalarTerms<T extends Scalar> = Term<T> | { this: Term<T> }
 
-export interface MatchView<Model> extends Iterable<Recur | Conjunct> {}
+export interface MatchView<Model = unknown>
+  extends Iterable<Recur | Conjunct> {}
 
 export interface QueryView<Model> extends Iterable<Conjunct> {
   select(source: { from: Querier }): Invocation<Model[], Error>
