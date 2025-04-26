@@ -1029,13 +1029,14 @@ export class DeductiveRule {
       when.where = new JoinPlan([], application.references, 0)
     }
 
-    // If all branches are recursive raise an error because we need a base case
-    // to terminate.
-    if (recursive > 0 && recursive === disjuncts.length) {
-      throw new SyntaxError(
-        `Recursive rule must have at least one non-recursive branch`
-      )
-    }
+    // ⚠️ Disable  non recurnize branch requirement.
+    // // If all branches are recursive raise an error because we need a base case
+    // // to terminate.
+    // if (recursive > 0 && recursive === disjuncts.length) {
+    //   throw new SyntaxError(
+    //     `Recursive rule must have at least one non-recursive branch`
+    //   )
+    // }
 
     // If recursive rule we inflate the cost by factor
     cost = this.recurs ? cost ** 2 : cost
@@ -1164,7 +1165,16 @@ export class RuleRecursion {
         }
       }
 
-      recur.push([bindings, new Map(match)])
+      // 😵‍💫 If we produced bindings match selection this is non-productive
+      // recursion so we can skip those, I think ?!
+
+      // For direct tautologies (Rule(X) :- Rule(X)), there's no need to schedule recursion
+      // For non-tautological or complex recursion, schedule it and let the fixed-point
+      // detection in RuleApplicationPlan.evaluate handle termination
+      if (bindings.size > 0) {
+        // Skip scheduling only if it's a direct tautology
+        recur.push([bindings, new Map(match)])
+      }
     }
 
     // Recur doesn't directly return matches - it schedules them for later
@@ -1178,6 +1188,7 @@ export class RuleRecursion {
  *
  * @param {API.MatchFrame} frame
  * @param {string} [context=''] - Optional context to differentiate matches in different evaluation contexts
+ * @returns {string} A unique identifier for this frame
  */
 const identifyMatch = (frame, context = '') => {
   // A more reliable identifier that preserves the shape of objects
@@ -1753,6 +1764,7 @@ export class RuleApplicationPlan {
           /** @type {API.EvaluationContext['recur']} */
           const next = []
 
+          // Process all pending recursions for this iteration
           for (const [nextBinding, origContext] of recur) {
             // 🤔 Sounds like we need to map context
 
