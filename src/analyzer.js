@@ -1029,7 +1029,6 @@ export class DeductiveRule {
       when.where = new JoinPlan([], application.references, 0)
     }
 
-    // ⚠️ Disable  non recurnize branch requirement.
     // // If all branches are recursive raise an error because we need a base case
     // // to terminate.
     // if (recursive > 0 && recursive === disjuncts.length) {
@@ -1089,6 +1088,7 @@ export class RuleRecursion {
     const cells = new Map()
     // All variables in the rule need to be in the cells
     for (const variable of Terms.variables(terms)) {
+      // TODO: see https://app.radicle.xyz/nodes/ash.radicle.garden/rad:z21XbgzbqQtfKKJWKuv6cQCyLMJYS/issues/617aaf083d45ec3eba8ddd8d2c587a289e45ea79
       cells.set(variable, 0)
     }
 
@@ -1775,7 +1775,7 @@ export class RuleApplicationPlan {
               // This allows joins with other predicates (like Person) to work properly
               for (const match of this.write(frame, nextBinding)) {
                 const id = identifyMatch(match)
-                if (!matches.has(id) && match.size > 0) {
+                if (!matches.has(id)) {
                   matches.set(id, match)
                 }
               }
@@ -1884,6 +1884,9 @@ export class RuleApplicationPlan {
             }
           }
         }
+        // If none of the outputs contain the term we can not
+        // produce a valid frame so we return `[]`
+        return []
       }
     }
 

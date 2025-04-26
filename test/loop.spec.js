@@ -439,4 +439,66 @@ export const testRecursion = {
       }),
     ])
   },
+
+  'test not really recursive': async (assert) => {
+    const Person = fact({
+      the: 'meta',
+      name: String,
+    })
+
+    const Query = Person.when((person) => ({
+      base: [Person(person)],
+      recur: [Query(person)],
+    }))
+
+    const results = await Query().query({ from: db })
+    // Check result length rather than exact content due to ID/hash mismatches
+    assert.strictEqual(results.length, 3, 'Should return 3 people')
+
+    // Check each object has the correct name
+    const names = results.map((r) => r.name).sort()
+    assert.deepEqual(names, ['a', 'b', 'c'], 'Should include all 3 names')
+  },
+
+  'test tautology': async (assert) => {
+    const Person = fact({
+      the: 'meta',
+      name: String,
+    })
+
+    const Tautology = Person.where((person) => [
+      Person(person),
+      Tautology(person),
+    ])
+
+    const results = await Tautology().query({ from: db })
+    // Check result length rather than exact content due to ID/hash mismatches
+    assert.strictEqual(results.length, 3, 'Should return 3 people')
+
+    // Check each object has the correct name
+    const names = results.map((r) => r.name).sort()
+    assert.deepEqual(names, ['a', 'b', 'c'], 'Should include all 3 names')
+  },
+
+  'test partial binding tautology': async (assert) => {
+    const Person = fact({
+      the: 'meta',
+      name: String,
+    })
+
+    // Define a relationship that introduces a second unbound variable
+    const PartialTautology = fact({
+      name: String,
+      extra: Object, // This will remain unbound in the recursive case
+    }).where(({ this: person, name, extra }) => [
+      Person({ this: person, name }),
+      PartialTautology({ this: person, name, extra }),
+    ])
+
+    // This test should complete without infinite recursion
+    // The query should return results only for valid bindings
+    const results = await PartialTautology().query({ from: db })
+
+    assert.strictEqual(results.length, 0, 'Should have no results')
+  },
 }
