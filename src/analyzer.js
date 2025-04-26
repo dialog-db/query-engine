@@ -1165,16 +1165,8 @@ export class RuleRecursion {
         }
       }
 
-      // 😵‍💫 If we produced bindings match selection this is non-productive
-      // recursion so we can skip those, I think ?!
-
-      // For direct tautologies (Rule(X) :- Rule(X)), there's no need to schedule recursion
-      // For non-tautological or complex recursion, schedule it and let the fixed-point
-      // detection in RuleApplicationPlan.evaluate handle termination
-      if (bindings.size > 0) {
-        // Skip scheduling only if it's a direct tautology
-        recur.push([bindings, new Map(match)])
-      }
+      // Simply schedule the recursion - tautology detection will happen in RuleApplicationPlan
+      recur.push([bindings, new Map(match)])
     }
 
     // Recur doesn't directly return matches - it schedules them for later
@@ -1766,7 +1758,31 @@ export class RuleApplicationPlan {
 
           // Process all pending recursions for this iteration
           for (const [nextBinding, origContext] of recur) {
-            // 🤔 Sounds like we need to map context
+            // Check for tautology here - before recursively evaluating
+            // For patterns like Tautology(X) :- Person(X), Tautology(X)
+            // We need to detect when recursion would be unproductive
+
+            // Generate identifiers for both current context and the binding for recursion
+            const nextBindingId = identifyMatch(nextBinding)
+            const origContextId = identifyMatch(origContext)
+
+            // A tautology occurs when a rule refers to itself with exactly the same bindings
+            // This happens when recursion can't produce any new results
+            if (nextBindingId === origContextId) {
+              // This is a pure tautology - the recursive call would use the exact same bindings
+
+              // For pure tautologies, we add the current binding as a result
+              // This allows joins with other predicates (like Person) to work properly
+              for (const match of this.write(frame, nextBinding)) {
+                const id = identifyMatch(match)
+                if (!matches.has(id) && match.size > 0) {
+                  matches.set(id, match)
+                }
+              }
+
+              // Skip further recursion for this path as it would create an infinite loop
+              continue
+            }
 
             // Create a context for this step's evaluation
             /** @type {API.EvaluationContext} */
