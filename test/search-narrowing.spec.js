@@ -1,4 +1,4 @@
-import { deduce, match, Inspector } from './lib.js'
+import { fact, Inspector } from './lib.js'
 import db, { arnold } from './movie.db.js'
 
 /**
@@ -7,18 +7,25 @@ import db, { arnold } from './movie.db.js'
 export const testPlan = {
   'test that search space is getting reduced': async (assert) => {
     const source = Inspector.from(db)
-
-    const Movie = deduce({
-      movie: Object,
+    const Movie = fact({
+      the: 'movie',
       title: String,
-      actor: Object,
-    }).where(({ movie, title, actor }) => [
-      match({ the: 'movie/title', of: movie, is: title }),
-      match({ the: 'movie/cast', of: movie, is: actor }),
-      match({ the: 'person/name', of: actor, is: 'Arnold Schwarzenegger' }),
-    ])
+      cast: Object,
+    })
 
-    const result = await await Movie().query({ from: source })
+    const Person = fact({
+      the: 'person',
+      name: String,
+    })
+
+    const MoviesCastingArnold = Movie.with({ cast: Object }).where(
+      ({ this: movie, title, cast }) => [
+        Movie({ this: movie, title, cast }),
+        Person({ this: cast, name: 'Arnold Schwarzenegger' }),
+      ]
+    )
+
+    const result = await MoviesCastingArnold.match().query({ from: source })
 
     assert.deepEqual(result.length, 5)
 

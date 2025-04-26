@@ -56,10 +56,26 @@ export const formula = (operator) =>
   )
 
 /**
+ * @template {API.Conclusion} [Match=API.Conclusion]
+ * @param {API.RuleBindings<Match>} terms
+ */
+export const recur = (terms) => RuleRecursion.from({ recur: terms })
+
+/**
  * @param {API.Conjunct|API.Recur} source
  */
 export const from = (source) => {
-  if (source.not) {
+  if (source instanceof Negation) {
+    return source
+  } else if (source instanceof RuleApplication) {
+    return source
+  } else if (source instanceof FormulaApplication) {
+    return source
+  } else if (source instanceof RuleRecursion) {
+    return source
+  } else if (source instanceof Select) {
+    return source
+  } else if (source.not) {
     return Negation.from(source)
   } else if (source.rule) {
     return RuleApplication.from(source)
@@ -679,7 +695,13 @@ export class RuleApplication {
       // because some cells may have cost of `Infinity` otherwise rendering
       // rule application unplannable.
       for (const cell of Cursor.resolve(references, variable)) {
-        cells.set(cell, 0)
+        // Please note that only cells application can have are variables in the
+        // `terms` which we have already iterated and collected in the cells. If
+        // we do not collected this cell, we should not set it because it may
+        // lead setting things into outer scope.
+        if (cells.has(cell)) {
+          cells.set(cell, 0)
+        }
       }
     }
 
@@ -1057,7 +1079,7 @@ export class DeductiveRule {
 /**
  * @template {API.Conclusion} [Match=API.Conclusion]
  */
-class RuleRecursion {
+export class RuleRecursion {
   /**
    * @template {API.Conclusion} [Match=API.Conclusion]
    * @param {API.Recur<Match>} source
@@ -1081,12 +1103,16 @@ class RuleRecursion {
   }
 
   /**
-   * @param {Match} terms
+   * @param {API.RuleBindings<Match>} terms
    * @param {Map<API.Variable, number>} cells
    */
   constructor(terms, cells) {
     this.terms = terms
     this.cells = cells
+  }
+
+  get recur() {
+    return this.terms
   }
 
   get cost() {

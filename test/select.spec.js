@@ -1,83 +1,103 @@
-import { deduce, match, Data } from './lib.js'
+import { fact, same, Collection } from './lib.js'
 import proofsDB from './proofs.db.js'
+
+const UCAN = fact({
+  the: 'ucan',
+  cid: String,
+  issuer: String,
+  audience: String,
+  capabilities: Object,
+})
+
+const Capability = fact({
+  the: 'capability',
+  can: String,
+  with: String,
+})
 
 /**
  * @type {import('entail').Suite}
  */
 export const testSelector = {
   'nested selection': async (assert) => {
-    const Delegation = deduce({
+    const Delegation = fact({
       this: Object,
       cid: String,
       can: String,
-      space: String,
+      subject: String,
     })
       .with({ capabilities: Object, capability: Object })
-      .where(({ this: ucan, cid, capabilities, capability, space, can }) => [
-        match({ the: 'cid', of: ucan, is: cid }),
-        match({ the: 'capabilities', of: ucan, is: capabilities }),
-        match({ of: capabilities, is: capability }),
-        match({ the: 'can', of: capability, is: can }),
-        match({ the: 'with', of: capability, is: space }),
-      ])
+      .where(
+        ({ this: ucan, cid, capabilities, capability, subject, can, _ }) => [
+          UCAN.match({ this: ucan, cid, capabilities }),
+          Collection({ this: capabilities, of: capability }),
+          Capability({ this: capability, can, with: subject }),
+          Delegation.claim({ this: ucan, cid, can, subject }),
+        ]
+      )
 
-    const Permission = deduce({
+    const Permission = fact({
       space: String,
       upload: String,
       store: String,
     }).where(({ space, upload, store }) => [
-      Delegation.match({ space, can: 'upload/add', cid: upload }),
-      Delegation.match({ space, can: 'store/add', cid: store }),
+      Delegation.match({ subject: space, can: 'upload/add', cid: upload }),
+      Delegation.match({ subject: space, can: 'store/add', cid: store }),
+      Permission.claim({ space, upload, store }),
     ])
 
     const result = await Permission().query({ from: proofsDB })
     assert.deepEqual(result, [
-      {
+      Permission.assert({
         space: 'did:key:zAlice',
         upload: 'bafy...upload',
         store: 'bafy...store',
-      },
+      }),
     ])
   },
   'deeply nested selection': async (assert) => {
-    const Delegation = deduce({
+    const Delegation = fact({
       this: Object,
       cid: String,
-      can: Object,
-      space: String,
+      can: String,
+      subject: String,
     })
       .with({ capabilities: Object, capability: Object })
-      .where(({ this: ucan, cid, capabilities, capability, space, can }) => [
-        match({ the: 'cid', of: ucan, is: cid }),
-        match({ the: 'capabilities', of: ucan, is: capabilities }),
-        match({ of: capabilities, is: capability }),
-        match({ the: 'can', of: capability, is: can }),
-        match({ the: 'with', of: capability, is: space }),
-      ])
+      .where(
+        ({ this: ucan, cid, capabilities, capability, subject, can, _ }) => [
+          UCAN.match({ this: ucan, cid, capabilities }),
+          Collection({ this: capabilities, of: capability }),
+          Capability({ this: capability, can, with: subject }),
+          Delegation.claim({ this: ucan, cid, can, subject }),
+        ]
+      )
 
-    const Upload = Delegation.when(({ can }) => [
-      Data.same({ this: 'upload/add', as: can }),
+    const Upload = Delegation.where((delegation) => [
+      Delegation(delegation),
+      same({ this: delegation.can, as: 'upload/add' }),
     ])
 
-    const Store = Delegation.when(({ can }) => [
-      Data.same({ this: 'store/add', as: can }),
+    const Store = Delegation.where((delegation) => [
+      Delegation(delegation),
+      same({ this: delegation.can, as: 'store/add' }),
     ])
 
-    const Query = deduce({
+    const Permission = fact({
       upload: String,
       store: String,
       space: String,
     }).where(({ upload, store, space }) => [
-      Upload.match({ space, cid: upload }),
-      Store.match({ space, cid: store }),
+      Upload.match({ subject: space, cid: upload }),
+      Store.match({ subject: space, cid: store }),
+      Permission.claim({ space, store, upload }),
     ])
 
-    assert.deepEqual(await Query().query({ from: proofsDB }), [
-      {
+    assert.deepEqual(await Permission().query({ from: proofsDB }), [
+      Permission.assert({
         space: 'did:key:zAlice',
         upload: 'bafy...upload',
         store: 'bafy...store',
-      },
+      }),
     ])
   },
 }

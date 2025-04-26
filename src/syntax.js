@@ -7,6 +7,7 @@ import { Callable } from './syntax/callable.js'
 import * as Selector from './selector.js'
 import * as Link from './data/link.js'
 import { toDebugString } from './analyzer.js'
+import { toJSON } from './analyzer.js'
 
 /**
  * @param {unknown} descriptor
@@ -116,7 +117,7 @@ export const fact = ({ the, ...source }) => {
  * @template {string} The
  * @template {API.RuleDescriptor & { this: ObjectConstructor }} Schema
  * @template {API.RuleDescriptor} [Locals={}]
- * @extends {Callable<(terms?: API.InferRuleTerms<Schema>) => FactMatch<The, Schema>>}
+ * @extends {Callable<(terms?: API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Term}) => FactMatch<The, Schema>>}
  */
 class Premise extends Callable {
   /**
@@ -127,11 +128,11 @@ class Premise extends Callable {
   constructor(the, schema, locals) {
     super(
       /**
-       * @param {API.InferRuleTerms<Schema>} [terms]
+       * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Term}} [terms]
        * @returns {FactMatch<The, Schema, Schema>}
        */
       (terms = this.ports) =>
-        new FactMatch(this.the, this.form, this.ports, terms)
+        this.match(/** @type {API.InferRuleTerms<Schema>} */ (terms))
     )
     this.the = the
     this.schema = schema
@@ -147,7 +148,7 @@ class Premise extends Callable {
    */
   get ports() {
     if (!this.#ports) {
-      this.#ports = Deduce.buildMatch(this.schema)
+      this.#ports = derivePorts(this.schema)
     }
     return this.#ports
   }
@@ -252,10 +253,10 @@ class Premise extends Callable {
    * branch is an AND joined predicates by passed variables.
    *
    * @param {API.SomeBuilder<Schema & Locals>} build
-   * @returns {Conclusion<The, Schema, Locals>}
+   * @returns {Deduction<The, Schema, Locals>}
    */
   when(build) {
-    return new Conclusion(this.the, this.schema, this.locals, build)
+    return new Deduction(this.the, this.schema, this.locals, build)
   }
 
   /**
@@ -264,32 +265,44 @@ class Premise extends Callable {
    * only one branch is needed.
    *
    * @param {API.EveryBuilder<Schema & Locals>} build
-   * @returns {Conclusion<The, Schema, Locals>}
+   * @returns {Deduction<The, Schema, Locals>}
    */
   where(build) {
-    return new Conclusion(this.the, this.schema, this.locals, build)
+    return new Deduction(this.the, this.schema, this.locals, build)
+  }
+
+  induce() {
+    return this
   }
 }
+
+/**
+ *
+ * @template {API.RuleDescriptor} Schema
+ * @typedef {object} Applicable
+ * @property {(terms: API.InferRuleTerms<Schema>) => Analyzer.RuleApplication<API.InferRuleVariables<Schema>>} apply
+ */
 
 /**
  * @template {string} The
  * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
  * @template {Partial<Schema>} [Terms=Schema]
+ * @implements {API.MatchView<unknown>}
  */
 class FactMatch {
   /**
    * @param {The} the
-   * @param {Analyzer.DeductiveRule<API.InferRuleVariables<Schema>>} rule
-   * @param {API.InferRuleVariables<Schema>} variables
+   * @param {Applicable<Schema>} rule
+   * @param {API.InferRuleVariables<Schema>} ports
    * @param {API.InferRuleTerms<Terms>} terms
    */
-  constructor(the, rule, variables, terms) {
+  constructor(the, rule, ports, terms) {
     this.the = the
     this.rule = rule
-    this.variables = variables
+    this.ports = ports
     this.terms = terms
     const selector = /** @type {Record<string, API.Term>} */ ({})
-    for (const key of Object.keys(variables)) {
+    for (const key of Object.keys(ports)) {
       if (terms[key] === undefined) {
         selector[key] = $[Symbol()]
       } else {
@@ -304,11 +317,15 @@ class FactMatch {
   #form
   get form() {
     if (!this.#form) {
-      this.#form = this.rule.apply(this.terms)
+      this.#form = this.rule.apply(
+        /** @type {API.InferRuleTerms<Schema> & API.InferRuleTerms<Terms>} */
+        (this.terms)
+      )
     }
     return this.#form
   }
 
+  /** @returns {Iterator<API.Conjunct|API.Recur>} */
   *[Symbol.iterator]() {
     yield this.form
   }
@@ -320,7 +337,7 @@ class FactMatch {
       this.#plan =
         // If selector and terms match we can reuse the form, but if they do not
         // we need to create new form which will include all the terms.
-        this.terms === /** @type {object} */ (this.variables) ?
+        this.terms === /** @type {object} */ (this.ports) ?
           this.form.prepare()
         : this.rule.apply(this.selector).prepare()
     }
@@ -357,7 +374,7 @@ class FactMatch {
       )
     }
 
-    return /** @type {API.InferFact<Schema>[]} */ (facts)
+    return facts
   }
 
   /**
@@ -372,10 +389,40 @@ class FactMatch {
 }
 
 /**
+ * Subclass of {@link FactMatch} that represents a recursive rule application.
+
+ * @template {string} The
+ * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
+ * @template {Partial<Schema>} [Terms=Schema]
+ * @extends {FactMatch<The, Schema, Terms>}
+ */
+class Recur extends FactMatch {
+  /**
+   * We override the itertor to yield recursion form as opposed to application
+   * from.
+   */
+  *[Symbol.iterator]() {
+    yield { recur: { this: this.ports.this, ...this.terms } }
+  }
+}
+
+/**
  * @template {string} The
  * @template {{ this: API.Entity, the: The }} Model
  */
 class Fact {
+  /**
+   * @template {string} The
+   * @param {Record<string, API.Term> & {this: API.Term<API.Entity>, the: The}} terms
+   */
+  static claim(terms) {
+    /**
+     * ⚠️ This needs to be aligned with {@link Fact.assert} implementation
+     * so that `this` will come out same in both cases.
+     */
+    return Data.Fact(terms)
+  }
+
   /**
    * @template {string} The
    * @template {API.RuleDescriptor & { this: ObjectConstructor }} Schema
@@ -384,8 +431,12 @@ class Fact {
    * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Entity}} data
    */
   static assert(the, schema, data) {
-    /** @type {Record<string, API.Scalar>} */
-    const model = { the, this: data.this ?? Link.of({ of: data }) }
+    /**
+     * ⚠️ This needs to be aligned with {@link Fact.claim} implementation
+     * that `this` will come out same in both cases.
+     * @type {Record<string, API.Scalar>}
+     */
+    const model = { the, this: data.this ?? Link.of({ ...data, the }) }
 
     for (const key of Object.keys(schema)) {
       const value = data[key]
@@ -422,15 +473,14 @@ class Fact {
    */
   constructor(model) {
     this.#model = model
-    const { the, this: _, ...data } = model
+    const { the, ...data } = model
+
     Object.assign(this, data)
+    this.this = model.this
   }
   #model
   get the() {
     return this.#model.the
-  }
-  get this() {
-    return this.#model.this
   }
   *[Symbol.iterator]() {
     const assertions = /** @type {API.Instruction[]} */ ([])
@@ -440,6 +490,10 @@ class Fact {
     }
 
     yield* assertions
+  }
+
+  toJSON() {
+    return { ...this, the: this.the, this: toJSON(this.this) }
   }
 }
 
@@ -475,11 +529,9 @@ class Negation {
  * @template {string} The
  * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
  * @template {API.RuleDescriptor} Locals
- * @extends {Callable<(terms?: API.InferRuleTerms<Schema>) => FactMatch<The, Schema>>}
+ * @extends {Callable<(terms?: API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Term}) => FactMatch<The, Schema>>}
  */
-class Conclusion extends Callable {
-  #compiling = false
-
+class Deduction extends Callable {
   /**
    * @param {The} the
    * @param {Schema} schema
@@ -489,17 +541,20 @@ class Conclusion extends Callable {
   constructor(the, schema, locals, build) {
     super(
       /**
-       * @param {API.InferRuleTerms<Schema>} [terms]
+       * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Term}} [terms]
        * @returns {FactMatch<The, Schema, Schema>}
        */
       (terms = this.ports) =>
-        new FactMatch(this.the, this.form, this.ports, terms)
+        this.match(/** @type {API.InferRuleTerms<Schema>} */ (terms))
     )
 
     this.the = the
     this.schema = schema
     this.locals = locals
     this.build = build
+
+    /** @type {Applicable<Schema>} */
+    this.rule = this
   }
 
   /** @type {API.InferRuleVariables<Schema>|undefined} */
@@ -512,7 +567,7 @@ class Conclusion extends Callable {
   get ports() {
     const $ = this.#ports
     if ($ == null) {
-      const $ = Deduce.buildMatch(this.schema)
+      const $ = derivePorts(this.schema)
       this.#ports = $
       return $
     } else {
@@ -520,11 +575,19 @@ class Conclusion extends Callable {
     }
   }
 
-  /** @type {undefined|(API.InferRuleVariables<Schema & Locals> & {_: API.Variable})} */
+  /** @type {undefined|(API.InferRuleVariables<Schema & Locals> & {_: API.Variable, this: API.Variable<API.Entity>})} */
   #cells
   get cells() {
     if (!this.#cells) {
-      this.#cells = Deduce.buildVariables({ ...this.locals, ...this.schema })
+      const cells =
+        /** @type {API.InferRuleVariables<Schema & Locals> & {_: API.Variable, this: API.Variable<API.Entity>}} */
+        (
+          deriveCells({
+            ...this.locals,
+            ...this.schema,
+          })
+        )
+      this.#cells = cells
     }
     return this.#cells
   }
@@ -543,19 +606,24 @@ class Conclusion extends Callable {
     }
   }
 
+  /**
+   * If rule is applied recursively we want to return `Recur` as opposed to
+   * plain `FactMatch` to accomplish this we set this property to `Recur`
+   * during `source` compilation. This works because when/where `build` function
+   * is called during compilation which in turn ends up calling `match` method
+   * that will use `this.#Match` to construct which will be set to `Recur`.
+   */
+  #Match = FactMatch
+
   /** @type {API.Deduction<API.InferRuleVariables<Schema>>|undefined} */
   #source
   get source() {
-    const source = this.#source
-    if (source) {
-      return source
-    } else {
-      this.#compiling = true
-      const source = this.compile()
-      this.#compiling = false
-      this.#source = source
-      return source
+    if (!this.#source) {
+      this.#Match = Recur
+      this.#source = this.compile()
+      this.#Match = FactMatch
     }
+    return this.#source
   }
 
   /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Schema>>|undefined} */
@@ -573,21 +641,11 @@ class Conclusion extends Callable {
   }
 
   /**
-   * @param {API.InferRuleVariables<Schema>} match
-   * @returns {API.Conjunct}
+   * @param {API.InferRuleTerms<Schema>} terms
+   * @returns {Analyzer.RuleApplication<API.InferRuleVariables<Schema>>}
    */
-  apply(match) {
-    if (this.#compiling) {
-      return {
-        // @ts-expect-error
-        recur: match,
-      }
-    } else {
-      return {
-        match,
-        rule: this.source,
-      }
-    }
+  apply(terms) {
+    return this.form.apply(terms)
   }
 
   /**
@@ -595,13 +653,12 @@ class Conclusion extends Callable {
    * @param {API.InferRuleTerms<Selector>} [terms]
    * @returns {FactMatch<The, Schema, Selector>}
    */
-  match(terms) {
-    return new FactMatch(
-      this.the,
-      this.form,
-      this.ports,
-      /** @type {API.InferRuleTerms<Selector>} */ (terms ?? this.ports)
+  match(
+    terms = /** @type {API.InferRuleTerms<Selector> & API.InferRuleVariables<Schema>}} */ (
+      this.ports
     )
+  ) {
+    return new this.#Match(this.the, this, this.ports, terms)
   }
 
   /**
@@ -627,30 +684,86 @@ class Conclusion extends Callable {
   }
 
   /**
-   * @param {API.InferRuleTerms<Schema & { this?: ObjectConstructor }>} fact
+   * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Term<API.Entity>}} fact
    */
   claim(fact) {
+    const { schema, cells, the } = this
     const predicates = []
-    const variables = this.ports
-    for (const [name, member] of Object.entries(this.schema)) {
-      predicates.push(
-        ...same({
-          this: /** @type {API.Scalar} */ (fact[name]),
-          as: variables[name],
-        })
-      )
+    for (const [name, member] of Object.entries(schema)) {
+      // If `this` was not provided we derive one from the data itself.
+      if (name === 'this' && !fact[name]) {
+        predicates.push(Fact.claim({ ...fact, this: cells.this, the }))
+      } else {
+        predicates.push(
+          ...same({
+            this: /** @type {API.Scalar} */ (fact[name]),
+            as: cells[name],
+          })
+        )
+      }
     }
 
     return new Claim(predicates)
   }
 
   /**
+   * This method can be used to project different layout of the selected facts,
+   * it is maraked deprecated, but it is not deprecated but rather an
+   * experimental and may be removed at any point. This method can be used as an
+   * aggregator to group results, however this leads to nested structures which
+   * are at odds with the facts that are flat records.
+   *
+   * @deprecated
+   *
    * @template {API.Selector} Selector
    * @param {API.ProjectionBuilder<Schema & Locals, Selector>} build
-   * @returns {FactSelect<The, Schema, Locals, Selector>}
+   * @returns {Select<The, Schema, Locals, Selector>}
    */
   select(build = (variables) => /** @type {Selector} */ (variables)) {
-    return new FactSelect(build, this)
+    return new Select(build, this)
+  }
+
+  /**
+   * Defines local variables so they could be used in the `.when` and `.where`
+   * methods without makeing those part of the fact.
+   *
+   * @template {Omit<API.RuleDescriptor, keyof Schema | keyof Locals>} Extension
+   * @param {Extension} extension
+   * @returns {Premise<The, Schema, Locals & Extension>}
+   */
+  with(extension) {
+    return new Premise(this.the, this.schema, { ...extension, ...this.locals })
+  }
+
+  /**
+   * Defines a rule that deduces this fact whenever any of the branches are true.
+   * Takes a `build` function that will be given set of variables corresponding
+   * to the fact members which must return object where keys represent disjuncts
+   * and values are arrays representing conjuncts for those disjuncts. In other
+   * works each member of the returned object represent OR branches where each
+   * branch is an AND joined predicates by passed variables.
+   *
+   * @param {API.SomeBuilder<Schema & Locals>} build
+   * @returns {Deduction<The, Schema, Locals>}
+   */
+  when(build) {
+    return new Deduction(this.the, this.schema, this.locals, build)
+  }
+
+  /**
+   * Defines a rule that dudces this fact whenever all of the predicates are
+   * true. This is a shortuct of `.when` which is convinient in cases where
+   * only one branch is needed.
+   *
+   * @param {API.EveryBuilder<Schema & Locals>} build
+   * @returns {Deduction<The, Schema, Locals>}
+   */
+  where(build) {
+    return new Deduction(this.the, this.schema, this.locals, build)
+  }
+
+  induce() {
+    return this
   }
 }
 
@@ -687,13 +800,18 @@ export class Predicate extends Callable {
   }
 }
 
-export const match = Predicate.for(
+export const Collection = Predicate.for(
   /**
-   * @template {API.Select} Select
-   * @param {Select} terms
-   * @returns {{match: Select, fact: {}}}
+   * @template {API.Scalar} Member
+   * @param {object} terms
+   * @param {API.Term<API.Entity>} terms.this
+   * @param {API.Term<Member>} terms.of
+   * @param {API.Term<string>} [terms.at]
    */
-  (terms) => ({ match: terms, fact: {} })
+  (terms) => ({
+    match: { the: terms.at, of: terms.this, is: terms.of },
+    fact: {},
+  })
 )
 
 /**
@@ -1126,11 +1244,26 @@ export class Data {
      * @param {object} terms
      * @param {API.Term<any>} terms.of
      * @param {API.Term<API.Entity>} [terms.is]
+     * @returns {{match: { of: API.Term, is?: API.Term<API.Entity> }, operator: 'data/refer' }}
      */
     ({ of, is }) => {
       return {
         match: { of, is },
         operator: /** @type {const} */ ('data/refer'),
+      }
+    }
+  )
+
+  static Fact = Predicate.for(
+    /**
+     * @template {Record<string, API.Term> & {this?: API.Term<API.Entity>}} Terms
+     * @param {Terms} terms
+     * @returns {{match: Omit<Terms, 'this'> & { is?: API.Term<API.Entity> }, operator: 'data/refer' }}
+     */
+    ({ this: is, ...of }) => {
+      return {
+        match: { ...of, is },
+        operator: 'data/refer',
       }
     }
   )
@@ -1255,93 +1388,59 @@ export class Math {
   )
 }
 
-/**
- * @template {API.RuleDescriptor} Descriptor
- * @param {Descriptor} descriptor
- */
-export const deduce = (descriptor) => new Deduce(descriptor, {})
-
 const Same = Analyzer.rule({ match: { this: $.this, as: $.this } })
+const NotSame = Analyzer.rule({
+  match: { this: $.this, as: $.as },
+  when: {
+    where: [{ not: Same.apply({ this: $.this, as: $.as }) }],
+  },
+})
+
+export const same = Object.assign(
+  /**
+   * @template {API.Scalar} This
+   * @template {API.Scalar} As
+   * @param {{this: API.Term<This>, as: API.Term<As>}} terms
+   */
+  (terms) => new Match(Same, terms),
+  {
+    /**
+     * @template {API.Scalar} This
+     * @template {API.Scalar} As
+     * @param {{this: API.Term<This>, as: API.Term<As>}} terms
+     */
+    not(terms) {
+      return new Match(NotSame, terms)
+    },
+  }
+)
 
 /**
- * @template {API.Scalar} This
- * @template {API.Scalar} As
- * @param {{this: API.Term<This>, as: API.Term<As>}} terms
+ * @template {API.RuleDescriptor} Schema
+ * @param {Schema} schema
+ * @returns {API.InferRuleVariables<Schema>}
  */
-export const same = (terms) => new Match(terms, Same)
+function derivePorts(schema) {
+  const match = /** @type {Record<string, API.Variable>} */ ({})
+  for (const [key, type] of Object.entries(schema)) {
+    match[key] = $[key]
+  }
+
+  return /** @type {API.InferRuleVariables<Schema>} */ (match)
+}
 
 /**
- * @template {API.RuleDescriptor} Descriptor
- * @template {API.RuleDescriptor} Locals
+ * @template {API.RuleDescriptor} Schema
+ * @param {Schema} schema
+ * @returns {API.InferRuleVariables<Schema> & {_: API.Variable}}
  */
-class Deduce {
-  /**
-   * @param {Descriptor} descriptor
-   * @param {Locals} locals
-   */
-  constructor(descriptor, locals) {
-    this.descriptor = descriptor
-    this.locals = locals
-  }
-
-  /**
-   * @returns {Deduce<Descriptor, Locals>}
-   */
-  get this() {
-    return this
-  }
-
-  /**
-   * @template {API.RuleDescriptor} Variables
-   * @param {Variables} variables
-   * @returns {API.InferRuleVariables<Variables>}
-   */
-  static buildMatch(variables) {
-    const match = /** @type {Record<string, API.Variable>} */ ({})
-    for (const [key, type] of Object.entries(variables)) {
-      match[key] = $[key]
-    }
-
-    return /** @type {API.InferRuleVariables<Variables>} */ (match)
-  }
-
-  /**
-   * @template {API.RuleDescriptor} Variables
-   * @param {Variables} variables
-   * @returns {API.InferRuleVariables<Variables> & {_: API.Variable}}
-   */
-  static buildVariables(variables) {
-    return Object.assign(this.buildMatch(variables), { _: $._ })
-  }
-
-  /**
-   * @template {Omit<API.RuleDescriptor, keyof Descriptor | keyof Locals>} Extension
-   * @param {Extension} extension
-   * @returns {Deduce<Descriptor, Locals & Extension>}
-   */
-  with(extension) {
-    return new Deduce(this.descriptor, { ...extension, ...this.locals })
-  }
-  /**
-   * @param {API.SomeBuilder<Descriptor & Locals>} build
-   * @returns {Deduction<Descriptor, Locals>}
-   */
-  when(build) {
-    return new Deduction(this.descriptor, this.locals, build)
-  }
-
-  /**
-   * @param {API.EveryBuilder<Descriptor & Locals>} build
-   * @returns {Deduction<Descriptor, Locals>}
-   */
-  where(build) {
-    return new Deduction(this.descriptor, this.locals, build)
-  }
+function deriveCells(schema) {
+  return Object.assign(derivePorts(schema), { _: $._ })
 }
 
 /**
  * @param {API.EveryView} source
- * @returns {Iterable<API.Conjunct>}
+ * @returns {Iterable<API.Conjunct|API.Recur>}
  */
 function* iterateConjuncts(source) {
   for (const member of source) {
@@ -1369,211 +1468,6 @@ function* iterateDisjuncts(source) {
   }
 }
 
-/**
- * @template {API.RuleDescriptor} Descriptor
- * @template {API.RuleDescriptor} Locals
- * @extends {Callable<(terms?: API.InferRuleTerms<Descriptor>) => Application<Descriptor, Locals>>}
- */
-class Deduction extends Callable {
-  #compiling = false
-
-  /**
-   * @param {Descriptor} descriptor
-   * @param {Locals} locals
-   * @param {API.WhenBuilder<Descriptor & Locals>} buildWhen
-   * @param {Deduction<Descriptor, Locals>} [baseRule]
-   */
-  constructor(descriptor, locals, buildWhen, baseRule) {
-    super(
-      /** @type {typeof this.match} */
-      (terms) => this.match(terms)
-    )
-
-    this.locals = locals
-    this.descriptor = descriptor
-    this.buildWhen = buildWhen
-    this.baseRule = baseRule
-  }
-
-  /**
-   * @template {API.RuleDescriptor} Parameters
-   * @template {API.RuleDescriptor} Locals
-   * @param {object} source
-   * @param {Parameters} source.parameters
-   * @param {Locals} source.locals
-   * @param {API.WhenBuilder<Parameters & Locals>} source.buildWhen
-   * @param {Deduction<Parameters, Locals>} [source.baseRule]
-   * @returns {API.Deduction<API.InferRuleVariables<Parameters>>}
-   */
-  static compile({ parameters, locals, buildWhen, baseRule }) {
-    const match = Deduce.buildMatch(parameters)
-    const variables = Deduce.buildVariables({ ...locals, ...parameters })
-
-    const base = /** @type {API.Conjunct[]} */ (
-      baseRule ? [...baseRule.match(variables)] : []
-    )
-
-    const when = /** @type {Record<string, API.Every>} */ ({})
-    for (const [name, disjunct] of iterateDisjuncts(buildWhen(variables))) {
-      when[name] = /** @type {[API.Conjunct, ...API.Conjunct[]]} */ ([
-        ...base,
-        ...iterateConjuncts(disjunct),
-      ])
-    }
-
-    return {
-      match,
-      when: /** @type {API.Some} */ (when),
-    }
-  }
-
-  /**
-   * @template {API.RuleDescriptor} T
-   * @param {API.WhenBuilder<T>} build
-   * @param {API.InferRuleVariables<T> & {_: API.Variable<any>}} variables
-   * @param {{match: (terms: Partial<API.RuleBindings<API.InferRuleVariables<T>>>) => Iterable<API.Conjunct>}} [base]
-   */
-  static compileWhen(build, variables, base) {
-    const conjuncts = /** @type {API.Conjunct[]} */ (
-      base ? [...base.match(variables)] : []
-    )
-
-    const when = /** @type {Record<string, API.Every>} */ ({})
-    for (const [name, disjunct] of iterateDisjuncts(build(variables))) {
-      when[name] = /** @type {[API.Conjunct, ...API.Conjunct[]]} */ ([
-        ...conjuncts,
-        ...iterateConjuncts(disjunct),
-      ])
-    }
-
-    return /** @type {API.Some} */ (when)
-  }
-
-  /** @type {API.Deduction<API.InferRuleVariables<Descriptor>>|undefined} */
-  #source
-  get source() {
-    const source = this.#source
-    if (source) {
-      return source
-    } else {
-      this.#compiling = true
-      const source = Deduction.compile({
-        parameters: this.descriptor,
-        locals: this.locals,
-        buildWhen: this.buildWhen,
-        baseRule: this.baseRule,
-      })
-      this.#compiling = false
-      this.#source = source
-      return source
-    }
-  }
-
-  /** @type {Analyzer.DeductiveRule<API.InferRuleVariables<Descriptor>>|undefined} */
-  #form
-
-  get form() {
-    const form = this.#form
-    if (form) {
-      return form
-    } else {
-      const form = Analyzer.rule(this.source)
-      this.#form = form
-      return form
-    }
-  }
-
-  /**
-   * @param {API.InferRuleVariables<Descriptor>} match
-   * @returns {API.Conjunct}
-   */
-  apply(match) {
-    if (this.#compiling) {
-      return {
-        // @ts-expect-error
-        recur: match,
-      }
-    } else {
-      return {
-        match,
-        rule: this.source,
-      }
-    }
-  }
-
-  /**
-   * @template {Omit<API.RuleDescriptor, keyof Descriptor | keyof Locals>} Extension
-   * @param {Extension} extension
-   * @returns {Deduction<Descriptor, Locals & Extension>}
-   */
-  with(extension) {
-    return new Deduction(
-      this.descriptor,
-      { ...extension, ...this.locals },
-      this.buildWhen
-    )
-  }
-
-  get $() {
-    return this.form.match
-  }
-  /**
-   * @template {Partial<API.InferRuleTerms<Descriptor>>} Selection
-   * @param {Selection} [terms]
-   * @returns {Application<{[K in keyof Selection]: Descriptor[K]}, Locals>}
-   */
-  match(terms) {
-    const match =
-      /** @type {API.InferRuleVariables<{[K in keyof Selection & keyof Descriptor]: Descriptor[K]}>} */ (
-        terms ?? this.form.match
-      )
-
-    return new Application(match, this)
-  }
-
-  /**
-   * @template {API.Selector} Selector
-   * @param {API.ProjectionBuilder<Descriptor & Locals, Selector>} build
-   * @returns {Select<Descriptor, Locals, Selector>}
-   */
-  select(build = (variables) => /** @type {Selector} */ (variables)) {
-    return new Select(build, this)
-  }
-
-  /**
-   * @param {API.WhenBuilder<Descriptor & Locals>} build
-   * @returns {Deduction<Descriptor, Locals>}
-   */
-  when(build) {
-    return new Deduction(this.descriptor, this.locals, build, this)
-  }
-
-  /**
-   * @param {API.EveryBuilder<Descriptor & Locals>} build
-   * @returns {Deduction<Descriptor, Locals>}
-   */
-  where(build) {
-    return this.when(build)
-  }
-
-  /**
-   * @param {API.InferRuleTerms<Descriptor & { this?: ObjectConstructor }>} fact
-   */
-  claim(fact) {
-    const predicates = []
-    const variables = Deduce.buildMatch(this.descriptor)
-    for (const [name, member] of Object.entries(this.descriptor)) {
-      const value = fact[name]
-      const variable = variables[name]
-      predicates.push(
-        ...same({ this: /** @type {API.Scalar} */ (value), as: variable })
-      )
-    }
-
-    return new Claim(predicates)
-  }
-}
-
 class Claim {
   /**
    * @param {API.Conjunct[]} predicates
@@ -1587,87 +1481,32 @@ class Claim {
 }
 
 /**
- * @template {API.RuleDescriptor} Descriptor
- * @template {API.RuleDescriptor} Locals
- * @template {API.Selector} [Selector=API.InferRuleVariables<Descriptor>]
- * @param {API.Every} where
- */
-class Application {
-  /** @type {Analyzer.RuleApplication<API.InferRuleVariables<Descriptor>>|undefined} */
-  #form
-  /**
-   * @param {API.InferRuleVariables<Descriptor>} match
-   * @param {Deduction<Descriptor, Locals>} rule
-   * @param {Selector} [selector]
-   */
-  constructor(match, rule, selector) {
-    this.match = match
-    this.rule = rule
-    this.selector = selector
-  }
-
-  get form() {
-    this.match
-    if (!this.#form) {
-      this.#form =
-        /** @type {Analyzer.RuleApplication<API.InferRuleVariables<Descriptor>>} */ (
-          this.rule.form.apply(this.match)
-        )
-    }
-    return this.#form
-  }
-
-  toJSON() {
-    return this.form.toJSON()
-  }
-  /**
-   * @param {{ from: API.Querier }} source
-   */
-  *execute(source) {
-    const selection = yield* this.form.query(source)
-    // const result = this.selector ? selection.select(this.selector) : selection
-    // return result.values()
-    return Selector.select(this.selector ?? this.match, selection)
-    // return selection
-  }
-
-  /**
-   * @param {{ from: API.Querier }} source
-   */
-  query(source) {
-    return Task.perform(this.execute(source))
-  }
-
-  *[Symbol.iterator]() {
-    yield this.rule.apply(this.match)
-  }
-}
-
-/**
- * @template {API.Conclusion} Match
+ * @template {API.RuleDescriptor} Schema
  */
 class Match {
   /**
-   * @param {API.RuleBindings<Match>} terms
-   * @param {Analyzer.DeductiveRule<Match>} rule
+   * @param {Applicable<Schema>} rule
+   * @param {API.InferRuleTerms<Schema>} terms
    */
-  constructor(terms, rule) {
-    this.terms = terms
+  constructor(rule, terms) {
     this.rule = rule
+    this.terms = terms
   }
 
-  /** @type {Analyzer.RuleApplication<Match>|undefined} */
+  /** @type {Analyzer.RuleApplication<API.InferRuleVariables<Schema>>|undefined} */
   #form
   get form() {
     if (!this.#form) {
-      this.#form = /** @type {Analyzer.RuleApplication<Match>} */ (
-        this.rule.apply(this.terms)
-      )
+      this.#form = this.rule.apply(this.terms)
     }
     return this.#form
   }
 
-  /** @type {Analyzer.RuleApplicationPlan<Match>|undefined} */
+  *[Symbol.iterator]() {
+    yield this.form
+  }
+
+  /** @type {Analyzer.RuleApplicationPlan<API.InferRuleVariables<Schema>>|undefined} */
   #plan
   get plan() {
     if (!this.#plan) {
@@ -1697,50 +1536,6 @@ class Match {
     this.plan
     return Task.perform(this.execute(source))
   }
-
-  *[Symbol.iterator]() {
-    yield this.form
-  }
-}
-
-/**
- * @template {API.RuleDescriptor} Descriptor
- * @template {API.RuleDescriptor} Locals
- * @template {API.Selector} Selector
- * @extends {Callable<(terms?: API.InferRuleTerms<Descriptor>) => Application<Descriptor, Locals, Selector>>}
- */
-class Select extends Callable {
-  /**
-   * @param {API.ProjectionBuilder<Descriptor & Locals, Selector>} build
-   * @param {Deduction<Descriptor, Locals>} rule
-   */
-  constructor(build, rule) {
-    super(
-      /** @type {typeof this.match} */
-      (terms) => this.match(terms)
-    )
-    this.rule = rule
-    this.build = build
-  }
-
-  /**
-   * @template {Partial<API.InferRuleTerms<Descriptor>>} Selection
-   * @param {Selection} [terms]
-   * @returns {Application<{[K in keyof Selection]: Descriptor[K]}, Locals, Selector>}
-   */
-  match(terms) {
-    const variables = Deduce.buildVariables({
-      ...this.rule.locals,
-      ...this.rule.descriptor,
-    })
-
-    const match =
-      /** @type {API.InferRuleVariables<{[K in keyof Selection & keyof Descriptor]: Descriptor[K]}>} */ (
-        terms ?? this.rule.form.match
-      )
-
-    return new Application(match, this.rule, this.build(variables))
-  }
 }
 
 /**
@@ -1748,12 +1543,12 @@ class Select extends Callable {
  * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
  * @template {API.RuleDescriptor} Locals
  * @template {API.Selector} Selector
- * @extends {Callable<(terms?: API.InferRuleTerms<Schema>) => FactSelection<The, Schema, Selector>>}
+ * @extends {Callable<(terms?: API.InferRuleTerms<Schema>) => GroupedSelection<The, Schema, Selector>>}
  */
-class FactSelect extends Callable {
+class Select extends Callable {
   /**
    * @param {API.ProjectionBuilder<Schema & Locals, Selector>} build
-   * @param {Conclusion<The, Schema, Locals>} rule
+   * @param {Deduction<The, Schema, Locals>} rule
    */
   constructor(build, rule) {
     super(
@@ -1772,10 +1567,6 @@ class FactSelect extends Callable {
   #selector
   get selector() {
     if (!this.#selector) {
-      const variables = Deduce.buildVariables({
-        ...this.rule.locals,
-        ...this.rule.schema,
-      })
       this.#selector = this.build(this.cells)
     }
     return this.#selector
@@ -1795,10 +1586,10 @@ class FactSelect extends Callable {
 
   /**
    * @param {Partial<API.InferRuleTerms<Schema>>} [terms]
-   * @returns {FactSelection<The, Schema, Selector>}
+   * @returns {GroupedSelection<The, Schema, Selector>}
    */
   match(terms) {
-    return new FactSelection(
+    return new GroupedSelection(
       this.the,
       this.form,
       this.ports,
@@ -1813,7 +1604,7 @@ class FactSelect extends Callable {
  * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
  * @template {API.Selector} Selector
  */
-class FactSelection {
+class GroupedSelection {
   /**
    * @param {The} the
    * @param {Analyzer.DeductiveRule<API.InferRuleVariables<Schema>>} rule

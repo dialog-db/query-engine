@@ -1,27 +1,29 @@
 import {
+  fact,
+  same,
+  Collection,
   Memory,
   Task,
   Link,
-  deduce,
-  match,
   Text,
   UTF8,
   Math,
   Data,
+  $,
 } from './lib.js'
 
-const $ = Memory.entity
+const refer = Memory.entity
 
 const db = Memory.create([
-  [$(1), 'text', 'hello'],
-  [$(1), 'int', 3],
-  [$(1), 'bigint', 2n ** 60n],
-  [$(1), 'float', 5.2],
-  [$(1), 'true', true],
-  [$(1), 'false', false],
-  [$(1), 'bytes', new Uint8Array([1, 2, 3])],
-  [$(1), 'null', null],
-  [$(1), 'id', $(1)],
+  [refer(1), 'text', 'hello'],
+  [refer(1), 'int', 3],
+  [refer(1), 'bigint', 2n ** 60n],
+  [refer(1), 'float', 5.2],
+  [refer(1), 'true', true],
+  [refer(1), 'false', false],
+  [refer(1), 'bytes', new Uint8Array([1, 2, 3])],
+  [refer(1), 'null', null],
+  [refer(1), 'id', refer(1)],
 ])
 
 /**
@@ -43,24 +45,27 @@ export const testRelation = {
       })
 
       for (const [key, type] of Object.entries(expert)) {
-        const Query = deduce({ type: String })
+        const Type = fact({ type: String })
           .with({ q: Object })
           .where(({ type, q }) => [
-            match({ the: key, of: $(1), is: q }),
+            Collection({ this: refer(1), at: key, of: q }),
+            // match({ the: key, of: refer(1), is: q }),
             Data.Type({ of: q, is: type }),
+            Type.claim({ type }),
           ])
 
-        const result = yield* Query().query({ from: db })
+        const result = yield* Type().query({ from: db })
 
         assert.deepEqual(
           result,
-          [{ type: type }],
+          [Type.assert({ type: type })],
           `Expected ${type} got ${result} `
         )
       }
 
-      const Query = deduce({ type: String }).where(({ type }) => [
+      const Query = fact({ type: String }).where(({ type }) => [
         Data.Type({ of: Infinity, is: type }),
+        Query.claim({ type }),
       ])
 
       assert.deepEqual(
@@ -74,7 +79,7 @@ export const testRelation = {
     Task.spawn(function* () {
       const fixtures = [
         'hello',
-        $(1),
+        refer(1),
         3,
         2n ** 60n,
         5.2,
@@ -84,12 +89,13 @@ export const testRelation = {
       ]
 
       for (const data of fixtures) {
-        const Query = deduce({ link: Object }).where(({ link }) => [
+        const Target = fact({ link: Object }).where(({ link }) => [
           Data.Reference({ of: data, is: link }),
+          Target.claim({ link }),
         ])
 
-        assert.deepEqual(yield* Query().query({ from: db }), [
-          { link: Link.of(data) },
+        assert.deepEqual(yield* Target().query({ from: db }), [
+          Target.assert({ link: Link.of(data) }),
         ])
       }
     }),
@@ -105,250 +111,272 @@ export const testRelation = {
         false: false,
         bytes: new Uint8Array([1, 2, 3]),
         // null: 'null',
-        id: $(1),
+        id: refer(1),
       }
 
       for (const [key, value] of Object.entries(expert)) {
-        const Query = deduce({ q: Object }).where(({ q }) => [
-          match({ the: key, of: $(1), is: q }),
+        const Query = fact({ q: Object }).where(({ q }) => [
+          Collection({ this: refer(1), at: key, of: q }),
           Data.same({ this: q, as: value }),
+          Query.claim({ q }),
         ])
 
         assert.deepEqual(yield* Query().query({ from: db }), [
-          { q: /** @type {any} */ (value) },
+          Query.assert({ q: /** @type {any} */ (value) }),
         ])
       }
 
-      const AssignmentQuery = deduce({ q: Number }).where(({ q }) => [
+      const AssignmentQuery = fact({ q: Number }).where(({ q }) => [
         Data.same({ this: 5, as: q }),
+        AssignmentQuery.claim({ q }),
       ])
 
       assert.deepEqual(
         yield* AssignmentQuery().query({ from: db }),
-        [{ q: 5 }],
+        [AssignmentQuery.assert({ q: 5 })],
         'will perform assignment'
       )
     }),
 
   'test text/concat': (assert) =>
     Task.spawn(function* () {
-      const TwoPartsQuery = deduce({ out: String })
+      const TwoPartsQuery = fact({ out: String })
         .with({ text: String })
         .where(({ text, out }) => [
           Data.same({ this: 'hello', as: text }),
           Text.Concat({ of: [text, ' world'], is: out }),
+          TwoPartsQuery.claim({ out }),
         ])
 
       assert.deepEqual(yield* TwoPartsQuery().query({ from: db }), [
-        { out: 'hello world' },
+        TwoPartsQuery.assert({ out: 'hello world' }),
       ])
 
-      const ThreePartsQuery = deduce({ out: String })
+      const ThreePartsQuery = fact({ out: String })
         .with({ text: String })
         .where(({ text, out }) => [
           Data.same({ this: 'hello', as: text }),
           Text.Concat({ of: [text, ' world'], is: out }),
+          ThreePartsQuery.claim({ out }),
         ])
 
       assert.deepEqual(yield* ThreePartsQuery().query({ from: db }), [
-        { out: 'hello world' },
+        ThreePartsQuery.assert({ out: 'hello world' }),
       ])
     }),
 
   'test text/words': (assert) =>
     Task.spawn(function* () {
-      const Word = deduce({ word: String })
+      const Word = fact({ word: String })
         .with({ text: String })
         .where(({ text, word }) => [
           Data.same({ this: 'hello world', as: text }),
           Text.Words({ of: text, is: word }),
+          Word.claim({ word }),
         ])
 
       assert.deepEqual(yield* Word().query({ from: db }), [
-        { word: 'hello' },
-        { word: 'world' },
+        Word.assert({ word: 'hello' }),
+        Word.assert({ word: 'world' }),
       ])
     }),
 
   'test text/lines': (assert) =>
     Task.spawn(function* () {
-      const Lines = deduce({ line: String })
+      const Line = fact({ content: String })
         .with({ text: String })
-        .where(({ text, line }) => [
+        .where(({ text, content }) => [
           Data.same({ this: 'hello,\nhow are you\r\n', as: text }),
-          Text.Lines({ of: text, is: line }),
+          Text.Lines({ of: text, is: content }),
+          Line.claim({ content }),
         ])
 
-      assert.deepEqual(yield* Lines().query({ from: db }), [
-        { line: 'hello,' },
-        { line: 'how are you' },
-        { line: '' },
+      assert.deepEqual(yield* Line().query({ from: db }), [
+        Line.assert({ content: 'hello,' }),
+        Line.assert({ content: 'how are you' }),
+        Line.assert({ content: '' }),
       ])
     }),
 
   'test text/case/upper': (assert) =>
     Task.spawn(function* () {
-      const UpperCase = deduce({ word: String })
+      const UpperCase = fact({ word: String })
         .with({ text: String })
         .where(({ word, text }) => [
           Data.same({ this: 'hello', as: text }),
           Text.UpperCase({ of: text, is: word }),
+          UpperCase.claim({ word }),
         ])
 
       assert.deepEqual(yield* UpperCase().query({ from: db }), [
-        { word: 'HELLO' },
+        UpperCase.assert({ word: 'HELLO' }),
       ])
     }),
 
   'test text/case/lower': (assert) =>
     Task.spawn(function* () {
-      const Query = deduce({ word: String })
+      const LowerCase = fact({ word: String })
         .with({ text: String })
         .where(({ text, word }) => [
           Data.same({ this: 'Hello', as: text }),
           Text.LowerCase({ of: text, is: word }),
+          LowerCase.claim({ word }),
         ])
 
-      assert.deepEqual(yield* Query().query({ from: db }), [{ word: 'hello' }])
+      assert.deepEqual(yield* LowerCase().query({ from: db }), [
+        LowerCase.assert({ word: 'hello' }),
+      ])
     }),
 
   'test string/trim': (assert) =>
     Task.spawn(function* () {
-      const Query = deduce({ out: String })
-        .with({ text: String })
-        .where(({ text, out }) => [
-          Data.same({ this: '   Hello world!   ', as: text }),
-          Text.Trim({ of: text, is: out }),
+      const Trim = fact({ text: String })
+        .with({ source: String })
+        .where(({ text, source }) => [
+          Data.same({ this: '   Hello world!   ', as: source }),
+          Text.Trim({ of: source, is: text }),
+          Trim.claim({ text }),
         ])
 
-      assert.deepEqual(yield* Query().query({ from: db }), [
-        { out: 'Hello world!' },
+      assert.deepEqual(yield* Trim().query({ from: db }), [
+        Trim.assert({ text: 'Hello world!' }),
       ])
     }),
 
   'test text/trim/start': (assert) =>
     Task.spawn(function* () {
-      const Query = deduce({ out: String })
-        .with({ text: String })
-        .where(({ text, out }) => [
-          Data.same({ this: '   Hello world!   ', as: text }),
-          Text.TrimStart({ of: text, is: out }),
+      const TrimStart = fact({ text: String })
+        .with({ source: String })
+        .where(({ source, text }) => [
+          Data.same({ this: '   Hello world!   ', as: source }),
+          Text.TrimStart({ of: source, is: text }),
+          TrimStart.claim({ text }),
         ])
 
-      assert.deepEqual(yield* Query().query({ from: db }), [
-        { out: 'Hello world!   ' },
+      assert.deepEqual(yield* TrimStart().query({ from: db }), [
+        TrimStart.assert({ text: 'Hello world!   ' }),
       ])
     }),
   'test string/trim/end': (assert) =>
     Task.spawn(function* () {
-      const Query = deduce({ out: String })
-        .with({ text: String })
-        .where(({ text, out }) => [
-          Data.same({ this: '   Hello world!   ', as: text }),
-          Text.TrimEnd({ of: text, is: out }),
+      const TrimEnd = fact({ text: String })
+        .with({ source: String })
+        .where(({ text, source }) => [
+          Data.same({ this: '   Hello world!   ', as: source }),
+          Text.TrimEnd({ of: source, is: text }),
+          TrimEnd.claim({ text }),
         ])
 
-      assert.deepEqual(yield* Query().query({ from: db }), [
-        { out: '   Hello world!' },
+      assert.deepEqual(yield* TrimEnd().query({ from: db }), [
+        TrimEnd.assert({ text: '   Hello world!' }),
       ])
     }),
   'test utf8/to/text': (assert) =>
     Task.spawn(function* () {
-      const Query = deduce({ out: String })
+      const Text = fact({ content: String })
         .with({ bytes: Uint8Array })
-        .where(({ bytes, out }) => [
+        .where(({ bytes, content }) => [
           Data.same({
             this: new TextEncoder().encode('Hello world!'),
             as: bytes,
           }),
-          UTF8.ToText({ of: bytes, is: out }),
+          UTF8.ToText({ of: bytes, is: content }),
+          Text.claim({ content }),
         ])
 
-      assert.deepEqual(yield* Query().query({ from: db }), [
-        { out: 'Hello world!' },
+      assert.deepEqual(yield* Text().query({ from: db }), [
+        Text.assert({ content: 'Hello world!' }),
       ])
     }),
 
   'test text/to/utf8': (assert) =>
     Task.spawn(function* () {
-      const Query = deduce({ out: Uint8Array })
+      const Bytes = fact({ content: Uint8Array })
         .with({ text: String })
-        .where(({ text, out }) => [
+        .where(({ text, content }) => [
           Data.same({ this: 'Hello world!', as: text }),
-          UTF8.FromText({ of: text, is: out }),
+          UTF8.FromText({ of: text, is: content }),
+          Bytes.claim({ content }),
         ])
 
-      assert.deepEqual(yield* Query().query({ from: db }), [
-        { out: new TextEncoder().encode('Hello world!') },
+      assert.deepEqual(yield* Bytes().query({ from: db }), [
+        Bytes.assert({ content: new TextEncoder().encode('Hello world!') }),
       ])
     }),
 
   'test text/length': (assert) =>
     Task.spawn(function* () {
-      const Query = deduce({ out: Number })
+      const Info = fact({ length: Number })
         .with({ text: String })
-        .where(({ text, out }) => [
+        .where(({ text, length }) => [
           Data.same({ this: 'Hello world!', as: text }),
-          Text.Length({ of: text, is: out }),
+          Text.Length({ of: text, is: length }),
+          Info.claim({ length }),
         ])
 
-      assert.deepEqual(yield* Query().query({ from: db }), [{ out: 12 }])
+      assert.deepEqual(yield* Info().query({ from: db }), [
+        Info.assert({ length: 12 }),
+      ])
     }),
 
   'test + operator': (assert) =>
     Task.spawn(function* () {
-      const TwoTermsQuery = deduce({ c: Number })
+      const Count = fact({ c: Number })
         .with({ a: Number, b: Number })
         .where(({ a, b, c }) => [
-          Data.same({ this: 1, as: a }),
-          Data.same({ this: 2, as: b }),
+          same({ this: a, as: 1 }),
+          same({ this: b, as: 2 }),
           Math.Sum({ of: a, with: b, is: c }),
+          Count.claim({ c }),
         ])
 
-      assert.deepEqual(yield* TwoTermsQuery().query({ from: db }), [{ c: 3 }])
+      assert.deepEqual(yield* Count().query({ from: db }), [
+        Count.assert({ c: 3 }),
+      ])
 
-      const MultiTermsQuery = deduce({ c: Number })
+      const Compute = fact({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab10: Number })
         .where(({ a, b, ab, ab10, c }) => [
-          Data.same({ this: 1, as: a }),
-          Data.same({ this: 2, as: b }),
+          same({ this: a, as: 1 }),
+          same({ this: 2, as: b }),
           // Note: Multiple term addition is not directly supported by the API
           // This is a simplification that adds terms sequentially
           Math.Sum({ of: a, with: b, is: ab }),
           Math.Sum({ of: ab, with: 10, is: ab10 }),
           Math.Sum({ of: ab10, with: b, is: c }),
+          Compute.claim({ c }),
         ])
 
-      assert.deepEqual(yield* MultiTermsQuery().query({ from: db }), [
-        { c: 15 },
+      assert.deepEqual(yield* Compute().query({ from: db }), [
+        Compute.assert({ c: 15 }),
       ])
 
-      const SingleTermQuery = deduce({ c: Number }).where(({ c }) => [
-        Data.same({ this: 5, as: c }),
+      const Five = fact({ c: Number }).where(({ c }) => [
+        same({ this: c, as: 5 }),
+        Five.claim({ c }),
       ])
 
-      assert.deepEqual(yield* SingleTermQuery().query({ from: db }), [{ c: 5 }])
-
-      const EmptyTermsQuery = deduce({ c: Number }).where(({ c }) => [
-        Data.same({ this: 0, as: c }),
+      assert.deepEqual(yield* Five().query({ from: db }), [
+        Five.assert({ c: 5 }),
       ])
-
-      assert.deepEqual(yield* EmptyTermsQuery().query({ from: db }), [{ c: 0 }])
     }),
 
   'test - operator': (assert) =>
     Task.spawn(function* () {
-      const TwoTermsQuery = deduce({ c: Number })
+      const TwoTermsSubtract = fact({ c: Number })
         .with({ a: Number, b: Number })
         .where(({ a, b, c }) => [
           Data.same({ this: 10, as: a }),
           Data.same({ this: 2, as: b }),
           Math.Subtraction({ of: a, by: b, is: c }),
+          TwoTermsSubtract.claim({ c }),
         ])
 
-      assert.deepEqual(yield* TwoTermsQuery().query({ from: db }), [{ c: 8 }])
+      assert.deepEqual(yield* TwoTermsSubtract().query({ from: db }), [
+        TwoTermsSubtract.assert({ c: 8 }),
+      ])
 
-      const MultiTermsQuery = deduce({ c: Number })
+      const MultiTermsSubtract = fact({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab1: Number })
         .where(({ a, b, ab, ab1, c }) => [
           Data.same({ this: 10, as: a }),
@@ -357,38 +385,30 @@ export const testRelation = {
           Math.Subtraction({ of: a, by: b, is: ab }),
           Math.Subtraction({ of: ab, by: 1, is: ab1 }),
           Math.Subtraction({ of: ab1, by: b, is: c }),
+          MultiTermsSubtract.claim({ c }),
         ])
 
-      assert.deepEqual(yield* MultiTermsQuery().query({ from: db }), [{ c: 5 }])
-
-      const EmptyTermsQuery = deduce({ c: Number }).where(({ c }) => [
-        Data.same({ this: 0, as: c }),
-      ])
-
-      assert.deepEqual(yield* EmptyTermsQuery().query({ from: db }), [{ c: 0 }])
-
-      const SingleTermQuery = deduce({ c: Number }).where(({ c }) => [
-        Data.same({ this: -6, as: c }),
-      ])
-
-      assert.deepEqual(yield* SingleTermQuery().query({ from: db }), [
-        { c: -6 },
+      assert.deepEqual(yield* MultiTermsSubtract().query({ from: db }), [
+        MultiTermsSubtract.assert({ c: 5 }),
       ])
     }),
 
   'test * operator': (assert) =>
     Task.spawn(function* () {
-      const TwoTermsQuery = deduce({ c: Number })
+      const TwoTermsQuery = fact({ c: Number })
         .with({ a: Number, b: Number })
         .where(({ a, b, c }) => [
           Data.same({ this: 10, as: a }),
           Data.same({ this: 2, as: b }),
           Math.Multiplication({ of: a, by: b, is: c }),
+          TwoTermsQuery.claim({ c }),
         ])
 
-      assert.deepEqual(yield* TwoTermsQuery().query({ from: db }), [{ c: 20 }])
+      assert.deepEqual(yield* TwoTermsQuery().query({ from: db }), [
+        TwoTermsQuery.assert({ c: 20 }),
+      ])
 
-      const MultiTermsQuery = deduce({ c: Number })
+      const MultiTermsQuery = fact({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab3: Number })
         .where(({ a, b, c, ab, ab3 }) => [
           Data.same({ this: 10, as: a }),
@@ -397,43 +417,30 @@ export const testRelation = {
           Math.Multiplication({ of: a, by: b, is: ab }),
           Math.Multiplication({ of: ab, by: 3, is: ab3 }),
           Math.Multiplication({ of: ab3, by: b, is: c }),
+          MultiTermsQuery.claim({ c }),
         ])
 
       assert.deepEqual(yield* MultiTermsQuery().query({ from: db }), [
-        { c: 120 },
-      ])
-
-      const EmptyTermsQuery = deduce({ c: Number }).where(({ c }) => [
-        Data.same({ this: 1, as: c }),
-      ])
-
-      assert.deepEqual(yield* EmptyTermsQuery().query({ from: db }), [{ c: 1 }])
-
-      const SingleTermQuery = deduce({ c: Number })
-        .with({ a: Number })
-        .where(({ a, c }) => [
-          Data.same({ this: 10, as: a }),
-          Data.same({ this: a, as: c }),
-        ])
-
-      assert.deepEqual(yield* SingleTermQuery().query({ from: db }), [
-        { c: 10 },
+        MultiTermsQuery.assert({ c: 120 }),
       ])
     }),
 
   'test / operator': (assert) =>
     Task.spawn(function* () {
-      const TwoTermsQuery = deduce({ c: Number })
+      const TwoTermsQuery = fact({ c: Number })
         .with({ a: Number, b: Number })
         .where(({ a, b, c }) => [
           Data.same({ this: 10, as: a }),
           Data.same({ this: 2, as: b }),
           Math.Division({ of: a, by: b, is: c }),
+          TwoTermsQuery.claim({ c }),
         ])
 
-      assert.deepEqual(yield* TwoTermsQuery().query({ from: db }), [{ c: 5 }])
+      assert.deepEqual(yield* TwoTermsQuery().query({ from: db }), [
+        TwoTermsQuery.assert({ c: 5 }),
+      ])
 
-      const MultiTermsQuery = deduce({ c: Number })
+      const MultiTermsQuery = fact({ c: Number })
         .with({ a: Number, b: Number, ab: Number, ab3: Number })
         .where(({ a, b, c, ab, ab3 }) => [
           Data.same({ this: 48, as: a }),
@@ -442,27 +449,32 @@ export const testRelation = {
           Math.Division({ of: a, by: b, is: ab }),
           Math.Division({ of: ab, by: 3, is: ab3 }),
           Math.Division({ of: ab3, by: b, is: c }),
+          MultiTermsQuery.claim({ c }),
         ])
 
-      assert.deepEqual(yield* MultiTermsQuery().query({ from: db }), [{ c: 4 }])
+      assert.deepEqual(yield* MultiTermsQuery().query({ from: db }), [
+        MultiTermsQuery.assert({ c: 4 }),
+      ])
 
-      const SingleTermQuery = deduce({ c: Number })
+      const SingleTermQuery = fact({ c: Number })
         .with({ a: Number })
         .where(({ a, c }) => [
           Data.same({ this: 5, as: a }),
           Math.Division({ of: a, by: 2, is: c }),
+          SingleTermQuery.claim({ c }),
         ])
 
       assert.deepEqual(yield* SingleTermQuery().query({ from: db }), [
-        { c: 2.5 },
+        SingleTermQuery.assert({ c: 2.5 }),
       ])
 
-      const DivisionByZeroQuery = deduce({ c: Number })
+      const DivisionByZeroQuery = fact({ c: Number })
         .with({ a: Number })
         .where(({ a, c }) => [
           Data.same({ this: 5, as: a }),
           // Division by zero
           Math.Division({ of: a, by: 0, is: c }),
+          DivisionByZeroQuery.claim({ c }),
         ])
 
       assert.deepEqual(
@@ -474,108 +486,168 @@ export const testRelation = {
 
   'test % operator': (assert) =>
     Task.spawn(function* () {
-      const Query = deduce({ c: Number })
+      const Query = fact({ c: Number })
         .with({ a: Number, b: Number })
         .where(({ a, b, c }) => [
           Data.same({ this: 9, as: a }),
           Data.same({ this: 4, as: b }),
           Math.Modulo({ of: a, by: b, is: c }),
+          Query.claim({ c }),
         ])
 
-      assert.deepEqual(yield* Query().query({ from: db }), [{ c: 1 }])
+      assert.deepEqual(yield* Query().query({ from: db }), [
+        Query.assert({ c: 1 }),
+      ])
     }),
 
   'test ** operator': (assert) =>
     Task.spawn(function* () {
-      const Query = deduce({ c: Number })
+      const Query = fact({ c: Number })
         .with({ b: Number })
         .where(({ b, c }) => [
           Data.same({ this: 3, as: b }),
           Math.Power({ of: 2, exponent: b, is: c }),
+          Query.claim({ c }),
         ])
 
-      assert.deepEqual(yield* Query().query({ from: db }), [{ c: 8 }])
+      assert.deepEqual(yield* Query().query({ from: db }), [
+        Query.assert({ c: 8 }),
+      ])
     }),
 
   'test math/absolute': (assert) =>
     Task.spawn(function* () {
-      const Query = deduce({ c: Number, d: Number })
+      const Query = fact({ c: Number, d: Number })
         .with({ a: Number, b: Number })
         .where(({ a, b, c, d }) => [
           Data.same({ this: 2, as: a }),
           Data.same({ this: -3, as: b }),
           Math.Absolute({ of: a, is: c }),
           Math.Absolute({ of: b, is: d }),
+          Query.claim({ c, d }),
         ])
 
-      assert.deepEqual(yield* Query().query({ from: db }), [{ c: 2, d: 3 }])
+      assert.deepEqual(yield* Query().query({ from: db }), [
+        Query.assert({ c: 2, d: 3 }),
+      ])
     }),
 
   'test text/like': (assert) =>
     Task.spawn(function* () {
-      const WithResultQuery = deduce({ out: String })
+      const WithResultQuery = fact({ out: String })
         .with({ text: String })
         .where(({ text, out }) => [
           Data.same({ this: 'Hello World', as: text }),
           Text.match({ this: text, pattern: 'Hello*' }),
           Data.same({ this: text, as: out }),
+          WithResultQuery.claim({ out }),
         ])
 
       assert.deepEqual(yield* WithResultQuery().query({ from: db }), [
-        { out: 'Hello World' },
+        WithResultQuery.assert({ out: 'Hello World' }),
       ])
 
-      // const BooleanPatternQuery = deduce({ text: String }).when(({ text }) => [
-      //   Data.same({ this: 'Hello World', as: text }),
-      //   Text.match({ this: text, pattern: 'Hello*' }),
-      // ])
+      const BooleanPatternQuery = fact({ text: String }).where(({ text }) => [
+        Data.same({ this: 'Hello World', as: text }),
+        Text.match({ this: text, pattern: 'Hello*' }),
+        BooleanPatternQuery.claim({ text }),
+      ])
 
-      // assert.deepEqual(yield* BooleanPatternQuery().select({ from: db }), [
-      //   { text: 'Hello World' },
-      // ])
+      assert.deepEqual(yield* BooleanPatternQuery().query({ from: db }), [
+        BooleanPatternQuery.assert({ text: 'Hello World' }),
+      ])
 
-      // const NoMatchQuery = deduce({ out: String })
-      //   .with({ text: String })
-      //   .when(({ text, out }) => [
-      //     Data.same({ this: 'Hello World', as: text }),
-      //     Text.match({ this: text, pattern: 'hello*' }),
-      //     Data.same({ this: text, as: out }),
-      //   ])
+      const NoMatchQuery = fact({ out: String })
+        .with({ text: String })
+        .where(({ text, out }) => [
+          Data.same({ this: 'Hello World', as: text }),
+          Text.match({ this: text, pattern: 'hello*' }),
+          Data.same({ this: text, as: out }),
+          NoMatchQuery.claim({ out }),
+        ])
 
-      // assert.deepEqual(yield* NoMatchQuery().select({ from: db }), [])
+      assert.deepEqual(yield* NoMatchQuery().query({ from: db }), [])
     }),
 
   'test text/includes': (assert) =>
     Task.spawn(function* () {
-      const WithResultQuery = deduce({ out: String })
+      const WithResultQuery = fact({ out: String })
         .with({ text: String })
         .where(({ text, out }) => [
           Data.same({ this: 'Hello World', as: text }),
           Text.includes({ this: text, slice: 'Hello' }),
           Data.same({ this: text, as: out }),
+          WithResultQuery.claim({ out }),
         ])
 
       assert.deepEqual(yield* WithResultQuery().query({ from: db }), [
-        { out: 'Hello World' },
+        WithResultQuery.assert({ out: 'Hello World' }),
       ])
 
-      const BooleanQuery = deduce({ text: String }).where(({ text }) => [
+      const BooleanQuery = fact({ text: String }).where(({ text }) => [
         Data.same({ this: 'Hello World', as: text }),
         Text.includes({ this: text, slice: 'World' }),
+        BooleanQuery.claim({ text }),
       ])
 
       assert.deepEqual(yield* BooleanQuery().query({ from: db }), [
-        { text: 'Hello World' },
+        BooleanQuery.assert({ text: 'Hello World' }),
       ])
 
-      const NoMatchQuery = deduce({ out: String })
+      const NoMatchQuery = fact({ out: String })
         .with({ text: String })
         .where(({ text, out }) => [
           Data.same({ this: 'Hello World', as: text }),
           Text.includes({ this: text, slice: 'hello' }),
           Data.same({ this: text, as: out }),
+          NoMatchQuery.claim({ out }),
         ])
 
       assert.deepEqual(yield* NoMatchQuery().query({ from: db }), [])
     }),
+
+  'test reference group': async (assert) => {
+    const Test = fact({ out: Object, a: String, b: String }).where(
+      ({ a, b, out }) => [
+        Data.same({ this: 'world', as: b }),
+        Data.Reference({ is: out, of: { a, b } }),
+        Test.claim({ out, a, b }),
+      ]
+    )
+
+    assert.deepEqual(
+      await Test.match({ a: 'hello', b: $.b, out: $.q }).query({
+        from: db,
+      }),
+      [
+        Test.assert({
+          a: 'hello',
+          b: 'world',
+          out: Link.of({ a: 'hello', b: 'world' }),
+        }),
+      ]
+    )
+  },
+  'test fact': async (assert) => {
+    const Test = fact({ out: Object, a: String, b: String }).where(
+      ({ a, b, out }) => [
+        Data.same({ this: 'world', as: b }),
+        Data.Fact({ this: out, a, b }),
+        Test.claim({ a, b, out }),
+      ]
+    )
+
+    assert.deepEqual(
+      await Test.match({ a: 'hello' }).query({
+        from: db,
+      }),
+      [
+        Test.assert({
+          a: 'hello',
+          b: 'world',
+          out: Link.of({ a: 'hello', b: 'world' }),
+        }),
+      ]
+    )
+  },
 }

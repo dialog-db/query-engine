@@ -1,5 +1,5 @@
-import db from './microshaft.db.js'
-import { $, match, deduce, Memory, Text, Data, same, Link } from './lib.js'
+import { db, staff } from './microshaft.db.js'
+import { $, fact, Memory, Text, Data, same, Link } from './lib.js'
 
 const mallory = {
   'Person/name': 'Mallory',
@@ -35,75 +35,58 @@ export const testRules = {
   },
 
   'test nested same': async (assert) => {
-    const Init = deduce({
-      counter: Object,
-    }).where(($) => [
-      match.not({ the: 'counter/count', of: $.counter }),
-      same({ this: Link.of({ v: 0 }), as: $.counter }),
+    const Counter = fact({ the: 'counter', count: Number })
+    const Init = Counter.where((counter) => [
+      Counter.not({ this: counter.this }),
+      Init.claim({ count: 0 }),
     ])
 
     assert.deepEqual(await Init().query({ from: db }), [
-      { counter: Link.of({ v: 0 }) },
+      Counter.assert({ count: 0 }),
     ])
   },
 
   'test basic': async (assert) => {
-    const Name = deduce({ of: Object, is: String }).where(({ of, is }) => [
-      match({ the: 'name', of, is }),
+    const Person = fact({ the: 'person', name: String })
+
+    const Alyssa = Person.where((person) => [
+      Person(person),
+      Data.same({ this: 'Hacker Alyssa P', as: person.name }),
     ])
 
-    const Alyssa = deduce({ of: Object, name: String }).where(
-      ({ of, name }) => [
-        Data.same({ this: 'Hacker Alyssa P', as: name }),
-        Name({ of, is: name }),
-      ]
-    )
-
     assert.deepEqual(await Alyssa().query({ from: db }), [
-      { of: Memory.entity(1), name: 'Hacker Alyssa P' },
+      Person.assert({ this: Link.of(staff.alyssa), name: 'Hacker Alyssa P' }),
     ])
   },
 
   'test wheel rule': async (assert) => {
-    const Wheel = deduce({ this: Object })
+    const Supervisor = fact({ the: 'job', supervisor: Object })
+
+    const Wheel = fact({ the: 'wheel' })
       .with({ manager: Object, employee: Object })
-      .where(({ this: self, manager, employee }) => [
-        match({ the: 'supervisor', of: manager, is: self }),
-        match({ the: 'supervisor', of: employee, is: manager }),
+      .where(({ this: wheel, manager, employee }) => [
+        Supervisor({ this: manager, supervisor: wheel }),
+        Supervisor({ this: employee, supervisor: manager }),
+        Wheel.claim({ this: wheel }),
       ])
 
-    const Query = deduce({ name: String })
-      .with({ wheel: Object })
-      .where(({ name, wheel }) => [
-        Wheel({ this: wheel }),
-        match({ the: 'name', of: wheel, is: name }),
-      ])
+    const Person = fact({ the: 'person', name: String })
 
-    assert.deepEqual(
-      new Set(await Query().query({ from: db })),
-      new Set([{ name: 'Bitdiddle Ben' }, { name: 'Warbucks Oliver' }])
-    )
+    const Query = Person.where(({ this: wheel, name }) => [
+      Wheel({ this: wheel }),
+      Person({ this: wheel, name }),
+    ])
+
+    assert.deepEqual(await Query().query({ from: db }), [
+      Person.assert({ this: Link.of(staff.oliver), name: 'Warbucks Oliver' }),
+      Person.assert({ this: Link.of(staff.ben), name: 'Bitdiddle Ben' }),
+    ])
   },
 
   'leaves near': async (assert) => {
-    const Address = deduce({ of: Object, is: String }).where(({ of, is }) => [
-      match({ the: 'address', of, is }),
-    ])
+    const Person = fact({ the: 'person', name: String, address: String })
 
-    const Name = deduce({ of: Object, is: String }).where(({ of, is }) => [
-      match({ the: 'name', of, is }),
-    ])
-
-    const Employee = deduce({
-      this: Object,
-      name: String,
-      address: String,
-    }).where(($) => [
-      Address({ of: $.this, is: $.address }),
-      Name({ of: $.this, is: $.name }),
-    ])
-
-    const LivesNear = deduce({
+    const LivesNear = fact({
       employee: String,
       coworker: String,
     })
@@ -126,12 +109,12 @@ export const testRules = {
           coworkerAddress,
           pattern,
         }) => [
-          Employee.match({
+          Person({
             this: employeeEntity,
             address: employeeAddress,
             name: employee,
           }),
-          Employee.match({
+          Person({
             this: coworkerEntity,
             address: coworkerAddress,
             name: coworker,
@@ -140,91 +123,104 @@ export const testRules = {
           Text.Concat({ of: [word, '*'], is: pattern }),
           Text.match({ this: coworkerAddress, pattern }),
           Data.same.not({ this: employee, as: coworker }),
+          LivesNear.claim({ employee, coworker }),
         ]
       )
 
-    const matches = await LivesNear().query({ from: db })
-
-    assert.deepEqual(
-      matches.map((match) => JSON.stringify(match)).sort(),
-      [
-        { employee: 'Bitdiddle Ben', coworker: 'Reasoner Louis' },
-        { employee: 'Bitdiddle Ben', coworker: 'Aull DeWitt' },
-        { employee: 'Hacker Alyssa P', coworker: 'Fect Cy D' },
-        { employee: 'Fect Cy D', coworker: 'Hacker Alyssa P' },
-        { employee: 'Reasoner Louis', coworker: 'Bitdiddle Ben' },
-        { employee: 'Reasoner Louis', coworker: 'Aull DeWitt' },
-        { employee: 'Aull DeWitt', coworker: 'Bitdiddle Ben' },
-        { employee: 'Aull DeWitt', coworker: 'Reasoner Louis' },
-      ]
-        .map(($) => JSON.stringify($))
-        .sort()
-    )
+    assert.deepEqual(await LivesNear().query({ from: db }), [
+      LivesNear.assert({
+        employee: 'Bitdiddle Ben',
+        coworker: 'Reasoner Louis',
+      }),
+      LivesNear.assert({ employee: 'Bitdiddle Ben', coworker: 'Aull DeWitt' }),
+      LivesNear.assert({ employee: 'Hacker Alyssa P', coworker: 'Fect Cy D' }),
+      LivesNear.assert({ employee: 'Fect Cy D', coworker: 'Hacker Alyssa P' }),
+      LivesNear.assert({
+        employee: 'Reasoner Louis',
+        coworker: 'Bitdiddle Ben',
+      }),
+      LivesNear.assert({ employee: 'Reasoner Louis', coworker: 'Aull DeWitt' }),
+      LivesNear.assert({ employee: 'Aull DeWitt', coworker: 'Bitdiddle Ben' }),
+      LivesNear.assert({ employee: 'Aull DeWitt', coworker: 'Reasoner Louis' }),
+    ])
   },
 
   'test rules do not share a scope': async (assert) => {
-    const Supervisor = deduce({
-      employee: Object,
-      name: String,
-    })
-      .with({ supervisor: Object })
-      .where(({ employee, supervisor, name }) => [
-        match({ the: 'supervisor', of: employee, is: supervisor }),
-        match({ the: 'name', of: supervisor, is: name }),
-      ])
+    const Person = fact({ the: 'person', name: String })
+    const Supervisor = fact({ the: 'job', supervisor: Object })
 
-    const Query = deduce({
+    const Manager = fact({
+      name: String,
+      employee: Object,
+    }).where(({ this: manager, employee, name }) => [
+      Supervisor({ this: employee, supervisor: manager }),
+      Person({ this: manager, name }),
+    ])
+
+    const Report = fact({
       employee: String,
       supervisor: String,
     })
-      .with({ $employee: Object })
-      .where(({ supervisor, employee, $employee }) => [
-        match({ the: 'name', of: $employee, is: employee }),
-        Supervisor({ employee: $employee, name: supervisor }),
+      .with({ manager: Object, subordinate: Object })
+      .where(({ employee, supervisor, manager, subordinate }) => [
+        Manager({ this: manager, employee: subordinate, name: supervisor }),
+        Person({ this: subordinate, name: employee }),
+        Report.claim({ employee, supervisor }),
       ])
 
-    assert.deepEqual(await Query().query({ from: db }), [
-      { employee: 'Bitdiddle Ben', supervisor: 'Warbucks Oliver' },
-      { employee: 'Hacker Alyssa P', supervisor: 'Bitdiddle Ben' },
-      { employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' },
-      { employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' },
-      { employee: 'Reasoner Louis', supervisor: 'Hacker Alyssa P' },
-      { employee: 'Scrooge Eben', supervisor: 'Warbucks Oliver' },
-      { employee: 'Cratchet Robert', supervisor: 'Scrooge Eben' },
-      { employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' },
+    assert.deepEqual(await Report().query({ from: db }), [
+      Report.assert({
+        employee: 'Scrooge Eben',
+        supervisor: 'Warbucks Oliver',
+      }),
+      Report.assert({
+        employee: 'Cratchet Robert',
+        supervisor: 'Scrooge Eben',
+      }),
+      Report.assert({
+        employee: 'Bitdiddle Ben',
+        supervisor: 'Warbucks Oliver',
+      }),
+      Report.assert({
+        employee: 'Hacker Alyssa P',
+        supervisor: 'Bitdiddle Ben',
+      }),
+      Report.assert({ employee: 'Fect Cy D', supervisor: 'Bitdiddle Ben' }),
+      Report.assert({ employee: 'Tweakit Lem E', supervisor: 'Bitdiddle Ben' }),
+      Report.assert({
+        employee: 'Reasoner Louis',
+        supervisor: 'Hacker Alyssa P',
+      }),
+      Report.assert({ employee: 'Aull DeWitt', supervisor: 'Warbucks Oliver' }),
     ])
   },
 
   'test composite facts': async (assert) => {
-    const Name = deduce({ of: Object, is: String }).where(({ of, is }) => [
-      match({ the: 'Person/name', of, is }),
-    ])
+    const Person = fact({ the: 'Person', name: String })
+    const Manages = fact({ the: 'Manages', employee: Object })
 
-    const Person = deduce({ this: Object, name: String }).where(
-      ({ this: person, name }) => [Name({ of: person, is: name })]
-    )
-
-    const Manages = deduce({
+    const Position = fact({
       manager: String,
       employee: String,
     })
-      .with({ $employee: Object, $manager: Object })
-      .where(({ $manager, manager, $employee, employee }) => [
-        Person({ this: $employee, name: employee }),
-        match({ the: 'Manages/employee', of: $manager, is: $employee }),
-        Person({ this: $manager, name: manager }),
+      .with({ subordinate: Object, supervisor: Object })
+      .where(({ supervisor, manager, subordinate, employee }) => [
+        Person({ this: subordinate, name: employee }),
+        Person({ this: supervisor, name: manager }),
+        Manages({ this: supervisor, employee: subordinate }),
+        Position.claim({ manager, employee }),
       ])
 
-    assert.deepEqual(await Manages().query({ from: Memory.create([alice]) }), [
-      { manager: 'Alice', employee: 'Bob' },
-      { manager: 'Bob', employee: 'Mallory' },
+    assert.deepEqual(await Position().query({ from: Memory.create([alice]) }), [
+      Position.assert({ manager: 'Alice', employee: 'Bob' }),
+      Position.assert({ manager: 'Bob', employee: 'Mallory' }),
     ])
 
     assert.deepEqual(
-      await Manages({ employee: 'Bob', manager: $ }).query({
+      await Position.match({ employee: 'Bob' }).query({
         from: Memory.create([alice]),
       }),
-      [{ manager: 'Alice', employee: 'Bob' }]
+      [Position.assert({ manager: 'Alice', employee: 'Bob' })]
     )
   },
 }

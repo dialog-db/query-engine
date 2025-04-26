@@ -1,4 +1,4 @@
-import { Memory, $, deduce, match, Task, Link } from './lib.js'
+import { Memory, $, fact, Collection, Task, Link } from './lib.js'
 
 /**
  * @type {import('entail').Suite}
@@ -16,39 +16,46 @@ export const testAggregate = {
       const dishes = Link.of({ title: 'Do Dishes' })
 
       const db = Memory.create([
-        [groceries, 'name', 'Groceries'],
-        [milk, 'title', 'Buy Milk'],
-        [eggs, 'title', 'Buy Eggs'],
-        [bread, 'title', 'Buy Bread'],
-        [groceries, 'todo', milk],
-        [groceries, 'todo', eggs],
-        [groceries, 'todo', bread],
-        [chores, 'name', 'Chores'],
-        [laundry, 'title', 'Do Laundry'],
-        [dishes, 'title', 'Do Dishes'],
-        [chores, 'todo', laundry],
-        [chores, 'todo', dishes],
+        [groceries, 'list/name', 'Groceries'],
+        [milk, 'todo/title', 'Buy Milk'],
+        [eggs, 'todo/title', 'Buy Eggs'],
+        [bread, 'todo/title', 'Buy Bread'],
+        [groceries, 'list/item', milk],
+        [groceries, 'list/item', eggs],
+        [groceries, 'list/item', bread],
+        [chores, 'list/name', 'Chores'],
+        [laundry, 'todo/title', 'Do Laundry'],
+        [dishes, 'todo/title', 'Do Dishes'],
+        [chores, 'list/item', laundry],
+        [chores, 'list/item', dishes],
       ])
 
-      const Todo = deduce({
-        this: Object,
+      const TodoItem = fact({
+        the: 'todo',
+        title: String,
+      })
+
+      const TodoList = fact({
+        the: 'list',
+        name: String,
+        item: Object,
+      })
+
+      const Todo = fact({
         name: String,
         task: Object,
         title: String,
       })
-        .where(($) => [
-          match({ the: 'name', of: $.this, is: $.name }),
-          match({ the: 'todo', of: $.this, is: $.task }),
-          match({ the: 'title', of: $.task, is: $.title }),
+        .where(({ this: list, name, task, title }) => [
+          TodoList({ this: list, name, item: task }),
+          TodoItem({ this: task, title }),
         ])
-        .select(({ name, task, title }) => ({
+        .select(({ this: list, name, task, title }) => ({
           name,
           item: [{ todo: task, title }],
         }))
 
-      const results = yield* Todo().query({ from: db })
-
-      assert.deepEqual(results, [
+      assert.deepEqual(yield* Todo().query({ from: db }), [
         {
           name: 'Groceries',
           item: [
@@ -74,12 +81,12 @@ export const testAggregate = {
       const files = Link.of({ files: {} })
 
       const source = {
-        name: 'synopsys',
-        keywords: ['datalog', 'db', 'datomic', 'graph'],
-        null: null,
-        dev: true,
-        score: 1024n,
-        dependencies: {
+        'package/name': 'synopsys',
+        'package/keywords': ['datalog', 'db', 'datomic', 'graph'],
+        'package/null': null,
+        'package/dev': true,
+        'package/score': 1024n,
+        'package/dependencies': {
           '@canvas-js/okra': '0.4.5',
           '@canvas-js/okra-lmdb': '0.2.0',
           '@canvas-js/okra-memory': '0.4.5',
@@ -91,46 +98,58 @@ export const testAggregate = {
           multiformats: '^13.3.0',
           'merkle-reference': '^0.0.3',
         },
-        types: [{ './src/lib.js': './dist/lib.d.ts' }],
+        'package/types': [{ './src/lib.js': './dist/lib.d.ts' }],
       }
 
       const db = Memory.create([])
       yield* db.transact([{ Import: source }])
 
-      const Package = deduce({
-        this: Object,
+      const Manifest = fact({
+        the: 'package',
         name: String,
         keywords: Object,
-        keyword_at: String,
-        keyword: String,
-        dependencies: Object,
-        dependency: String,
-        dependency_version: String,
-        null: { Null: {} },
-        score: BigInt,
+        null: null,
         dev: Boolean,
+        score: BigInt,
+        dependencies: Object,
+        types: Object,
       })
-        .where(($) => [
-          match({ the: 'name', of: $.this, is: $.name }),
-          match({ the: 'null', of: $.this, is: $.null }),
-          match({ the: 'dependencies', of: $.this, is: $.dependencies }),
-          match({
-            the: $.dependency,
-            of: $.dependencies,
-            is: $.dependency_version,
+
+      const Package = fact({
+        the: 'package',
+        name: String,
+        keywords: Object,
+        null: null,
+        dev: Boolean,
+        score: BigInt,
+        dependencies: Object,
+        types: Object,
+
+        dependencyName: String,
+        dependencyVersion: String,
+        keywordPosition: String,
+        keyword: String,
+      })
+        .where((manifest) => [
+          Manifest(manifest),
+          Collection({
+            this: manifest.dependencies,
+            at: manifest.dependencyName,
+            of: manifest.dependencyVersion,
           }),
-          match({ the: 'keywords', of: $.this, is: $.keywords }),
-          match({ the: $.keyword_at, of: $.keywords, is: $.keyword }),
-          match({ the: 'score', of: $.this, is: $.score }),
-          match({ the: 'dev', of: $.this, is: $.dev }),
+          Collection({
+            this: manifest.keywords,
+            at: manifest.keywordPosition,
+            of: manifest.keyword,
+          }),
         ])
         .select(
           ({
             name,
             keyword,
-            keyword_at: at,
-            dependency,
-            dependency_version: version,
+            keywordPosition: at,
+            dependencyName: dependency,
+            dependencyVersion: version,
             null: nil,
             score,
             dev,
@@ -177,90 +196,103 @@ export const testAggregate = {
     Task.spawn(function* () {
       const source = [
         {
-          title: 'The Art of Programming',
-          author: 'John Smith',
-          tags: ['coding', 'software', 'computer science'],
+          'post/title': 'The Art of Programming',
+          'post/author': 'John Smith',
+          'post/tags': ['coding', 'software', 'computer science'],
         },
         {
-          title: 'Digital Dreams',
-          author: 'Sarah Johnson',
-          tags: ['technology', 'future', 'innovation'],
+          'post/title': 'Digital Dreams',
+          'post/author': 'Sarah Johnson',
+          'post/tags': ['technology', 'future', 'innovation'],
         },
         {
-          title: 'Cloud Atlas',
-          author: 'Michael Chen',
-          tags: ['cloud computing', 'infrastructure', 'devops'],
+          'post/title': 'Cloud Atlas',
+          'post/author': 'Michael Chen',
+          'post/tags': ['cloud computing', 'infrastructure', 'devops'],
         },
         {
-          title: 'Web Development Mastery',
-          author: 'Emma Davis',
-          tags: ['javascript', 'html', 'css', 'web'],
+          'post/title': 'Web Development Mastery',
+          'post/author': 'Emma Davis',
+          'post/tags': ['javascript', 'html', 'css', 'web'],
         },
         {
-          title: 'AI Revolution',
-          author: 'Robert Zhang',
-          tags: ['artificial intelligence', 'machine learning', 'future'],
+          'post/title': 'AI Revolution',
+          'post/author': 'Robert Zhang',
+          'post/tags': [
+            'artificial intelligence',
+            'machine learning',
+            'future',
+          ],
         },
         {
-          title: 'Clean Code Principles',
-          author: 'David Miller',
-          tags: ['programming', 'best practices', 'software engineering'],
+          'post/title': 'Clean Code Principles',
+          'post/author': 'David Miller',
+          'post/tags': [
+            'programming',
+            'best practices',
+            'software engineering',
+          ],
         },
         {
-          title: 'Database Design',
-          author: 'Lisa Wang',
-          tags: ['sql', 'data modeling', 'databases'],
+          'post/title': 'Database Design',
+          'post/author': 'Lisa Wang',
+          'post/tags': ['sql', 'data modeling', 'databases'],
         },
         {
-          title: 'Mobile First',
-          author: 'James Wilson',
-          tags: ['mobile development', 'responsive design', 'UX'],
+          'post/title': 'Mobile First',
+          'post/author': 'James Wilson',
+          'post/tags': ['mobile development', 'responsive design', 'UX'],
         },
         {
-          title: 'Security Essentials',
-          author: 'Alex Thompson',
-          tags: ['cybersecurity', 'networking', 'privacy'],
+          'post/title': 'Security Essentials',
+          'post/author': 'Alex Thompson',
+          'post/tags': ['cybersecurity', 'networking', 'privacy'],
         },
         {
-          title: 'DevOps Handbook',
-          author: 'Maria Garcia',
-          tags: ['devops', 'automation', 'continuous integration'],
+          'post/title': 'DevOps Handbook',
+          'post/author': 'Maria Garcia',
+          'post/tags': ['devops', 'automation', 'continuous integration'],
         },
       ]
       const db = Memory.create([])
       yield* db.transact([{ Import: { source } }])
 
-      const Fact = deduce({
-        this: Object,
+      const Post = fact({
+        the: 'post',
+        title: String,
+        author: String,
+        tags: Object,
+      })
+
+      const TaggedPost = fact({
+        the: 'post',
         title: String,
         author: String,
         tags: Object,
         tag: String,
       })
-        .where(($) => [
-          match({ the: 'title', of: $.this, is: $.title }),
-          match({ the: 'author', of: $.this, is: $.author }),
-          match({ the: 'tags', of: $.this, is: $.tags }),
-          match({ of: $.tags, is: $.tag }),
+        .where((post) => [
+          Post(post),
+          Collection({ this: post.tags, of: post.tag }),
         ])
-        .select(({ this: self, title, author, tags, tag }) => ({
-          '/': self,
+        .select(({ this: post, title, author, tags, tag }) => ({
+          '/': post,
           title,
           author,
           tags: [tag],
           'tags/': tags,
         }))
 
-      const selection = yield* Fact().query({ from: db })
+      const selection = yield* TaggedPost().query({ from: db })
 
       assert.deepEqual(
         selection,
         source.map((member) => ({
           '/': Link.of(member),
-          title: member.title,
-          author: member.author,
-          'tags/': Link.of(member.tags),
-          tags: member.tags,
+          title: member['post/title'],
+          author: member['post/author'],
+          'tags/': Link.of(member['post/tags']),
+          tags: member['post/tags'],
         }))
       )
     }),

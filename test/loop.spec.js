@@ -1,4 +1,4 @@
-import { $, deduce, match, Data, Math, Memory, API } from './lib.js'
+import { $, fact, Data, Math, Memory, API, Link, Collection } from './lib.js'
 
 const id = Memory.entity
 
@@ -6,11 +6,11 @@ const db = Memory.create([
   // bafyr4ibnhlpn74i3mhyuzcdogwx2anttnxgypj2ne624cuicexiplexccm
   [id(0), 'data/type', 'list'],
   // bafyr4ici7rzb7o6bolqjex5cplywohpcew5je4juqauzrmikcvukdcdffm
-  [id(1), 'name', 'a'],
+  [id(1), 'meta/name', 'a'],
   // bafyr4iflco7n6qxijoxa67dcy7owvcw2k4piqkn623vflaqx6a3bwxrf2a
-  [id(2), 'name', 'b'],
+  [id(2), 'meta/name', 'b'],
   // bafyr4ihb4dub23vdtmgprodp7vcasiibd5luadf4h53krilrsbvjxdlvau
-  [id(3), 'name', 'c'],
+  [id(3), 'meta/name', 'c'],
   [id(0), 'list/next', id(1)],
   [id(1), 'list/next', id(2)],
   [id(2), 'list/next', id(3)],
@@ -21,80 +21,92 @@ const db = Memory.create([
  */
 export const testRecursion = {
   'test ancestor': async (assert) => {
-    const Parent = deduce({ this: Object, of: Object }).where(
-      ({ this: parent, of: child }) => [
-        match({ the: 'child/parent', of: child, is: parent }),
-      ]
-    )
+    const Parent = fact({
+      the: 'child',
+      parent: Object,
+    })
 
-    const Ancestor = deduce({ this: Object, of: Object })
+    const Ancestor = fact({ of: Object })
       .with({ parent: Object })
       .when(({ this: ancestor, of: child, parent }) => ({
-        direct: [Parent({ this: ancestor, of: child })],
+        direct: [Parent({ parent: ancestor, this: child })],
         transitive: [
-          Parent({ this: parent, of: child }),
+          Parent({ parent, this: child }),
           Ancestor({ this: ancestor, of: parent }),
         ],
       }))
 
-    const alice = /** @type {API.Entity & any} */ ('alice') //id('alice')
-    const bob = /** @type {any} */ ('bob')
-    const mallory = /** @type {any} */ ('mallory')
-    const jack = /** @type {any} */ ('jack')
-    const adam = /** @type {any} */ ('adam')
-    const eve = /** @type {any} */ ('eve')
+    const eve = {
+      'person/name': 'Eve',
+    }
+    const adam = {
+      'person/name': 'Adam',
+      'child/parent': eve,
+    }
+    const jack = {
+      'person/name': 'Jack',
+      'child/parent': adam,
+    }
+    const mallory = {
+      'person/name': 'Mallory',
+      'child/parent': jack,
+    }
+    const bob = {
+      'person/name': 'Bob',
+      'child/parent': mallory,
+    }
+    const alice = {
+      'person/name': 'Alice',
+      'child/parent': bob,
+    }
+
+    const people = {
+      alice,
+      bob,
+      mallory,
+      jack,
+      adam,
+      eve,
+    }
 
     const ancestors = await Ancestor().query({
-      from: Memory.create([
-        [alice, 'child/parent', bob],
-        [bob, 'child/parent', mallory],
-        [mallory, 'child/parent', jack],
-        [jack, 'child/parent', adam],
-        [adam, 'child/parent', eve],
-      ]),
+      from: Memory.create([people]),
     })
 
     assert.deepEqual(
-      ancestors
-        .map((row) => JSON.stringify(row))
-        .sort()
-        .join('\n'),
-      [
-        { this: bob, of: alice },
-        { this: mallory, of: bob },
-        { this: jack, of: mallory },
-        { this: adam, of: jack },
-        { this: mallory, of: alice },
-        { this: jack, of: bob },
-        { this: adam, of: mallory },
-        { this: jack, of: alice },
-        { this: adam, of: bob },
-        { this: adam, of: alice },
-        { this: eve, of: alice },
-        { this: eve, of: bob },
-        { this: eve, of: mallory },
-        { this: eve, of: jack },
-        { this: eve, of: adam },
-      ]
-        .map((row) => JSON.stringify(row))
-        .sort()
-        .join('\n')
+      new Set(ancestors),
+      new Set([
+        Ancestor.assert({ this: Link.of(bob), of: Link.of(alice) }),
+        Ancestor.assert({ this: Link.of(mallory), of: Link.of(bob) }),
+        Ancestor.assert({ this: Link.of(jack), of: Link.of(mallory) }),
+        Ancestor.assert({ this: Link.of(adam), of: Link.of(jack) }),
+        Ancestor.assert({ this: Link.of(mallory), of: Link.of(alice) }),
+        Ancestor.assert({ this: Link.of(jack), of: Link.of(bob) }),
+        Ancestor.assert({ this: Link.of(adam), of: Link.of(mallory) }),
+        Ancestor.assert({ this: Link.of(jack), of: Link.of(alice) }),
+        Ancestor.assert({ this: Link.of(adam), of: Link.of(bob) }),
+        Ancestor.assert({ this: Link.of(adam), of: Link.of(alice) }),
+        Ancestor.assert({ this: Link.of(eve), of: Link.of(alice) }),
+        Ancestor.assert({ this: Link.of(eve), of: Link.of(bob) }),
+        Ancestor.assert({ this: Link.of(eve), of: Link.of(mallory) }),
+        Ancestor.assert({ this: Link.of(eve), of: Link.of(jack) }),
+        Ancestor.assert({ this: Link.of(eve), of: Link.of(adam) }),
+      ])
     )
   },
 
   'complex ancestor test': async (assert) => {
-    const Parent = deduce({ this: Object, of: Object }).where(
-      ({ this: parent, of: child }) => [
-        match({ the: 'child/parent', of: child, is: parent }),
-      ]
-    )
+    const Parent = fact({
+      the: 'child',
+      parent: Object,
+    })
 
-    const Ancestor = deduce({ this: Object, of: Object })
+    const Ancestor = fact({ of: Object })
       .with({ parent: Object })
       .when(({ this: ancestor, of: child, parent }) => ({
-        direct: [Parent({ this: ancestor, of: child })],
+        direct: [Parent({ parent: ancestor, this: child })],
         transitive: [
-          Parent({ this: parent, of: child }),
+          Parent({ parent, this: child }),
           Ancestor({ this: ancestor, of: parent }),
         ],
       }))
@@ -115,72 +127,71 @@ export const testRecursion = {
     // Note: Both mallory and dave have jack as parent
     // Note: There are multiple paths from alice to jack (and thus to adam and eve)
 
-    const alice = /** @type {API.Entity & any} */ ('alice')
-    const bob = /** @type {any} */ ('bob')
-    const charlie = /** @type {any} */ ('charlie')
-    const david = /** @type {any} */ ('david')
-    const mallory = /** @type {any} */ ('mallory')
-    const jack = /** @type {any} */ ('jack')
-    const adam = /** @type {any} */ ('adam')
-    const eve = /** @type {any} */ ('eve')
-    const dave = /** @type {any} */ ('dave')
+    const alice = Link.of('alice')
+    const bob = Link.of('bob')
+    const charlie = Link.of('charlie')
+    const david = Link.of('david')
+    const mallory = Link.of('mallory')
+    const jack = Link.of('jack')
+    const adam = Link.of('adam')
+    const eve = Link.of('eve')
+    const dave = Link.of('dave')
+    const db = Memory.create([
+      // First branch
+      [alice, 'child/parent', bob],
+      [bob, 'child/parent', mallory],
+      [mallory, 'child/parent', jack],
 
-    const ancestors = await Ancestor().query({
-      from: Memory.create([
-        // First branch
-        [alice, 'child/parent', bob],
-        [bob, 'child/parent', mallory],
-        [mallory, 'child/parent', jack],
+      // Second branch
+      [alice, 'child/parent', charlie],
+      [charlie, 'child/parent', dave],
+      [dave, 'child/parent', jack],
 
-        // Second branch
-        [alice, 'child/parent', charlie],
-        [charlie, 'child/parent', dave],
-        [dave, 'child/parent', jack],
+      // Third branch
+      [alice, 'child/parent', david],
+      [david, 'child/parent', mallory],
 
-        // Third branch
-        [alice, 'child/parent', david],
-        [david, 'child/parent', mallory],
+      // Common descendants
+      [jack, 'child/parent', adam],
+      [adam, 'child/parent', eve],
+    ])
 
-        // Common descendants
-        [jack, 'child/parent', adam],
-        [adam, 'child/parent', eve],
-      ]),
-    })
+    const ancestors = await Ancestor().query({ from: db })
 
     // Define the expected ancestor relationships
     const expectedAncestors = [
       // Direct parent relationships (10)
-      { this: bob, of: alice },
-      { this: charlie, of: alice },
-      { this: david, of: alice },
-      { this: mallory, of: bob },
-      { this: mallory, of: david },
-      { this: jack, of: mallory },
-      { this: dave, of: charlie },
-      { this: jack, of: dave },
-      { this: adam, of: jack },
-      { this: eve, of: adam },
+      Ancestor.assert({ this: bob, of: alice }),
+      Ancestor.assert({ this: charlie, of: alice }),
+      Ancestor.assert({ this: david, of: alice }),
+      Ancestor.assert({ this: mallory, of: bob }),
+      Ancestor.assert({ this: mallory, of: david }),
+      Ancestor.assert({ this: jack, of: mallory }),
+      Ancestor.assert({ this: dave, of: charlie }),
+      Ancestor.assert({ this: jack, of: dave }),
+      Ancestor.assert({ this: adam, of: jack }),
+      Ancestor.assert({ this: eve, of: adam }),
 
       // Transitive relationships (19)
-      { this: mallory, of: alice }, // via bob or via david
-      { this: jack, of: alice }, // via bob/mallory or via david/mallory or via charlie/dave
-      { this: jack, of: bob }, // via mallory
-      { this: jack, of: david }, // via mallory
-      { this: jack, of: charlie }, // via dave
-      { this: adam, of: alice }, // via any path to jack
-      { this: adam, of: bob }, // via mallory/jack
-      { this: adam, of: david }, // via mallory/jack
-      { this: adam, of: mallory }, // via jack
-      { this: adam, of: charlie }, // via dave/jack
-      { this: adam, of: dave }, // via jack
-      { this: dave, of: alice }, // via charlie
-      { this: eve, of: alice }, // via any path to adam
-      { this: eve, of: bob }, // via mallory/jack/adam
-      { this: eve, of: david }, // via mallory/jack/adam
-      { this: eve, of: mallory }, // via jack/adam
-      { this: eve, of: jack }, // via adam
-      { this: eve, of: charlie }, // via dave/jack/adam
-      { this: eve, of: dave }, // via jack/adam
+      Ancestor.assert({ this: mallory, of: alice }), // via bob or via david
+      Ancestor.assert({ this: jack, of: alice }), // via bob/mallory or via david/mallory or via charlie/dave
+      Ancestor.assert({ this: jack, of: bob }), // via mallory
+      Ancestor.assert({ this: jack, of: david }), // via mallory
+      Ancestor.assert({ this: jack, of: charlie }), // via dave
+      Ancestor.assert({ this: adam, of: alice }), // via any path to jack
+      Ancestor.assert({ this: adam, of: bob }), // via mallory/jack
+      Ancestor.assert({ this: adam, of: david }), // via mallory/jack
+      Ancestor.assert({ this: adam, of: mallory }), // via jack
+      Ancestor.assert({ this: adam, of: charlie }), // via dave/jack
+      Ancestor.assert({ this: adam, of: dave }), // via jack
+      Ancestor.assert({ this: dave, of: alice }), // via charlie
+      Ancestor.assert({ this: eve, of: alice }), // via any path to adam
+      Ancestor.assert({ this: eve, of: bob }), // via mallory/jack/adam
+      Ancestor.assert({ this: eve, of: david }), // via mallory/jack/adam
+      Ancestor.assert({ this: eve, of: mallory }), // via jack/adam
+      Ancestor.assert({ this: eve, of: jack }), // via adam
+      Ancestor.assert({ this: eve, of: charlie }), // via dave/jack/adam
+      Ancestor.assert({ this: eve, of: dave }), // via jack/adam
     ]
 
     // Create sets for comparison (using string representations for equality comparison)
@@ -220,12 +231,13 @@ export const testRecursion = {
     )
   },
   'test traverse': async (assert) => {
-    const Range = deduce({ n: Number, from: Number, to: Number })
+    const Range = fact({ n: Number, from: Number, to: Number })
       .with({ m: Number })
       .when(({ n, from, to, m }) => ({
         base: [
           Data.less({ this: from, than: to }),
           Data.same({ this: from, as: n }),
+          Range.claim({ n, from, to }),
         ],
         step: [
           Data.less({ this: from, than: to }),
@@ -235,144 +247,196 @@ export const testRecursion = {
       }))
 
     assert.deepEqual(
-      await Range({ from: 1, to: 5, n: $ }).query({ from: db }),
+      await Range.match({ from: 1, to: 5 }).query({ from: db }),
       [
-        { from: 1, n: 1, to: 5 },
-        { from: 1, n: 2, to: 5 },
-        { from: 1, n: 3, to: 5 },
-        { from: 1, n: 4, to: 5 },
+        Range.assert({ from: 1, n: 1, to: 5 }),
+        Range.assert({
+          this: Range.assert({ from: 2, n: 2, to: 5 }).this,
+          from: 1,
+          n: 2,
+          to: 5,
+        }),
+        Range.assert({
+          this: Range.assert({ from: 3, n: 3, to: 5 }).this,
+          from: 1,
+          n: 3,
+          to: 5,
+        }),
+        Range.assert({
+          this: Range.assert({ from: 4, n: 4, to: 5 }).this,
+          from: 1,
+          n: 4,
+          to: 5,
+        }),
       ]
     )
   },
 
   'test recursion': async (assert) => {
-    const Child = deduce({ of: Object, is: Object })
-      .with({ head: Object })
-      .when(({ of, is, head }) => ({
-        head: [match({ the: 'list/next', of, is })],
+    const Head = fact({ the: 'list', next: Object })
+
+    const List = Head.with({ transient: Object }).when(
+      ({ transient, ...head }) => ({
+        head: [Head(head)],
         child: [
-          match({ the: 'list/next', of, is: head }),
-          Child({ of: head, is }),
+          Head({ this: head.this, next: transient }),
+          List({ this: transient, next: head.next }),
         ],
-      }))
+      })
+    )
 
-    // const test = await Implicit({
-    //   the: 'list/next',
-    //   of: id(3),
-    //   is: Implicit.$.is,
-    //   default: null,
-    // }).select({ from: db })
-
-    const NestRecursive = deduce({
-      of: Object,
-      is: Object,
+    const Meta = fact({
+      the: 'meta',
       name: String,
-    }).where(({ of, is, name }) => [
-      Child({ of, is }),
-      match({ the: 'name', of: is, is: name }),
+    })
+
+    const Connection = fact({
+      from: Object,
+      to: Object,
+      name: String,
+    }).where(({ from, to, name }) => [
+      List({ this: from, next: to }),
+      Meta({ this: to, name: name }),
+      Connection.claim({ from, to, name }),
     ])
 
-    const result = await NestRecursive().query({ from: db })
-
-    assert.deepEqual(result, [
-      { of: id(0), is: id(1), name: 'a' },
-      { of: id(1), is: id(2), name: 'b' },
-      { of: id(0), is: id(2), name: 'b' },
-      { of: id(2), is: id(3), name: 'c' },
-      { of: id(1), is: id(3), name: 'c' },
-      { of: id(0), is: id(3), name: 'c' },
+    return assert.deepEqual(await Connection().query({ from: db }), [
+      Connection.assert({ from: id(0), to: id(1), name: 'a' }),
+      Connection.assert({ from: id(1), to: id(2), name: 'b' }),
+      Connection.assert({ from: id(0), to: id(2), name: 'b' }),
+      Connection.assert({ from: id(2), to: id(3), name: 'c' }),
+      Connection.assert({ from: id(1), to: id(3), name: 'c' }),
+      Connection.assert({ from: id(0), to: id(3), name: 'c' }),
     ])
-
+  },
+  'test rooted recursion': async (assert) => {
     // return 'seems to enter infinite loop'
+    const Content = fact({ the: 'data', type: String })
+    const Head = fact({ the: 'list', next: Object })
+    const Meta = fact({ the: 'meta', name: String })
+    const List = Head.with({ trasitive: Object }).when(
+      ({ trasitive, ...head }) => ({
+        direct: [Head(head)],
+        trasitive: [
+          Head({ this: head.this, next: trasitive }),
+          List({ this: trasitive, next: head.next }),
+        ],
+      })
+    )
 
-    const RootedRecursion = deduce({
+    const Node = fact({
       node: Object,
       name: String,
     })
       .with({ root: Object })
       .where(({ node, name, root }) => [
-        match({ the: 'data/type', of: root, is: 'list' }),
-        Child({ of: root, is: node }),
-        match({ the: 'name', of: node, is: name }),
+        Content({ this: root, type: 'list' }),
+        List({ this: root, next: node }),
+        Meta({ this: node, name }),
+        Node.claim({ node, name }),
       ])
 
-    assert.deepEqual(await RootedRecursion().query({ from: db }), [
-      { node: id(1), name: 'a' },
-      { node: id(2), name: 'b' },
-      { node: id(3), name: 'c' },
+    assert.deepEqual(await Node().query({ from: db }), [
+      Node.assert({ node: id(1), name: 'a' }),
+      Node.assert({ node: id(2), name: 'b' }),
+      Node.assert({ node: id(3), name: 'c' }),
     ])
+  },
+  'test implicit': async (assert) => {
+    const Content = fact({ the: 'data', type: String })
+    const Head = fact({ the: 'list', next: Object })
+    const Meta = fact({ the: 'meta', name: String })
+    const List = Head.with({ transient: Object }).when(
+      ({ transient, ...head }) => ({
+        head: [Head(head)],
+        child: [
+          Head({ this: head.this, next: transient }),
+          List({ this: transient, next: head.next }),
+        ],
+      })
+    )
 
-    const Implicit = deduce({
-      the: String,
-      of: Object,
+    const Implicit = fact({
+      at: String,
       is: Object,
-      default: { Null: {} },
-    }).when(({ the, of, is, default: implicit, _ }) => ({
-      explicit: [match({ the, of, is }), Data.Type({ of: implicit, is: _ })],
-      implicit: [match.not({ the, of }), Data.same({ this: implicit, as: is })],
+      default: null,
+    }).when(({ at, this: of, is, default: implicit, _ }) => ({
+      explicit: [
+        Collection({ this: of, at, of: is }),
+        Data.Type({ of: implicit, is: _ }),
+      ],
+      implicit: [
+        Collection.not({ this: of, at }),
+        Data.same({ this: implicit, as: is }),
+      ],
     }))
 
-    const Query = deduce({
+    const Node = fact({
       each: Object,
       name: String,
       next: Object,
     })
       .with({ root: Object })
       .where(({ each, name, next, root }) => [
-        match({ the: 'data/type', of: root, is: 'list' }),
-        Child({ of: root, is: each }),
-        match({ the: 'name', of: each, is: name }),
+        Content({ this: root, type: 'list' }),
+        List({ this: root, next: each }),
+        Meta({ this: each, name }),
         Implicit({
-          the: 'list/next',
-          of: each,
+          this: each,
+          at: 'list/next',
           is: next,
           default: null,
         }),
+        Node.claim({ each, name, next }),
       ])
 
-    assert.deepEqual(await Query().query({ from: db }), [
-      { each: id(1), name: 'a', next: id(2) },
-      { each: id(2), name: 'b', next: id(3) },
-      // @ts-expect-error
-      { each: id(3), name: 'c', next: null },
+    assert.deepEqual(await Node().query({ from: db }), [
+      Node.assert({ each: id(1), name: 'a', next: id(2) }),
+      Node.assert({ each: id(2), name: 'b', next: id(3) }),
+      // @ts-expect-error - inference doesn't know next is entity | null
+      Node.assert({ each: id(3), name: 'c', next: null }),
     ])
   },
 
   'test recursion termination': async (assert) => {
-    const Child = deduce({ of: Object, is: Object })
-      .with({ head: Object })
-      .when(({ of, is, head }) => ({
-        head: [match({ the: 'list/next', of, is })],
-        child: [
-          match({ the: 'list/next', of, is: head }),
-          Child({ of: head, is }),
+    const Content = fact({ the: 'data', type: String })
+    const Head = fact({ the: 'list', next: Object })
+    const Meta = fact({ the: 'meta', name: String })
+    const List = Head.with({ trasitive: Object }).when(
+      ({ trasitive, ...head }) => ({
+        direct: [Head(head)],
+        trasitive: [
+          Head({ this: head.this, next: trasitive }),
+          List({ this: trasitive, next: head.next }),
         ],
-      }))
+      })
+    )
 
-    const RootedRecursion = deduce({
+    const Node = fact({
       node: Object,
       name: String,
     })
       .with({ root: Object })
       .where(({ node, name, root }) => [
-        match({ the: 'data/type', of: root, is: 'list' }),
-        Child({ of: root, is: node }),
-        match({ the: 'name', of: node, is: name }),
+        Content({ this: root, type: 'list' }),
+        List({ this: root, next: node }),
+        Meta({ this: node, name }),
+        Node.claim({ node, name }),
       ])
 
-    assert.deepEqual(await RootedRecursion().query({ from: db }), [
-      {
+    assert.deepEqual(await Node().query({ from: db }), [
+      Node.assert({
         node: id(1),
         name: 'a',
-      },
-      {
+      }),
+      Node.assert({
         node: id(2),
         name: 'b',
-      },
-      {
+      }),
+      Node.assert({
         node: id(3),
         name: 'c',
-      },
+      }),
     ])
   },
 }

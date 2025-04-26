@@ -1583,4 +1583,65 @@ export const testAnalyzer = {
 
     assert.ok(plan)
   },
+
+  'should fail to plan if not bound': async (assert) => {
+    const Person = Analyzer.rule({
+      match: { name: $.name, this: $.this },
+      when: {
+        where: [{ match: { the: 'person/name', of: $.this, is: $.name } }],
+      },
+    })
+
+    assert.throws(
+      () => {
+        Analyzer.rule({
+          match: { name: $.name, this: $.this },
+          when: {
+            where: [{ match: { this: $.this, name: 'Ben' }, rule: Person }],
+          },
+        })
+          .apply()
+          .prepare()
+      },
+      /does not bind variable \?name/g,
+      '$.name is not bound'
+    )
+  },
+  'should be able to unify': async (assert) => {
+    const plan = Analyzer.rule({
+      match: { this: $.this, count: $.count },
+      when: {
+        where: [
+          {
+            not: {
+              match: { this: $.this },
+              rule: {
+                match: { this: $.this, count: $.count, title: $.title },
+                when: {
+                  where: [
+                    {
+                      match: { the: 'counter/count', of: $.this, is: $.count },
+                    },
+                    {
+                      match: { the: 'counter/title', of: $.this, is: $.title },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          {
+            match: { the: 'counter/count', of: $.this, is: $.count },
+          },
+          {
+            match: { the: 'counter/title', of: $.this, is: $.title },
+          },
+        ],
+      },
+    })
+      .apply()
+      .prepare()
+
+    assert.ok(plan)
+  },
 }

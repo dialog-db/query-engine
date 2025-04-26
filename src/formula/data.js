@@ -40,7 +40,7 @@ export const type =
   }
 
 /**
- * @template {API.Scalar|Record<string, API.Scalar>} T
+ * @template {Record<string, API.Scalar>} T
  * @param {T} data
  */
 export const refer = (data) => [Link.of(data)]

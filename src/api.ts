@@ -213,6 +213,9 @@ export interface Variable<T extends Scalar = Scalar> {
     type?: Type<T>
     id: VariableID
   }
+
+  // is(term: Term): Conjunct
+  // not(term: Term): Conjunct
 }
 
 export type VariableID = number
@@ -496,8 +499,8 @@ export interface Negation {
 }
 
 export type Conjunct = Constraint | Negation
-export type Recur<Bindings extends Conclusion = Conclusion> = {
-  recur: Bindings
+export type Recur<Match extends Conclusion = Conclusion> = {
+  recur: RuleBindings<Match>
 
   operator?: undefined
   fact?: undefined
@@ -1026,7 +1029,7 @@ export type InferRuleAssert<T extends RuleDescriptor> = {
 
 export type ScalarTerms<T extends Scalar> = Term<T> | { this: Term<T> }
 
-export interface MatchView<Model> extends Iterable<Conjunct> {}
+export interface MatchView<Model> extends Iterable<Recur | Conjunct> {}
 
 export interface QueryView<Model> extends Iterable<Conjunct> {
   select(source: { from: Querier }): Invocation<Model[], Error>

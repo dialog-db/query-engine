@@ -1,57 +1,84 @@
-import { Memory } from './lib.js'
-const $ = Memory.entity
+import { Memory, fact } from './lib.js'
 
-export default Memory.create([
-  [$(0), 'name', 'Bitdiddle Ben'],
-  [$(0), 'address', 'Slumerville, Ridge Road 10'],
-  [$(0), 'job', 'Computer wizard'],
-  [$(0), 'salary', 60_000],
+export const oliver = {
+  'person/name': 'Warbucks Oliver',
+  'person/address': 'Swellesley, Top Heap Road 1',
+  'job/title': 'Administration big wheel',
+  'job/salary': 150_000,
+}
 
-  [$(1), 'name', 'Hacker Alyssa P'],
-  [$(1), 'address', 'Campridge, Mass Ave 78'],
-  [$(1), 'job', 'Computer programmer'],
-  [$(1), 'salary', 40_000],
-  [$(1), 'supervisor', $(0)],
+export const eben = {
+  'person/name': 'Scrooge Eben',
+  'person/address': 'Weston, Shady Lane 10',
+  'job/title': 'Chief accountant',
+  'job/salary': 75_000,
+  'job/supervisor': oliver,
+}
 
-  [$(2), 'name', 'Fect Cy D'],
-  [$(2), 'address', 'Campridge, Ames Street 3'],
-  [$(2), 'job', 'Computer programmer'],
-  [$(2), 'salary', 35_000],
-  [$(2), 'supervisor', $(0)],
+export const robert = {
+  'person/name': 'Cratchet Robert',
+  'person/address': 'Allston, N Harvard Street 12',
+  'job/title': 'accounting scrivener',
+  'job/salary': 18_000,
+  'job/supervisor': eben,
+}
 
-  [$(3), 'name', 'Tweakit Lem E'],
-  [$(3), 'address', 'Boston, Bay State Road 22'],
-  [$(3), 'job', 'Computer technician'],
-  [$(3), 'salary', 25_000],
-  [$(3), 'supervisor', $(0)],
+export const ben = {
+  'person/name': 'Bitdiddle Ben',
+  'person/address': 'Slumerville, Ridge Road 10',
+  'job/title': 'Computer wizard',
+  'job/salary': 60_000,
+  'job/supervisor': oliver,
+}
+export const alyssa = {
+  'person/name': 'Hacker Alyssa P',
+  'person/address': 'Cambridge, Mass Ave 78',
+  'job/title': 'Computer programmer',
+  'job/salary': 40_000,
+  'job/supervisor': ben,
+}
+export const cy = {
+  'person/name': 'Fect Cy D',
+  'person/address': 'Cambridge, Ames Street 3',
+  'job/title': 'Computer programmer',
+  'job/salary': 35_000,
+  'job/supervisor': ben,
+}
+export const lem = {
+  'person/name': 'Tweakit Lem E',
+  'person/address': 'Boston, Bay State Road 22',
+  'job/title': 'Computer technician',
+  'job/salary': 25_000,
+  'job/supervisor': ben,
+}
 
-  [$(4), 'name', 'Reasoner Louis'],
-  [$(4), 'address', 'Slumerville, Pine Tree Road 80'],
-  [$(4), 'job', 'Computer programmer trainee'],
-  [$(4), 'salary', 30_000],
-  [$(4), 'supervisor', $(1)],
+export const louis = {
+  'person/name': 'Reasoner Louis',
+  'person/address': 'Slumerville, Pine Tree Road 80',
+  'job/title': 'Computer programmer trainee',
+  'job/salary': 30_000,
+  'job/supervisor': alyssa,
+}
 
-  [$(0), 'supervisor', $(5)],
-  [$(5), 'name', 'Warbucks Oliver'],
-  [$(5), 'address', 'Swellesley, Top Heap Road 1'],
-  [$(5), 'job', 'Administration big wheel'],
-  [$(5), 'salary', 150_000],
+export const dewitt = {
+  'person/name': 'Aull DeWitt',
+  'person/address': 'Slumerville, Onion Square 5',
+  'job/title': 'Administration secretary',
+  'job/salary': 25_000,
+  'job/supervisor': oliver,
+}
 
-  [$(6), 'name', 'Scrooge Eben'],
-  [$(6), 'address', 'Weston, Shady Lane 10'],
-  [$(6), 'job', 'Chief accountant'],
-  [$(6), 'salary', 75_000],
-  [$(6), 'supervisor', $(5)],
+export const staff = {
+  oliver,
+  eben,
+  robert,
+  ben,
+  alyssa,
+  cy,
+  lem,
+  louis,
+  dewitt,
+}
 
-  [$(7), 'name', 'Cratchet Robert'],
-  [$(7), 'address', 'Allston, N Harvard Street 12'],
-  [$(7), 'job', 'accounting scrivener'],
-  [$(7), 'salary', 18_000],
-  [$(7), 'supervisor', $(6)],
-
-  [$(8), 'name', 'Aull DeWitt'],
-  [$(8), 'address', 'Slumerville, Onion Square 5'],
-  [$(8), 'job', 'Administration secretary'],
-  [$(8), 'salary', 25_000],
-  [$(8), 'supervisor', $(5)],
-])
+export const db = Memory.create([{ staff }])
+export default db

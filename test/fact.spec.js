@@ -1,25 +1,63 @@
-import {
-  deduce,
-  fact,
-  Data,
-  match,
-  same,
-  Text,
-  Memory,
-  $,
-  Math,
-  Link,
-  Task,
-} from './lib.js'
+import { fact, Text, Memory, $, Math, Link, Task } from './lib.js'
 import proofsDB from './proofs.db.js'
 import moviesDB from './movie.db.js'
 import employeeDB from './microshaft.db.js'
-import assert from '@noble/hashes/_assert'
 
 /**
  * @type {import('entail').Suite}
  */
 export const testDB = {
+  'test claim and assert derive equal this': async (assert) => {
+    const Person = fact({
+      name: String,
+      address: String,
+    })
+
+    const Employee = fact({ name: String }).where(({ name }) => [
+      Person.match({ name }),
+      Employee.claim({ name }),
+    ])
+
+    const marije = Person.assert({
+      name: 'Marije',
+      address: 'Amsterdam, Netherlands',
+    })
+
+    const db = Memory.create([])
+    await Task.perform(db.transact(marije))
+    const [employee, ...none] = await Employee().query({ from: db })
+
+    assert.deepEqual([employee, ...none], [Employee.assert({ name: 'Marije' })])
+    assert.deepEqual(employee.this, Employee.assert({ name: 'Marije' }).this)
+    assert.notDeepEqual(employee.this, marije.this)
+  },
+  'can provide explicit this': async (assert) => {
+    const Person = fact({
+      name: String,
+      address: String,
+    })
+
+    const Employee = fact({ name: String }).where(({ this: person, name }) => [
+      Person.match({ this: person, name }),
+      Employee.claim({ this: person, name }),
+    ])
+
+    const marije = Person.assert({
+      name: 'Marije',
+      address: 'Amsterdam, Netherlands',
+    })
+
+    const db = Memory.create([])
+    await Task.perform(db.transact(marije))
+    const [employee, ...none] = await Employee().query({ from: db })
+
+    assert.deepEqual(
+      [employee, ...none],
+      [Employee.assert({ this: marije.this, name: 'Marije' })]
+    )
+    assert.notDeepEqual(employee.this, Employee.assert({ name: 'Marije' }).this)
+    assert.deepEqual(employee.this, marije.this)
+  },
   'test fact assert': async (assert) => {
     const db = Memory.create([])
 
@@ -321,10 +359,10 @@ export const testDB = {
       command: Object,
     })
 
-    const Behavior = Counter.with({ lastCount: Number }).when(($) => ({
+    const Behavior = Counter.with({ lastCount: Number }).when((counter) => ({
       // If we have no counter we derive a new one.
       new: [
-        Counter.not({ this: $.this }),
+        Counter.not({ this: counter.this }),
         Behavior.claim({
           this: Link.of({ counter: { v: 1 } }),
           count: 0,
@@ -334,18 +372,18 @@ export const testDB = {
       // If we have a counter but it's note benig incremented it continues
       // as is.
       continue: [
-        Counter($),
-        Increment.not({ this: $.this }),
-        Behavior.claim($),
+        Counter(counter),
+        Increment.not({ this: counter.this }),
+        Behavior.claim(counter),
       ],
       // If there is a counter with `lastCount` for the a count and
       // there is an `Increment` fact for it this counter count is
       // incremented by one.
       increment: [
-        Counter({ ...$, count: $.lastCount }),
-        Increment({ this: $.this, command: $._ }),
-        Math.Sum({ of: $.lastCount, with: 1, is: $.count }),
-        Behavior.claim({ ...$, count: $.count }),
+        Counter({ ...counter, count: counter.lastCount }),
+        Increment({ this: counter.this, command: counter._ }),
+        Math.Sum({ of: counter.lastCount, with: 1, is: counter.count }),
+        Behavior.claim({ ...counter, count: counter.count }),
       ],
     }))
 
