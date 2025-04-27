@@ -83,8 +83,8 @@ const fromScalar = (source) => {
 
 /**
  * @template {string} The
- * @template {API.RuleDescriptor & {the?: The}} Schema
- * @param {Schema} source
+ * @template {API.RuleDescriptor} Schema
+ * @param {Schema & {the?: The}} source
  * @returns {API.Premise<The, Omit<Schema, 'the'> & { this: ObjectConstructor }, {}>}
  */
 export const fact = ({ the, ...source }) => {
