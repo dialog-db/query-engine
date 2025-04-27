@@ -1,4 +1,4 @@
-import { fact, Text, Memory, $, Math, Link, Task } from './lib.js'
+import { fact, same, Text, Memory, $, Math, Link, Task } from './lib.js'
 import proofsDB from './proofs.db.js'
 import moviesDB from './movie.db.js'
 import employeeDB from './microshaft.db.js'
@@ -363,7 +363,7 @@ export const testDB = {
       // If we have no counter we derive a new one.
       new: [
         Counter.not({ this: counter.this }),
-        Behavior.claim({
+        Counter.assert({
           this: Link.of({ counter: { v: 1 } }),
           count: 0,
           title: 'basic counter',
@@ -371,11 +371,7 @@ export const testDB = {
       ],
       // If we have a counter but it's note benig incremented it continues
       // as is.
-      continue: [
-        Counter(counter),
-        Increment.not({ this: counter.this }),
-        Behavior.claim(counter),
-      ],
+      continue: [Increment.not({ this: counter.this }), Counter(counter)],
       // If there is a counter with `lastCount` for the a count and
       // there is an `Increment` fact for it this counter count is
       // incremented by one.
@@ -383,7 +379,6 @@ export const testDB = {
         Counter({ ...counter, count: counter.lastCount }),
         Increment({ this: counter.this, command: counter._ }),
         Math.Sum({ of: counter.lastCount, with: 1, is: counter.count }),
-        Behavior.claim({ ...counter, count: counter.count }),
       ],
     }))
 

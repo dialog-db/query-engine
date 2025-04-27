@@ -107,11 +107,10 @@ export const testDB = {
     const Alike = fact({
       as: Object,
       likes: String,
-    }).where(({ likes, this: self, as }) => [
+    }).where(({ this: self, likes, as }) => [
       Likes.match({ this: self, likes }),
       Likes.match({ this: as, likes }),
       same.not({ this: self, as }),
-      Alike.claim({ this: self, as, likes }),
     ])
 
     assert.deepEqual(await Alike().query({ from: db }), [

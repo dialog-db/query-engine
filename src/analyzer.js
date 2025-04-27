@@ -40,8 +40,8 @@ export { $ }
 export const select = (selector) => Select.from({ match: selector })
 
 /**
- * @template {API.Conclusion} Match
- * @param {API.Deduction<Match>} source
+ * @template {API.Proposition} Match
+ * @param {API.DeductiveRule<Match>} source
  */
 export const rule = (source) => DeductiveRule.from(source)
 
@@ -56,7 +56,7 @@ export const formula = (operator) =>
   )
 
 /**
- * @template {API.Conclusion} [Match=API.Conclusion]
+ * @template {API.Proposition} [Match=API.Proposition]
  * @param {API.RuleBindings<Match>} terms
  */
 export const recur = (terms) => RuleRecursion.from({ recur: terms })
@@ -565,12 +565,12 @@ const expect = (value, message) => {
 }
 
 /**
- * @template {API.Conclusion} [Match=API.Conclusion]
+ * @template {API.Proposition} [Match=API.Proposition]
  * @implements {API.MatchRule<Match>}
  */
 export class RuleApplication {
   /**
-   * @template {API.Conclusion} [Match=API.Conclusion]
+   * @template {API.Proposition} [Match=API.Proposition]
    * @param {API.MatchRule<Match>} source
    * @returns {RuleApplication<Match>}
    */
@@ -584,7 +584,7 @@ export class RuleApplication {
   /**
    * Creates a rule application with a given `rule` and set of `terms`.
    *
-   * @template {API.Conclusion} Match
+   * @template {API.Proposition} Match
    * @param {DeductiveRule<Match>} rule
    * @param {Partial<API.RuleBindings<Match>>} terms
    */
@@ -903,7 +903,7 @@ export class RuleApplication {
  * Creates map of variables with identifiers as keys and corresponding variables
  * as values. Omits non variable terms
  *
- * @param {API.Conclusion} match
+ * @param {API.Proposition} match
  * @returns {Map<string, API.Variable>}
  */
 const ruleBindings = (match) => {
@@ -917,13 +917,13 @@ const ruleBindings = (match) => {
 }
 
 /**
- * @template {API.Conclusion} [Match=API.Conclusion]
- * @implements {API.Deduction<Match>}
+ * @template {API.Proposition} [Match=API.Proposition]
+ * @implements {API.DeductiveRule<Match>}
  */
 export class DeductiveRule {
   /**
-   * @template {API.Conclusion} Case
-   * @param {API.Deduction<Case>} source
+   * @template {API.Proposition} Case
+   * @param {API.DeductiveRule<Case>} source
    */
   static from(source) {
     const disjuncts = source.when ?? {}
@@ -1077,11 +1077,11 @@ export class DeductiveRule {
 }
 
 /**
- * @template {API.Conclusion} [Match=API.Conclusion]
+ * @template {API.Proposition} [Match=API.Proposition]
  */
 export class RuleRecursion {
   /**
-   * @template {API.Conclusion} [Match=API.Conclusion]
+   * @template {API.Proposition} [Match=API.Proposition]
    * @param {API.Recur<Match>} source
    */
   static from({ recur: terms }) {
@@ -1588,7 +1588,7 @@ class JoinPlan {
 }
 
 /**
- * @template {API.Conclusion} [Match=API.Conclusion]
+ * @template {API.Proposition} [Match=API.Proposition]
  */
 class DeductiveRulePlan {
   /**
@@ -1688,7 +1688,7 @@ export const toDebugString = (source) =>
   : JSON.stringify(source)
 
 /**
- * @template {API.Conclusion} [Match=API.Conclusion]
+ * @template {API.Proposition} [Match=API.Proposition]
  */
 export class RuleApplicationPlan {
   /**

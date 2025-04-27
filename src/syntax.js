@@ -85,7 +85,7 @@ const fromScalar = (source) => {
  * @template {string} The
  * @template {API.RuleDescriptor & {the?: The}} Schema
  * @param {Schema} source
- * @returns {Premise<The, Omit<Schema, 'the'> & { this: ObjectConstructor }, {}>}
+ * @returns {API.Premise<The, Omit<Schema, 'the'> & { this: ObjectConstructor }, {}>}
  */
 export const fact = ({ the, ...source }) => {
   const members = []
@@ -113,11 +113,14 @@ export const fact = ({ the, ...source }) => {
   return new Premise(the, schema, {})
 }
 
+export const claim = fact
+
 /**
  * @template {string} The
- * @template {API.RuleDescriptor & { this: ObjectConstructor }} Schema
+ * @template {API.FactSchema} Schema
  * @template {API.RuleDescriptor} [Locals={}]
- * @extends {Callable<(terms?: API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Term}) => FactMatch<The, Schema>>}
+ * @implements {API.Premise<The, Schema>}
+ * @extends {Callable<(terms?: API.InferFactTerms<Schema>) => FactMatch<The, Schema>>}
  */
 class Premise extends Callable {
   /**
@@ -128,11 +131,10 @@ class Premise extends Callable {
   constructor(the, schema, locals) {
     super(
       /**
-       * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Term}} [terms]
-       * @returns {FactMatch<The, Schema, Schema>}
+       * @param {API.InferFactTerms<Schema>} [terms]
+       * @returns {FactMatch<The, Schema>}
        */
-      (terms = this.ports) =>
-        this.match(/** @type {API.InferRuleTerms<Schema>} */ (terms))
+      (terms = this.ports) => this.match(terms)
     )
     this.the = the
     this.schema = schema
@@ -153,10 +155,13 @@ class Premise extends Callable {
     return this.#ports
   }
 
+  get cells() {
+    return this.ports
+  }
   /**
    * Builds a deduction form for the this fact.
    *
-   * @returns {API.Deduction<API.InferRuleVariables<Schema>>}
+   * @returns {API.DeductiveRule<API.InferRuleVariables<Schema>>}
    */
   build() {
     const { the, schema, ports: $ } = this
@@ -195,18 +200,33 @@ class Premise extends Callable {
   }
 
   /**
+   * @param {API.InferRuleTerms<Schema>} terms
+   * @returns {Analyzer.RuleApplication<API.InferRuleVariables<Schema>>}
+   */
+  apply(terms) {
+    return this.form.apply(terms)
+  }
+
+  /**
+   * @param {Partial<API.InferFactTerms<Schema>>} terms
+   * @returns {API.MatchView}
+   */
+  recur(terms) {
+    return [this.form.apply(/** @type {API.InferRuleTerms<Schema>} */ (terms))]
+  }
+
+  /**
    * Creates predicate for this fact that matches given terms.
    *
-   * @template {Partial<Schema>} Selector
-   * @param {API.InferRuleTerms<Selector>} [terms]
-   * @returns {FactMatch<The, Schema, Selector>}
+   * @param {Partial<API.InferFactTerms<Schema>>} [terms]
+   * @returns {FactMatch<The, Schema>}
    */
   match(terms) {
     return new FactMatch(
       this.the,
-      this.form,
+      this,
       this.ports,
-      /** @type {API.InferRuleTerms<Selector>} */ (terms ?? this.ports)
+      /** @type {Partial<API.InferFactTerms<Schema>>} */ (terms ?? this.ports)
     )
   }
 
@@ -214,8 +234,7 @@ class Premise extends Callable {
    * Creates a predicate for this fact that excludes ones that match given
    * terms.
    *
-   * @template {Partial<Schema>} Terms
-   * @param {API.InferRuleTerms<Terms>} terms
+   * @param {Partial<API.InferFactTerms<Schema>>} terms
    * @returns {Negation<Schema>}
    */
   not(terms) {
@@ -229,14 +248,14 @@ class Premise extends Callable {
    * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Entity}} data
    */
   assert(data) {
-    return Fact.assert(this.the, this.schema, data)
+    return Fact.assert(this.the, this.schema, this.cells, data)
   }
 
   /**
    * Defines local variables so they could be used in the `.when` and `.where`
    * methods without makeing those part of the fact.
    *
-   * @template {Omit<API.RuleDescriptor, keyof Schema | keyof Locals>} Extension
+   * @template {Exclude<API.RuleDescriptor, Schema & Locals>} Extension
    * @param {Extension} extension
    * @returns {Premise<The, Schema, Locals & Extension>}
    */
@@ -270,232 +289,17 @@ class Premise extends Callable {
   where(build) {
     return new Deduction(this.the, this.schema, this.locals, build)
   }
-
-  induce() {
-    return this
-  }
 }
 
 /**
  *
- * @template {API.RuleDescriptor} Schema
- * @typedef {object} Applicable
+ * @template {API.FactSchema} Schema
+ * @typedef {object} Circuit
+ * @property {Schema} schema
+ * @property {API.InferRuleVariables<Schema>} cells
  * @property {(terms: API.InferRuleTerms<Schema>) => Analyzer.RuleApplication<API.InferRuleVariables<Schema>>} apply
+ * @property {(terms: Partial<API.InferFactTerms<Schema>>) => API.MatchView} recur
  */
-
-/**
- * @template {string} The
- * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
- * @template {Partial<Schema>} [Terms=Schema]
- * @implements {API.MatchView<unknown>}
- */
-class FactMatch {
-  /**
-   * @param {The} the
-   * @param {Applicable<Schema>} rule
-   * @param {API.InferRuleVariables<Schema>} ports
-   * @param {API.InferRuleTerms<Terms>} terms
-   */
-  constructor(the, rule, ports, terms) {
-    this.the = the
-    this.rule = rule
-    this.ports = ports
-    this.terms = terms
-    const selector = /** @type {Record<string, API.Term>} */ ({})
-    for (const key of Object.keys(ports)) {
-      if (terms[key] === undefined) {
-        selector[key] = $[Symbol()]
-      } else {
-        selector[key] = terms[key]
-      }
-    }
-
-    this.selector = /** @type {API.InferRuleTerms<Schema>} */ (selector)
-  }
-
-  /** @type {Analyzer.RuleApplication<API.InferRuleVariables<Schema>>|undefined} */
-  #form
-  get form() {
-    if (!this.#form) {
-      this.#form = this.rule.apply(
-        /** @type {API.InferRuleTerms<Schema> & API.InferRuleTerms<Terms>} */
-        (this.terms)
-      )
-    }
-    return this.#form
-  }
-
-  /** @returns {Iterator<API.Conjunct|API.Recur>} */
-  *[Symbol.iterator]() {
-    yield this.form
-  }
-
-  /** @type {Analyzer.RuleApplicationPlan<API.InferRuleVariables<Schema>>|undefined} */
-  #plan
-  get plan() {
-    if (!this.#plan) {
-      this.#plan =
-        // If selector and terms match we can reuse the form, but if they do not
-        // we need to create new form which will include all the terms.
-        this.terms === /** @type {object} */ (this.ports) ?
-          this.form.prepare()
-        : this.rule.apply(this.selector).prepare()
-    }
-
-    return this.#plan
-  }
-
-  toJSON() {
-    return this.form.toJSON()
-  }
-  /**
-   * @param {{ from: API.Querier }} source
-   */
-  *execute(source) {
-    const { selector, plan } = this
-    const selection = yield* plan.query(source)
-
-    const facts = []
-    for (const match of selection) {
-      /** @type {Record<string, API.Scalar>} */
-      const model = {}
-      for (const [key, term] of Object.entries(selector)) {
-        model[key] = /** @type {API.Scalar} */ (
-          Variable.is(term) ? match.get(term) : term
-        )
-      }
-      model.the = this.the
-      facts.push(
-        Fact.new(
-          /** @type {API.InferFact<Schema> & {this: API.Entity, the: The }}} */ (
-            model
-          )
-        )
-      )
-    }
-
-    return facts
-  }
-
-  /**
-   * @param {{ from: API.Querier }} source
-   */
-  query(source) {
-    // 😵‍💫 Here we force plan compilation because we want to get planning error
-    // before we get a
-    this.plan
-    return Task.perform(this.execute(source))
-  }
-}
-
-/**
- * Subclass of {@link FactMatch} that represents a recursive rule application.
-
- * @template {string} The
- * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
- * @template {Partial<Schema>} [Terms=Schema]
- * @extends {FactMatch<The, Schema, Terms>}
- */
-class Recur extends FactMatch {
-  /**
-   * We override the itertor to yield recursion form as opposed to application
-   * from.
-   */
-  *[Symbol.iterator]() {
-    yield { recur: { this: this.ports.this, ...this.terms } }
-  }
-}
-
-/**
- * @template {string} The
- * @template {{ this: API.Entity, the: The }} Model
- */
-class Fact {
-  /**
-   * @template {string} The
-   * @param {Record<string, API.Term> & {this: API.Term<API.Entity>, the: The}} terms
-   */
-  static claim(terms) {
-    /**
-     * ⚠️ This needs to be aligned with {@link Fact.assert} implementation
-     * so that `this` will come out same in both cases.
-     */
-    return Data.Fact(terms)
-  }
-
-  /**
-   * @template {string} The
-   * @template {API.RuleDescriptor & { this: ObjectConstructor }} Schema
-   * @param {The} the
-   * @param {Schema} schema
-   * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Entity}} data
-   */
-  static assert(the, schema, data) {
-    /**
-     * ⚠️ This needs to be aligned with {@link Fact.claim} implementation
-     * that `this` will come out same in both cases.
-     * @type {Record<string, API.Scalar>}
-     */
-    const model = { the, this: data.this ?? Link.of({ ...data, the }) }
-
-    for (const key of Object.keys(schema)) {
-      const value = data[key]
-      if (key === 'the' && the !== /** @type {API.Scalar} */ (value)) {
-        throw new TypeError(
-          `Optional property "the" does not match the schema "${the}"`
-        )
-      }
-
-      if (key !== 'this') {
-        if (value === undefined) {
-          throw new TypeError(`Required property "${key}" is missing`)
-        }
-
-        model[key] = /** @type {API.Scalar} */ (value)
-      }
-    }
-
-    return Fact.new(/** @type {API.InferFact<Schema> & {the: The}} */ (model))
-  }
-
-  /**
-   * @template {string} The
-   * @template {{ this: API.Entity, the: The }} Model
-   * @param {Model} model
-   * @returns {Fact<The, Model> & Model}
-   */
-  static new(model) {
-    return /** @type {Fact<The, Model> & Model} */ (new this(model))
-  }
-
-  /**
-   * @param {Model} model
-   */
-  constructor(model) {
-    this.#model = model
-    const { the, ...data } = model
-
-    Object.assign(this, data)
-    this.this = model.this
-  }
-  #model
-  get the() {
-    return this.#model.the
-  }
-  *[Symbol.iterator]() {
-    const assertions = /** @type {API.Instruction[]} */ ([])
-    const { the, this: entity } = this
-    for (const [name, value] of Object.entries(this.#model)) {
-      assertions.push({ Assert: [entity, `${the}/${name}`, value] })
-    }
-
-    yield* assertions
-  }
-
-  toJSON() {
-    return { ...this, the: this.the, this: toJSON(this.this) }
-  }
-}
 
 /**
  * @template {API.RuleDescriptor} Schema
@@ -527,9 +331,10 @@ class Negation {
 
 /**
  * @template {string} The
- * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
+ * @template {API.FactSchema} Schema
  * @template {API.RuleDescriptor} Locals
- * @extends {Callable<(terms?: API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Term}) => FactMatch<The, Schema>>}
+ * @implements {API.Deduction<The, Schema, Locals>}
+ * @extends {Callable<(terms?: API.InferFactTerms<Schema>) => FactMatch<The, Schema>>}
  */
 class Deduction extends Callable {
   /**
@@ -539,26 +344,29 @@ class Deduction extends Callable {
    * @param {API.WhenBuilder<Schema & Locals>} build
    */
   constructor(the, schema, locals, build) {
-    super(
-      /**
-       * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Term}} [terms]
-       * @returns {FactMatch<The, Schema, Schema>}
-       */
-      (terms = this.ports) =>
-        this.match(/** @type {API.InferRuleTerms<Schema>} */ (terms))
-    )
+    super((terms) => this.match(terms))
 
     this.the = the
     this.schema = schema
     this.locals = locals
     this.build = build
-
-    /** @type {Applicable<Schema>} */
-    this.rule = this
   }
+
+  /**
+   * If rule is applied recursively we want to return `Recur` as opposed to
+   * plain `FactMatch` to accomplish this we set this property to `this`
+   * during `source` compilation. This works because when/where `build` function
+   * is called during compilation which in turn ends up calling `match` method
+   * that looks at `this.#circuit` to decide which one to construct. Furthermore
+   * we do pass this `#circuit` to it during construction.
+   *
+   * @type {Circuit<Schema>|null}
+   */
+  self = null
 
   /** @type {API.InferRuleVariables<Schema>|undefined} */
   #ports
+
   /**
    * Map of variables corresponding to the fact members.
    *
@@ -606,22 +414,13 @@ class Deduction extends Callable {
     }
   }
 
-  /**
-   * If rule is applied recursively we want to return `Recur` as opposed to
-   * plain `FactMatch` to accomplish this we set this property to `Recur`
-   * during `source` compilation. This works because when/where `build` function
-   * is called during compilation which in turn ends up calling `match` method
-   * that will use `this.#Match` to construct which will be set to `Recur`.
-   */
-  #Match = FactMatch
-
-  /** @type {API.Deduction<API.InferRuleVariables<Schema>>|undefined} */
+  /** @type {API.DeductiveRule<API.InferRuleVariables<Schema>>|undefined} */
   #source
   get source() {
     if (!this.#source) {
-      this.#Match = Recur
+      this.self = this
       this.#source = this.compile()
-      this.#Match = FactMatch
+      this.self = null
     }
     return this.#source
   }
@@ -649,24 +448,57 @@ class Deduction extends Callable {
   }
 
   /**
-   * @template {Partial<Schema>} Selector
-   * @param {API.InferRuleTerms<Selector>} [terms]
-   * @returns {FactMatch<The, Schema, Selector>}
+   * @param {Partial<API.InferFactTerms<Schema>>} terms
+   * @returns {API.MatchView}
    */
-  match(
-    terms = /** @type {API.InferRuleTerms<Selector> & API.InferRuleVariables<Schema>}} */ (
-      this.ports
-    )
-  ) {
-    return new this.#Match(this.the, this, this.ports, terms)
+  recur(terms) {
+    return [
+      /** @type {API.Recur} */ ({ recur: { this: this.ports.this, ...terms } }),
+    ]
+  }
+
+  /**
+   * @param {Partial<API.InferFactTerms<Schema>>} terms
+   */
+  induce(terms) {
+    const { schema, cells, the } = this
+    const predicates = []
+    for (const [name, member] of Object.entries(schema)) {
+      const [term, cell] = [terms[name], cells[name]]
+      // If `this` was not provided we derive one from the data itself.
+      if (name === 'this' && !term) {
+        predicates.push(
+          Fact.claim({
+            .../** @type {Record<string, API.Term>} */ (terms),
+            this: cells.this,
+            the,
+          })
+        )
+      } else {
+        predicates.push(
+          ...same({ this: /** @type {API.Scalar} */ (term), as: cell })
+        )
+      }
+    }
+
+    return new Claim(predicates)
+  }
+
+  /**
+   * @param {Partial<API.InferFactTerms<Schema>>} [terms]
+   * @returns {FactMatch<The, Schema>}
+   */
+  match(terms = /** @type {API.InferFactTerms<Schema>}} */ (this.ports)) {
+    return this.self ?
+        new Recur(this.the, this.self, this.ports, terms)
+      : new FactMatch(this.the, this, this.ports, terms)
   }
 
   /**
    * Creates a predicate for this fact that excludes ones that match given
    * terms.
    *
-   * @template {Partial<Schema>} Terms
-   * @param {API.InferRuleTerms<Terms>} terms
+   * @param {Partial<API.InferFactTerms<Schema>>} terms
    * @returns {Negation<Schema>}
    */
   not(terms) {
@@ -680,30 +512,14 @@ class Deduction extends Callable {
    * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Entity}} data
    */
   assert(data) {
-    return Fact.assert(this.the, this.schema, data)
+    return Fact.assert(this.the, this.schema, this.cells, data)
   }
 
   /**
-   * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Term<API.Entity>}} fact
+   * @param {API.InferFactTerms<Schema>} fact
    */
   claim(fact) {
-    const { schema, cells, the } = this
-    const predicates = []
-    for (const [name, member] of Object.entries(schema)) {
-      // If `this` was not provided we derive one from the data itself.
-      if (name === 'this' && !fact[name]) {
-        predicates.push(Fact.claim({ ...fact, this: cells.this, the }))
-      } else {
-        predicates.push(
-          ...same({
-            this: /** @type {API.Scalar} */ (fact[name]),
-            as: cells[name],
-          })
-        )
-      }
-    }
-
-    return new Claim(predicates)
+    return this.induce(fact)
   }
 
   /**
@@ -729,7 +545,7 @@ class Deduction extends Callable {
    *
    * @template {Omit<API.RuleDescriptor, keyof Schema | keyof Locals>} Extension
    * @param {Extension} extension
-   * @returns {Premise<The, Schema, Locals & Extension>}
+   * @returns {API.Premise<The, Schema, Locals & Extension>}
    */
   with(extension) {
     return new Premise(this.the, this.schema, { ...extension, ...this.locals })
@@ -762,721 +578,39 @@ class Deduction extends Callable {
     return new Deduction(this.the, this.schema, this.locals, build)
   }
 
-  induce() {
-    return this
-  }
-}
-
-export { $, _ }
-/**
- * @template Terms
- * @template {(terms: any) => API.Constraint} F
- * @extends {Callable<F>}
- */
-export class Predicate extends Callable {
-  /**
-   * @template Terms
-   * @template {(terms: Terms) => API.Constraint} Formula
-   * @param {Formula} match
-   * @returns {Predicate<Terms, Formula>}
-   */
-  static for(match) {
-    return new this(match)
-  }
-  /**
-   * @param {F} match
-   */
-  constructor(match) {
-    super(match)
-    this.match = match
-  }
-
-  /**
-   * @param {Terms} terms
-   * @returns {API.Negation}
-   */
-  not(terms) {
-    return { not: this.match(terms) }
-  }
-}
-
-export const Collection = Predicate.for(
-  /**
-   * @template {API.Scalar} Member
-   * @param {object} terms
-   * @param {API.Term<API.Entity>} terms.this
-   * @param {API.Term<Member>} terms.of
-   * @param {API.Term<string>} [terms.at]
-   */
-  (terms) => ({
-    match: { the: terms.at, of: terms.this, is: terms.of },
-    fact: {},
-  })
-)
-
-/**
- * @param {API.Term<string>} term
- */
-export const text = (term) => new TextVariable(term)
-
-class TextVariable {
-  #this
-  /**
-   * @param {API.Term<string>} term
-   */
-  constructor(term) {
-    this.#this = term
-  }
-
-  /**
-   * @param {API.Term<string>} pattern
-   */
-  like(pattern) {
-    return Text.match({ this: this.#this, pattern: pattern })
-  }
-
-  /**
-   * @param {API.Term<string>} slice
-   */
-  includes(slice) {
-    return Text.includes({ this: this.#this, slice })
-  }
-
-  /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.with
-   * @param {API.Term<string>} terms.is
-   */
-  concat(terms) {
-    return Text.Concat({ of: [this.#this, terms.with], is: terms.is })
-  }
-
-  words() {
-    const of = this.#this
-    return {
-      /**
-       * @param {API.Term<string>} is
-       */
-      is(is) {
-        return Text.Words({ of, is })
-      },
+  /** @type {Induction<The, Schema, Locals>|undefined} */
+  #induction
+  get inductive() {
+    if (!this.#induction) {
+      const { self, the, schema, locals, build } = this
+      const induction = new Induction(the, schema, locals, build)
+      this.self = induction
+      // Force induction compilaction so that it will be the self in the given
+      // context.
+      induction.form
+      // Then we reset the self so that it continues to behave as intended.
+      this.self = self
+      // cache the instance
+      this.#induction = induction
     }
-  }
 
-  lines() {
-    const of = this.#this
-    return {
-      /**
-       * @param {API.Term<string>} is
-       */
-      is(is) {
-        return Text.Lines({ of, is })
-      },
-    }
-  }
-
-  toUpperCase() {
-    const of = this.#this
-    return {
-      /**
-       * @param {API.Term<string>} is
-       */
-      is(is) {
-        return Text.UpperCase({ of, is })
-      },
-      /**
-       * @param {API.Term<string>} is
-       */
-      not(is) {
-        return { not: Text.UpperCase({ of, is }) }
-      },
-    }
-  }
-
-  /**
-   */
-  toLowerCase() {
-    const of = this.#this
-    return {
-      /**
-       * @param {API.Term<string>} is
-       */
-      is(is) {
-        return Text.LowerCase({ of, is })
-      },
-      /**
-       * @param {API.Term<string>} is
-       */
-      not(is) {
-        return { not: Text.LowerCase({ of, is }) }
-      },
-    }
-  }
-
-  /**
-   * @param {API.Term<string>} is
-   */
-  trim(is) {
-    return Text.Trim({ of: this.#this, is })
-  }
-}
-
-export class Text {
-  #this
-  /**
-   * @param {API.Term<string>} source
-   */
-  constructor(source) {
-    this.#this = source
-  }
-
-  static match = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.this
-     * @param {API.Term<string>} terms.pattern
-     */
-    ({ this: text, pattern: like }) => ({
-      match: { text, pattern: like },
-      operator: /** @type {const} */ ('text/like'),
-    })
-  )
-
-  /**
-   * @param {object} terms
-   * @param {API.Term<string>} terms.this
-   * @param {API.Term<string>} terms.pattern
-   */
-  static not(terms) {
-    return { not: this.match(terms) }
-  }
-
-  static includes = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.this
-     * @param {API.Term<string>} terms.slice
-     */
-    ({ this: source, slice }) => {
-      return {
-        match: { this: source, slice },
-        operator: /** @type {const} */ ('text/includes'),
-      }
-    }
-  )
-
-  static Concat = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {[left:API.Term<string>, right: API.Term<string>]} terms.of
-     * @param {API.Term<string>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    ({ of: [left, right], is }) => {
-      return {
-        match: { of: left, with: right, is },
-        operator: /** @type {const} */ ('text/concat'),
-      }
-    }
-  )
-
-  static Words = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.of
-     * @param {API.Term<string>} [terms.is]
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('text/words'),
-      }
-    }
-  )
-
-  static Lines = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.of
-     * @param {API.Term<string>} [terms.is]
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('text/lines'),
-      }
-    }
-  )
-
-  static UpperCase = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.of
-     * @param {API.Term<string>} [terms.is]
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('text/case/upper'),
-      }
-    }
-  )
-
-  static LowerCase = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.of
-     * @param {API.Term<string>} [terms.is]
-     *
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('text/case/lower'),
-      }
-    }
-  )
-
-  static Trim = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.of
-     * @param {API.Term<string>} [terms.is]
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('text/trim'),
-      }
-    }
-  )
-
-  static TrimStart = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.of
-     * @param {API.Term<string>} [terms.is]
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('text/trim/start'),
-      }
-    }
-  )
-
-  static TrimEnd = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.of
-     * @param {API.Term<string>} [terms.is]
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('text/trim/end'),
-      }
-    }
-  )
-
-  static Length = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.of
-     * @param {API.Term<number>} [terms.is]
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('text/length'),
-      }
-    }
-  )
-}
-
-export class UTF8 {
-  static ToText = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<Uint8Array>} terms.of
-     * @param {API.Term<string>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('utf8/to/text'),
-      }
-    }
-  )
-
-  static FromText = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<string>} terms.of
-     * @param {API.Term<Uint8Array>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('text/to/utf8'),
-      }
-    }
-  )
-}
-
-export class Data {
-  static same = Object.assign(
-    /**
-     * @template {API.Scalar} This
-     * @template {API.Scalar} As
-     * @param {object} terms
-     * @param {API.Term<This>} terms.this
-     * @param {API.Term<As>} [terms.as]
-     * @returns {API.SystemOperator}
-     */
-    ({ this: of, as }) => {
-      return /** @type {API.SystemOperator} */ ({
-        match: { of, is: as },
-        operator: /** @type {const} */ ('=='),
-      })
-    },
-    {
-      /**
-       * @template {API.Scalar} This
-       * @template {API.Scalar} As
-       * @param {object} terms
-       * @param {API.Term<This>} terms.this
-       * @param {API.Term<As>} [terms.as]
-       * @returns {API.Negation}
-       */
-      not: (terms) => ({ not: Data.same(terms) }),
-    }
-  )
-
-  static greater = Predicate.for(
-    /**
-     * @template {number|string} T
-     * @param {object} terms
-     * @param {API.Term<T>} terms.this
-     * @param {API.Term<T>} terms.than
-     * @returns {API.SystemOperator}
-     */
-    (terms) => {
-      return {
-        match: terms,
-        operator: /** @type {const} */ ('>'),
-      }
-    }
-  )
-  static ['>'] = this.greater
-
-  static greaterOrEqual = Predicate.for(
-    /**
-     * @template {number|string} T
-     * @param {object} terms
-     * @param {API.Term<T>} terms.this
-     * @param {API.Term<T>} terms.than
-     * @returns {API.SystemOperator}
-     */
-    (terms) => {
-      return {
-        match: terms,
-        operator: /** @type {const} */ ('>='),
-      }
-    }
-  )
-  static ['>='] = this.greaterOrEqual
-
-  static less = Predicate.for(
-    /**
-     * @template {number|string} T
-     * @param {object} terms
-     * @param {API.Term<T>} terms.this
-     * @param {API.Term<T>} terms.than
-     * @returns {API.SystemOperator}
-     */
-    (terms) => {
-      return {
-        match: terms,
-        operator: /** @type {const} */ ('<'),
-      }
-    }
-  )
-  static ['<'] = this.less
-
-  static lessOrEqual = Predicate.for(
-    /**
-     * @template {number|string} T
-     * @param {object} terms
-     * @param {API.Term<T>} terms.this
-     * @param {API.Term<T>} terms.than
-     * @returns {API.SystemOperator}
-     */
-    (terms) => {
-      return {
-        match: terms,
-        operator: /** @type {const} */ ('<='),
-      }
-    }
-  )
-
-  static ['<='] = this.lessOrEqual
-
-  static Type = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<API.Scalar>} terms.of
-     * @param {API.Term<API.TypeName>|API.Term<string>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    ({ of, is }) => {
-      return /** @type {API.SystemOperator} */ ({
-        match: { of, is },
-        operator: /** @type {const} */ ('data/type'),
-      })
-    }
-  )
-
-  static Reference = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<any>} terms.of
-     * @param {API.Term<API.Entity>} [terms.is]
-     * @returns {{match: { of: API.Term, is?: API.Term<API.Entity> }, operator: 'data/refer' }}
-     */
-    ({ of, is }) => {
-      return {
-        match: { of, is },
-        operator: /** @type {const} */ ('data/refer'),
-      }
-    }
-  )
-
-  static Fact = Predicate.for(
-    /**
-     * @template {Record<string, API.Term> & {this?: API.Term<API.Entity>}} Terms
-     * @param {Terms} terms
-     * @returns {{match: Omit<Terms, 'this'> & { is?: API.Term<API.Entity> }, operator: 'data/refer' }}
-     */
-    ({ this: is, ...of }) => {
-      return {
-        match: { ...of, is },
-        operator: 'data/refer',
-      }
-    }
-  )
-}
-
-export class Math {
-  static Sum = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<API.Numeric>} terms.of
-     * @param {API.Term<API.Numeric>} terms.with
-     * @param {API.Term<API.Numeric>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    ({ of, with: by, is }) => {
-      return /** @type {API.SystemOperator} */ ({
-        match: { of, with: by, is },
-        operator: /** @type {const} */ ('+'),
-      })
-    }
-  )
-  static ['+'] = this.Sum
-
-  static Subtraction = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<API.Numeric>} terms.of
-     * @param {API.Term<API.Numeric>} terms.by
-     * @param {API.Term<API.Numeric>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    (terms) => {
-      return /** @type {API.SystemOperator} */ ({
-        match: terms,
-        operator: /** @type {const} */ ('-'),
-      })
-    }
-  )
-  static ['-'] = this.Subtraction
-
-  static Multiplication = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<API.Numeric>} terms.of
-     * @param {API.Term<API.Numeric>} terms.by
-     * @param {API.Term<API.Numeric>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    (terms) => {
-      return /** @type {API.SystemOperator} */ ({
-        match: terms,
-        operator: /** @type {const} */ ('*'),
-      })
-    }
-  )
-  static ['*'] = this.Multiplication
-
-  static Division = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<API.Numeric>} terms.of
-     * @param {API.Term<API.Numeric>} terms.by
-     * @param {API.Term<API.Numeric>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    (terms) => {
-      return /** @type {API.SystemOperator} */ ({
-        match: terms,
-        operator: /** @type {const} */ ('/'),
-      })
-    }
-  )
-  static ['/'] = this.Division
-
-  static Modulo = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<API.Numeric>} terms.of
-     * @param {API.Term<API.Numeric>} terms.by
-     * @param {API.Term<API.Numeric>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    (terms) => {
-      return /** @type {API.SystemOperator} */ ({
-        match: terms,
-        operator: /** @type {const} */ ('%'),
-      })
-    }
-  )
-  static ['%'] = this.Modulo
-
-  static Power = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<API.Numeric>} terms.of
-     * @param {API.Term<API.Numeric>} terms.exponent
-     * @param {API.Term<API.Numeric>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    ({ of, exponent, is }) => {
-      return /** @type {API.SystemOperator} */ ({
-        match: { of, by: exponent, is },
-        operator: /** @type {const} */ ('**'),
-      })
-    }
-  )
-  static ['**'] = this.Power
-
-  static Absolute = Predicate.for(
-    /**
-     * @param {object} terms
-     * @param {API.Term<API.Numeric>} terms.of
-     * @param {API.Term<API.Numeric>} [terms.is]
-     * @returns {API.SystemOperator}
-     */
-    ({ of, is }) => {
-      return /** @type {API.SystemOperator} */ ({
-        match: { of, is },
-        operator: /** @type {const} */ ('math/absolute'),
-      })
-    }
-  )
-}
-
-const Same = Analyzer.rule({ match: { this: $.this, as: $.this } })
-const NotSame = Analyzer.rule({
-  match: { this: $.this, as: $.as },
-  when: {
-    where: [{ not: Same.apply({ this: $.this, as: $.as }) }],
-  },
-})
-
-export const same = Object.assign(
-  /**
-   * @template {API.Scalar} This
-   * @template {API.Scalar} As
-   * @param {{this: API.Term<This>, as: API.Term<As>}} terms
-   */
-  (terms) => new Match(Same, terms),
-  {
-    /**
-     * @template {API.Scalar} This
-     * @template {API.Scalar} As
-     * @param {{this: API.Term<This>, as: API.Term<As>}} terms
-     */
-    not(terms) {
-      return new Match(NotSame, terms)
-    },
-  }
-)
-
-/**
- * @template {API.RuleDescriptor} Schema
- * @param {Schema} schema
- * @returns {API.InferRuleVariables<Schema>}
- */
-function derivePorts(schema) {
-  const match = /** @type {Record<string, API.Variable>} */ ({})
-  for (const [key, type] of Object.entries(schema)) {
-    match[key] = $[key]
-  }
-
-  return /** @type {API.InferRuleVariables<Schema>} */ (match)
-}
-
-/**
- * @template {API.RuleDescriptor} Schema
- * @param {Schema} schema
- * @returns {API.InferRuleVariables<Schema> & {_: API.Variable}}
- */
-function deriveCells(schema) {
-  return Object.assign(derivePorts(schema), { _: $._ })
-}
-
-/**
- * @param {API.EveryView} source
- * @returns {Iterable<API.Conjunct|API.Recur>}
- */
-function* iterateConjuncts(source) {
-  for (const member of source) {
-    if (member === undefined) {
-      continue
-    } else if (Symbol.iterator in member) {
-      for (const conjunct of member) {
-        yield conjunct
-      }
-    } else {
-      yield member
-    }
+    return this.#induction
   }
 }
 
 /**
- * @param {API.WhenView} source
- * @returns {Iterable<[string, API.EveryView]>}
+ * @template {string} The
+ * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
+ * @template {API.RuleDescriptor} Locals
+ * @extends {Deduction<The, Schema, Locals>}
  */
-function* iterateDisjuncts(source) {
-  if (Array.isArray(source)) {
-    yield ['where', source]
-  } else {
-    yield* Object.entries(source)
-  }
-}
-
-class Claim {
+class Induction extends Deduction {
   /**
-   * @param {API.Conjunct[]} predicates
+   * @param {Partial<API.InferFactTerms<Schema>>} terms
+   * @returns {API.MatchView}
    */
-  constructor(predicates) {
-    this.predicates = predicates
-  }
-  *[Symbol.iterator]() {
-    yield* this.predicates
+  recur(terms) {
+    return this.induce(terms)
   }
 }
 
@@ -1485,7 +619,7 @@ class Claim {
  */
 class Match {
   /**
-   * @param {Applicable<Schema>} rule
+   * @param {Analyzer.DeductiveRule<API.InferRuleVariables<Schema>>} rule
    * @param {API.InferRuleTerms<Schema>} terms
    */
   constructor(rule, terms) {
@@ -1541,8 +675,269 @@ class Match {
 /**
  * @template {string} The
  * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
+ * @implements {API.MatchView<unknown>}
+ */
+class FactMatch {
+  /**
+   * @param {The} the
+   * @param {Circuit<Schema>} rule
+   * @param {API.InferRuleVariables<Schema>} ports
+   * @param {Partial<API.InferFactTerms<Schema>>} terms
+   */
+  constructor(the, rule, ports, terms) {
+    this.the = the
+    this.rule = rule
+    this.ports = ports
+    this.terms = terms
+    const selector = /** @type {Record<string, API.Term>} */ ({})
+    for (const key of Object.keys(ports)) {
+      if (terms[key] === undefined) {
+        selector[key] = $[Symbol()]
+      } else {
+        selector[key] = terms[key]
+      }
+    }
+
+    this.selector = /** @type {API.InferRuleTerms<Schema>} */ (selector)
+  }
+
+  /** @type {Analyzer.RuleApplication<API.InferRuleVariables<Schema>>|undefined} */
+  #form
+  get form() {
+    if (!this.#form) {
+      this.#form = this.rule.apply(
+        /** @type {API.InferRuleTerms<Schema>} */
+        (this.terms)
+      )
+    }
+    return this.#form
+  }
+
+  /** @returns {Iterator<API.Conjunct|API.Recur>} */
+  *[Symbol.iterator]() {
+    yield this.form
+  }
+
+  /** @type {Analyzer.RuleApplicationPlan<API.InferRuleVariables<Schema>>|undefined} */
+  #plan
+  get plan() {
+    if (!this.#plan) {
+      this.#plan =
+        // If selector and terms match we can reuse the form, but if they do not
+        // we need to create new form which will include all the terms.
+        this.terms === /** @type {object} */ (this.ports) ?
+          this.form.prepare()
+        : this.rule.apply(this.selector).prepare()
+    }
+
+    return this.#plan
+  }
+
+  toJSON() {
+    return this.form.toJSON()
+  }
+  /**
+   * @param {{ from: API.Querier }} source
+   */
+  *execute(source) {
+    const { selector, plan } = this
+    const selection = yield* plan.query(source)
+
+    const facts = []
+    for (const match of selection) {
+      /** @type {Record<string, API.Scalar>} */
+      const model = {}
+      for (const [key, term] of Object.entries(selector)) {
+        model[key] = /** @type {API.Scalar} */ (
+          Variable.is(term) ? match.get(term) : term
+        )
+      }
+      model.the = this.the
+      facts.push(
+        Fact.new(
+          /** @type {API.InferFact<Schema> & {this: API.Entity, the: The }}} */ (
+            model
+          ),
+          this.rule.schema,
+          this.rule.cells
+        )
+      )
+    }
+
+    return facts
+  }
+
+  /**
+   * @param {{ from: API.Querier }} source
+   */
+  query(source) {
+    // 😵‍💫 Here we force plan compilation because we want to get planning error
+    // before we get a
+    this.plan
+    return Task.perform(this.execute(source))
+  }
+}
+
+/**
+ * Subclass of {@link FactMatch} that represents a recursive rule application.
+
+ * @template {string} The
+ * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
+ * @extends {FactMatch<The, Schema>}
+ */
+class Recur extends FactMatch {
+  /**
+   * We override the itertor to yield recursion form as opposed to application
+   * from.
+   */
+  *[Symbol.iterator]() {
+    yield* this.rule.recur(this.terms)
+  }
+}
+
+/**
+ * @template {string} The
+ * @template {{ this: API.Entity, the: The }} Model
+ * @template {API.RuleDescriptor & { this: ObjectConstructor }} Schema
+ */
+class Fact {
+  /**
+   * @template {string} The
+   * @param {Record<string, API.Term> & {this: API.Term<API.Entity>, the: The}} terms
+   */
+  static claim(terms) {
+    /**
+     * ⚠️ This needs to be aligned with {@link Fact.assert} implementation
+     * so that `this` will come out same in both cases.
+     */
+    return Data.Fact(terms)
+  }
+
+  /**
+   * @template {string} The
+   * @template {API.RuleDescriptor & { this: ObjectConstructor }} Schema
+   * @param {The} the
+   * @param {Schema} schema
+   * @param {API.InferRuleVariables<Schema>} cells
+   * @param {API.InferRuleTerms<Omit<Schema, 'this'>> & {this?: API.Entity}} data
+   */
+  static assert(the, schema, cells, data) {
+    /**
+     * ⚠️ This needs to be aligned with {@link Fact.claim} implementation
+     * that `this` will come out same in both cases.
+     * @type {Record<string, API.Scalar>}
+     */
+    const model = { the, this: data.this ?? Link.of({ ...data, the }) }
+
+    for (const key of Object.keys(schema)) {
+      const value = data[key]
+      if (key === 'the' && the !== /** @type {API.Scalar} */ (value)) {
+        throw new TypeError(
+          `Optional property "the" does not match the schema "${the}"`
+        )
+      }
+
+      if (key !== 'this') {
+        if (value === undefined) {
+          throw new TypeError(`Required property "${key}" is missing`)
+        }
+
+        model[key] = /** @type {API.Scalar} */ (value)
+      }
+    }
+
+    return Fact.new(
+      /** @type {API.InferFact<Schema> & {the: The}} */ (model),
+      schema,
+      cells
+    )
+  }
+
+  /**
+   * @template {string} The
+   * @template {API.RuleDescriptor & { this: ObjectConstructor }} Schema
+   * @template {{ this: API.Entity, the: The }} Model
+   * @param {Model} model
+   * @param {Schema} schema
+   * @param {API.InferRuleVariables<Schema>} cells
+   * @returns {Fact<The, Model, Schema> & Model}
+   */
+  static new(model, schema, cells) {
+    return /** @type {Fact<The, Model, Schema> & Model} */ (
+      new this(model, schema, cells)
+    )
+  }
+
+  /**
+   * @param {Model} model
+   * @param {Schema} schema
+   * @param {API.InferRuleVariables<Schema>} cells
+   */
+  constructor(model, schema, cells) {
+    this.#model = model
+    this.#schema = schema
+    this.#cells = cells
+    const { the, ...data } = model
+
+    Object.assign(this, data)
+    this.this = model.this
+  }
+  #model
+  #schema
+  #cells
+
+  get the() {
+    return this.#model.the
+  }
+
+  /**
+   * @returns {IterableIterator<API.SystemOperator & {Assert: API.Fact}>}
+   */
+  *[Symbol.iterator]() {
+    const { the, this: entity } = this
+    yield {
+      match: { of: entity, is: this.#cells.this },
+      operator: '==',
+      Assert: [entity, 'the', the],
+    }
+
+    for (const [name, value] of Object.entries(this.#model)) {
+      if (name !== 'this' && name !== 'the') {
+        yield /** @type {(API.SystemOperator & {Assert: API.Fact})} */ ({
+          Assert: [entity, `${the}/${name}`, value],
+          match: { of: value, is: this.#cells[name] },
+          operator: '==',
+        })
+      }
+    }
+  }
+
+  toJSON() {
+    return { ...this, the: this.the, this: toJSON(this.this) }
+  }
+}
+
+/**
+ * @implements {API.MatchView<unknown>}
+ */
+class Claim {
+  /**
+   * @param {API.Conjunct[]} predicates
+   */
+  constructor(predicates) {
+    this.predicates = predicates
+  }
+  *[Symbol.iterator]() {
+    yield* this.predicates
+  }
+}
+
+/**
+ * @template {string} The
+ * @template {API.FactSchema} Schema
  * @template {API.RuleDescriptor} Locals
  * @template {API.Selector} Selector
+ * @implements {API.Projection<Schema, Selector>}
  * @extends {Callable<(terms?: API.InferRuleTerms<Schema>) => GroupedSelection<The, Schema, Selector>>}
  */
 class Select extends Callable {
@@ -1680,5 +1075,706 @@ class GroupedSelection {
     // before we get a
     this.plan
     return Task.perform(this.execute(source))
+  }
+}
+
+export { $, _ }
+/**
+ * @template Terms
+ * @template {(terms: any) => API.Constraint} F
+ * @extends {Callable<F>}
+ */
+export class Operator extends Callable {
+  /**
+   * @template Terms
+   * @template {(terms: Terms) => API.Constraint} Formula
+   * @param {Formula} match
+   * @returns {Operator<Terms, Formula>}
+   */
+  static for(match) {
+    return new this(match)
+  }
+  /**
+   * @param {F} match
+   */
+  constructor(match) {
+    super(match)
+    this.match = match
+  }
+
+  /**
+   * @param {Terms} terms
+   * @returns {API.Negation}
+   */
+  not(terms) {
+    return { not: this.match(terms) }
+  }
+}
+
+export const Collection = Operator.for(
+  /**
+   * @template {API.Scalar} Member
+   * @param {object} terms
+   * @param {API.Term<API.Entity>} terms.this
+   * @param {API.Term<Member>} terms.of
+   * @param {API.Term<string>} [terms.at]
+   */
+  (terms) => ({
+    match: { the: terms.at, of: terms.this, is: terms.of },
+    fact: {},
+  })
+)
+
+/**
+ * @param {API.Term<string>} term
+ */
+export const text = (term) => new TextVariable(term)
+
+class TextVariable {
+  #this
+  /**
+   * @param {API.Term<string>} term
+   */
+  constructor(term) {
+    this.#this = term
+  }
+
+  /**
+   * @param {API.Term<string>} pattern
+   */
+  like(pattern) {
+    return Text.match({ this: this.#this, pattern: pattern })
+  }
+
+  /**
+   * @param {API.Term<string>} slice
+   */
+  includes(slice) {
+    return Text.includes({ this: this.#this, slice })
+  }
+
+  /**
+   * @param {object} terms
+   * @param {API.Term<string>} terms.with
+   * @param {API.Term<string>} terms.is
+   */
+  concat(terms) {
+    return Text.Concat({ of: [this.#this, terms.with], is: terms.is })
+  }
+
+  words() {
+    const of = this.#this
+    return {
+      /**
+       * @param {API.Term<string>} is
+       */
+      is(is) {
+        return Text.Words({ of, is })
+      },
+    }
+  }
+
+  lines() {
+    const of = this.#this
+    return {
+      /**
+       * @param {API.Term<string>} is
+       */
+      is(is) {
+        return Text.Lines({ of, is })
+      },
+    }
+  }
+
+  toUpperCase() {
+    const of = this.#this
+    return {
+      /**
+       * @param {API.Term<string>} is
+       */
+      is(is) {
+        return Text.UpperCase({ of, is })
+      },
+      /**
+       * @param {API.Term<string>} is
+       */
+      not(is) {
+        return { not: Text.UpperCase({ of, is }) }
+      },
+    }
+  }
+
+  /**
+   */
+  toLowerCase() {
+    const of = this.#this
+    return {
+      /**
+       * @param {API.Term<string>} is
+       */
+      is(is) {
+        return Text.LowerCase({ of, is })
+      },
+      /**
+       * @param {API.Term<string>} is
+       */
+      not(is) {
+        return { not: Text.LowerCase({ of, is }) }
+      },
+    }
+  }
+
+  /**
+   * @param {API.Term<string>} is
+   */
+  trim(is) {
+    return Text.Trim({ of: this.#this, is })
+  }
+}
+
+export class Text {
+  #this
+  /**
+   * @param {API.Term<string>} source
+   */
+  constructor(source) {
+    this.#this = source
+  }
+
+  static match = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.this
+     * @param {API.Term<string>} terms.pattern
+     */
+    ({ this: text, pattern: like }) => ({
+      match: { text, pattern: like },
+      operator: /** @type {const} */ ('text/like'),
+    })
+  )
+
+  /**
+   * @param {object} terms
+   * @param {API.Term<string>} terms.this
+   * @param {API.Term<string>} terms.pattern
+   */
+  static not(terms) {
+    return { not: this.match(terms) }
+  }
+
+  static includes = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.this
+     * @param {API.Term<string>} terms.slice
+     */
+    ({ this: source, slice }) => {
+      return {
+        match: { this: source, slice },
+        operator: /** @type {const} */ ('text/includes'),
+      }
+    }
+  )
+
+  static Concat = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {[left:API.Term<string>, right: API.Term<string>]} terms.of
+     * @param {API.Term<string>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of: [left, right], is }) => {
+      return {
+        match: { of: left, with: right, is },
+        operator: /** @type {const} */ ('text/concat'),
+      }
+    }
+  )
+
+  static Words = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/words'),
+      }
+    }
+  )
+
+  static Lines = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/lines'),
+      }
+    }
+  )
+
+  static UpperCase = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/case/upper'),
+      }
+    }
+  )
+
+  static LowerCase = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     *
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/case/lower'),
+      }
+    }
+  )
+
+  static Trim = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/trim'),
+      }
+    }
+  )
+
+  static TrimStart = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/trim/start'),
+      }
+    }
+  )
+
+  static TrimEnd = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/trim/end'),
+      }
+    }
+  )
+
+  static Length = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<number>} [terms.is]
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/length'),
+      }
+    }
+  )
+}
+
+export class UTF8 {
+  static ToText = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<Uint8Array>} terms.of
+     * @param {API.Term<string>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('utf8/to/text'),
+      }
+    }
+  )
+
+  static FromText = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<string>} terms.of
+     * @param {API.Term<Uint8Array>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('text/to/utf8'),
+      }
+    }
+  )
+}
+
+export class Data {
+  static same = Object.assign(
+    /**
+     * @template {API.Scalar} This
+     * @template {API.Scalar} As
+     * @param {object} terms
+     * @param {API.Term<This>} terms.this
+     * @param {API.Term<As>} [terms.as]
+     * @returns {API.SystemOperator}
+     */
+    ({ this: of, as }) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: { of, is: as },
+        operator: /** @type {const} */ ('=='),
+      })
+    },
+    {
+      /**
+       * @template {API.Scalar} This
+       * @template {API.Scalar} As
+       * @param {object} terms
+       * @param {API.Term<This>} terms.this
+       * @param {API.Term<As>} [terms.as]
+       * @returns {API.Negation}
+       */
+      not: (terms) => ({ not: Data.same(terms) }),
+    }
+  )
+
+  static greater = Operator.for(
+    /**
+     * @template {number|string} T
+     * @param {object} terms
+     * @param {API.Term<T>} terms.this
+     * @param {API.Term<T>} terms.than
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return {
+        match: terms,
+        operator: /** @type {const} */ ('>'),
+      }
+    }
+  )
+  static ['>'] = this.greater
+
+  static greaterOrEqual = Operator.for(
+    /**
+     * @template {number|string} T
+     * @param {object} terms
+     * @param {API.Term<T>} terms.this
+     * @param {API.Term<T>} terms.than
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return {
+        match: terms,
+        operator: /** @type {const} */ ('>='),
+      }
+    }
+  )
+  static ['>='] = this.greaterOrEqual
+
+  static less = Operator.for(
+    /**
+     * @template {number|string} T
+     * @param {object} terms
+     * @param {API.Term<T>} terms.this
+     * @param {API.Term<T>} terms.than
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return {
+        match: terms,
+        operator: /** @type {const} */ ('<'),
+      }
+    }
+  )
+  static ['<'] = this.less
+
+  static lessOrEqual = Operator.for(
+    /**
+     * @template {number|string} T
+     * @param {object} terms
+     * @param {API.Term<T>} terms.this
+     * @param {API.Term<T>} terms.than
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return {
+        match: terms,
+        operator: /** @type {const} */ ('<='),
+      }
+    }
+  )
+
+  static ['<='] = this.lessOrEqual
+
+  static Type = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Scalar>} terms.of
+     * @param {API.Term<API.TypeName>|API.Term<string>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, is }) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: { of, is },
+        operator: /** @type {const} */ ('data/type'),
+      })
+    }
+  )
+
+  static Reference = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<any>} terms.of
+     * @param {API.Term<API.Entity>} [terms.is]
+     * @returns {{match: { of: API.Term, is?: API.Term<API.Entity> }, operator: 'data/refer' }}
+     */
+    ({ of, is }) => {
+      return {
+        match: { of, is },
+        operator: /** @type {const} */ ('data/refer'),
+      }
+    }
+  )
+
+  static Fact = Operator.for(
+    /**
+     * @template {Record<string, API.Term> & {this?: API.Term<API.Entity>}} Terms
+     * @param {Terms} terms
+     * @returns {{match: Omit<Terms, 'this'> & { is?: API.Term<API.Entity> }, operator: 'data/refer' }}
+     */
+    ({ this: is, ...of }) => {
+      return {
+        match: { ...of, is },
+        operator: 'data/refer',
+      }
+    }
+  )
+}
+
+export class Math {
+  static Sum = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.with
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, with: by, is }) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: { of, with: by, is },
+        operator: /** @type {const} */ ('+'),
+      })
+    }
+  )
+  static ['+'] = this.Sum
+
+  static Subtraction = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.by
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: terms,
+        operator: /** @type {const} */ ('-'),
+      })
+    }
+  )
+  static ['-'] = this.Subtraction
+
+  static Multiplication = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.by
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: terms,
+        operator: /** @type {const} */ ('*'),
+      })
+    }
+  )
+  static ['*'] = this.Multiplication
+
+  static Division = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.by
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: terms,
+        operator: /** @type {const} */ ('/'),
+      })
+    }
+  )
+  static ['/'] = this.Division
+
+  static Modulo = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.by
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: terms,
+        operator: /** @type {const} */ ('%'),
+      })
+    }
+  )
+  static ['%'] = this.Modulo
+
+  static Power = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} terms.exponent
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, exponent, is }) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: { of, by: exponent, is },
+        operator: /** @type {const} */ ('**'),
+      })
+    }
+  )
+  static ['**'] = this.Power
+
+  static Absolute = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<API.Numeric>} terms.of
+     * @param {API.Term<API.Numeric>} [terms.is]
+     * @returns {API.SystemOperator}
+     */
+    ({ of, is }) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: { of, is },
+        operator: /** @type {const} */ ('math/absolute'),
+      })
+    }
+  )
+}
+
+const Same = Analyzer.rule({ match: { this: $.this, as: $.this } })
+const NotSame = Analyzer.rule({
+  match: { this: $.this, as: $.as },
+  when: {
+    where: [{ not: Same.apply({ this: $.this, as: $.as }) }],
+  },
+})
+
+export const same = Object.assign(
+  /**
+   * @template {API.Scalar} This
+   * @template {API.Scalar} As
+   * @param {{this: API.Term<This>, as: API.Term<As>}} terms
+   */
+  (terms) => new Match(Same, terms),
+  {
+    /**
+     * @template {API.Scalar} This
+     * @template {API.Scalar} As
+     * @param {{this: API.Term<This>, as: API.Term<As>}} terms
+     */
+    not(terms) {
+      return new Match(NotSame, terms)
+    },
+  }
+)
+
+/**
+ * @template {API.RuleDescriptor} Schema
+ * @param {Schema} schema
+ * @returns {API.InferRuleVariables<Schema>}
+ */
+function derivePorts(schema) {
+  const match = /** @type {Record<string, API.Variable>} */ ({})
+  for (const [key, type] of Object.entries(schema)) {
+    match[key] = $[key]
+  }
+
+  return /** @type {API.InferRuleVariables<Schema>} */ (match)
+}
+
+/**
+ * @template {API.RuleDescriptor} Schema
+ * @param {Schema} schema
+ * @returns {API.InferRuleVariables<Schema> & {_: API.Variable}}
+ */
+function deriveCells(schema) {
+  return Object.assign(derivePorts(schema), { _: $._ })
+}
+
+/**
+ * @param {API.EveryView} source
+ * @returns {Iterable<API.Conjunct|API.Recur>}
+ */
+function* iterateConjuncts(source) {
+  for (const member of source) {
+    if (member === undefined) {
+      continue
+    } else if (Symbol.iterator in member) {
+      for (const conjunct of member) {
+        yield conjunct
+      }
+    } else {
+      yield member
+    }
+  }
+}
+
+/**
+ * @param {API.WhenView} source
+ * @returns {Iterable<[string, API.EveryView]>}
+ */
+function* iterateDisjuncts(source) {
+  if (Array.isArray(source)) {
+    yield ['where', source]
+  } else {
+    yield* Object.entries(source)
   }
 }
