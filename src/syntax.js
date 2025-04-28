@@ -84,7 +84,7 @@ const fromScalar = (source) => {
 /**
  * @template {string} The
  * @template {API.RuleDescriptor} Schema
- * @param {Schema & {the?: The}} source
+ * @param {Schema & {the?: The, this?: ObjectConstructor | { Entity: {} }, _?: never}} source
  * @returns {API.Premise<The, Omit<Schema, 'the'> & { this: ObjectConstructor }, {}>}
  */
 export const fact = ({ the, ...source }) => {
@@ -95,6 +95,10 @@ export const fact = ({ the, ...source }) => {
       fromDescriptor(/** @type {{}|null|undefined} */ (member)) ??
       fromScalar(member)
 
+    if (name === '_') {
+      throw new TypeError(`Schema may no have reserved "_" property`)
+    }
+
     if (descriptor === undefined) {
       throw new TypeError(
         `Unsupported schema member ${toDebugString(/** @type {{}} */ (member))}`
@@ -104,11 +108,23 @@ export const fact = ({ the, ...source }) => {
     }
   }
 
+  if (members.length === 1 && typeof the !== 'string') {
+    throw new TypeError(
+      `Schema must contain at least one property. To tag entities you could use "the" discriminant`
+    )
+  }
+
   const schema = Object.fromEntries(members)
   the =
     typeof the === 'string' ? the : (
       /** @type {The} */ (Link.of(schema).toString())
     )
+
+  if (!schema.this.Entity) {
+    throw new TypeError(
+      `Schema may not have "this" property that is not an entity`
+    )
+  }
 
   return new Premise(the, schema, {})
 }
@@ -177,6 +193,18 @@ class Premise extends Callable {
           fact: {},
         })
       }
+    }
+
+    // If we have no other fields we should still be able to use fact as a
+    // tag which is why we add a predicate for that case.
+    if (where.length === 0) {
+      where.push({
+        match: {
+          the: `the/${the}`,
+          of: $.this,
+          is: the,
+        },
+      })
     }
 
     return { match: $, when: { where } }

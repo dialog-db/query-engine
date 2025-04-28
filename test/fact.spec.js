@@ -472,4 +472,27 @@ export const testDB = {
       }),
     ])
   },
+
+  'test basic fact': async (assert) => {
+    assert.throws(() => fact({}), /schema must contain at least one property/i)
+    assert.throws(
+      () => fact({ this: Object }),
+      /schema must contain at least one property/i
+    )
+
+    const tag = fact({ the: 'action' })
+    assert.deepEqual(tag.assert({}).the, 'action')
+
+    assert.throws(
+      // @ts-expect-error
+      () => fact({ this: Number, that: Number }),
+      /Schema may not have \"this\" property that is not an entity/i
+    )
+
+    assert.throws(
+      // @ts-expect-error
+      () => fact({ _: Object }),
+      /Schema may no have reserved \"_\" property/i
+    )
+  },
 }
