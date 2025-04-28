@@ -16,18 +16,18 @@ export const testAggregate = {
       const dishes = Link.of({ title: 'Do Dishes' })
 
       const db = Memory.create([
-        [groceries, 'list/name', 'Groceries'],
-        [milk, 'todo/title', 'Buy Milk'],
-        [eggs, 'todo/title', 'Buy Eggs'],
-        [bread, 'todo/title', 'Buy Bread'],
-        [groceries, 'list/item', milk],
-        [groceries, 'list/item', eggs],
-        [groceries, 'list/item', bread],
-        [chores, 'list/name', 'Chores'],
-        [laundry, 'todo/title', 'Do Laundry'],
-        [dishes, 'todo/title', 'Do Dishes'],
-        [chores, 'list/item', laundry],
-        [chores, 'list/item', dishes],
+        { the: 'list/name', of: groceries, is: 'Groceries' },
+        { the: 'todo/title', of: milk, is: 'Buy Milk' },
+        { the: 'todo/title', of: eggs, is: 'Buy Eggs' },
+        { the: 'todo/title', of: bread, is: 'Buy Bread' },
+        { the: 'list/item', of: groceries, is: milk },
+        { the: 'list/item', of: groceries, is: eggs },
+        { the: 'list/item', of: groceries, is: bread },
+        { the: 'list/name', of: chores, is: 'Chores' },
+        { the: 'todo/title', of: laundry, is: 'Do Laundry' },
+        { the: 'todo/title', of: dishes, is: 'Do Dishes' },
+        { the: 'list/item', of: chores, is: laundry },
+        { the: 'list/item', of: chores, is: dishes },
       ])
 
       const TodoItem = fact({
@@ -101,8 +101,7 @@ export const testAggregate = {
         'package/types': [{ './src/lib.js': './dist/lib.d.ts' }],
       }
 
-      const db = Memory.create([])
-      yield* db.transact([{ Import: source }])
+      const db = Memory.create({ Import: source })
 
       const Manifest = fact({
         the: 'package',
@@ -254,8 +253,7 @@ export const testAggregate = {
           'post/tags': ['devops', 'automation', 'continuous integration'],
         },
       ]
-      const db = Memory.create([])
-      yield* db.transact([{ Import: { source } }])
+      const db = Memory.create({ Import: { source } })
 
       const Post = fact({
         the: 'post',

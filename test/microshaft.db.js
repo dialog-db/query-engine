@@ -80,5 +80,5 @@ export const staff = {
   dewitt,
 }
 
-export const db = Memory.create([{ staff }])
+export const db = Memory.create({ staff })
 export default db

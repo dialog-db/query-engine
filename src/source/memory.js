@@ -1,5 +1,4 @@
 import * as API from '../api.js'
-import { Constant } from '../lib.js'
 import * as Link from '../data/link.js'
 import * as Fact from '../fact.js'
 
@@ -9,22 +8,19 @@ import * as Fact from '../fact.js'
 export const entity = (source) => Link.of(source)
 
 /**
- * @param {Iterable<API.Fact|API.Instantiation>} source
+ * @param {API.Fact[]|API.DataImport} source
  * @returns {API.Querier & API.Transactor<{}>}
  */
 export const create = (source = []) => {
   const memory = new Memory()
   const cause = version(memory.model)
-  for (const entry of source) {
-    if (Array.isArray(entry)) {
-      const fact = /** @type {API.Fact} */ (entry)
-      associate(memory, [...fact, cause])
-    } else {
-      for (const fact of Fact.derive(
-        /** @type {API.Instantiation} */ (entry)
-      )) {
-        associate(memory, [...fact, cause])
-      }
+  if (Array.isArray(source)) {
+    for (const fact of source) {
+      associate(memory, { ...fact, cause })
+    }
+  } else {
+    for (const fact of Fact.derive(/** @type {API.DataImport} */ (source))) {
+      associate(memory, { ...fact, cause })
     }
   }
 
@@ -60,14 +56,14 @@ export const select = function* (model, { the, of, is }) {
 export const transact = function* (model, transaction) {
   const cause = version(model)
   for (const instruction of transaction) {
-    if (instruction.Assert) {
-      associate(model, [...instruction.Assert, cause])
-    } else if (instruction.Retract) {
-      dissociate(model, instruction.Retract)
-    } else if (instruction.Import) {
-      for (const fact of Fact.derive(instruction.Import)) {
-        associate(model, [...fact, cause])
-      }
+    if (instruction.assert) {
+      associate(model, { ...instruction.assert, cause })
+    } else if (instruction.retract) {
+      dissociate(model, instruction.retract)
+      // } else if (instruction.Import) {
+      //   for (const fact of Fact.derive(instruction.Import)) {
+      //     associate(model, [...fact, cause])
+      //   }
     }
   }
 
@@ -79,16 +75,16 @@ export const transact = function* (model, transaction) {
  * @param {API.Fact} fact
  */
 
-const toKeys = ([entity, attribute, value]) => [
+const toKeys = ({ the, of, is }) => [
   // by entity
-  toKey([entity, null, null]),
-  toKey([entity, attribute, null]),
-  toKey([entity, null, value]),
+  toKey([of, null, null]),
+  toKey([of, the, null]),
+  toKey([of, null, is]),
   // by attribute
-  toKey([null, attribute, null]),
-  toKey([null, attribute, value]),
+  toKey([null, the, null]),
+  toKey([null, the, is]),
   // by value
-  toKey([null, null, value]),
+  toKey([null, null, is]),
   // everything
   toKey([null, null, null]),
 ]
@@ -108,9 +104,9 @@ export const version = ({ data }) => Link.of(data)
  * @param {API.Datum} datum
  */
 const associate = ({ data, index }, datum) => {
-  const [entity, attribute, value] = datum
+  const { of, the, is } = datum
   // derive the fact identifier from the fact data
-  const id = toKey([entity, attribute, value])
+  const id = toKey([of, the, is])
 
   // If the fact is not yet known we need to store it and index it.
   if (!(id in data)) {
@@ -118,7 +114,7 @@ const associate = ({ data, index }, datum) => {
 
     // We also index new fact by each of its components so that we can
     // efficiently query by entity, attribute or value.
-    const keys = [id, ...toKeys([entity, attribute, value])]
+    const keys = [id, ...toKeys(datum)]
 
     for (const key of keys) {
       // If we already have some facts in this index we add a new fact,
@@ -140,16 +136,16 @@ const associate = ({ data, index }, datum) => {
  * @param {API.Fact} fact
  */
 export const dissociate = ({ data, index }, fact) => {
-  const [entity, attribute, value] = fact
+  const { the, of, is } = fact
   // derive the fact identifier from the fact data
-  const id = toKey([entity, attribute, value])
+  const id = toKey([of, the, is])
 
   // If the fact is not yet known we need to store it and index it.
   if (id in data) {
     delete data[id]
 
     // We also need to delete fact from the index.
-    const keys = [id, ...toKeys([entity, attribute, value])]
+    const keys = [id, ...toKeys(fact)]
 
     for (const key of keys) {
       // If we already have some facts in this index we add a new fact,

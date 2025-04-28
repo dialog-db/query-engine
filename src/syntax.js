@@ -919,20 +919,20 @@ class Fact {
   }
 
   /**
-   * @returns {IterableIterator<API.SystemOperator & {Assert: API.Fact}>}
+   * @returns {IterableIterator<API.SystemOperator & {assert: API.Fact}>}
    */
   *[Symbol.iterator]() {
-    const { the, this: entity } = this
+    const { the, this: of } = this
     yield {
-      match: { of: entity, is: this.#cells.this },
+      match: { of, is: this.#cells.this },
       operator: '==',
-      Assert: [entity, 'the', the],
+      assert: { the: `the/${the}`, of: of, is: the },
     }
 
     for (const [name, value] of Object.entries(this.#model)) {
       if (name !== 'this' && name !== 'the') {
-        yield /** @type {(API.SystemOperator & {Assert: API.Fact})} */ ({
-          Assert: [entity, `${the}/${name}`, value],
+        yield /** @type {(API.SystemOperator & {assert: API.Fact})} */ ({
+          assert: { the: `${the}/${name}`, of, is: value },
           match: { of: value, is: this.#cells[name] },
           operator: '==',
         })

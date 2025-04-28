@@ -150,7 +150,7 @@ export const testDB = {
     }
 
     const people = await Person().query({
-      from: Memory.create([marije]),
+      from: Memory.create({ marije }),
     })
 
     assert.deepEqual(people, [
@@ -179,7 +179,7 @@ export const testDB = {
       [`${Person.the}/name`]: 'Jack',
     }
 
-    const db = Memory.create([marije, bjorn])
+    const db = Memory.create({ marije, bjorn })
     const out = await Person.match({ name: Person.ports.name }).query({
       from: db,
     })
@@ -249,7 +249,7 @@ export const testDB = {
     }
 
     const people = await Person().query({
-      from: Memory.create([marije]),
+      from: Memory.create({ marije }),
     })
 
     assert.deepEqual(people, [
@@ -282,7 +282,7 @@ export const testDB = {
       Text.match({ this: $.address, pattern: '*Netherlands' }),
     ])
 
-    const db = Memory.create([marije, bob])
+    const db = Memory.create({ marije, bob })
 
     assert.deepEqual(await Person().query({ from: db }), [
       Person.assert({
@@ -337,7 +337,7 @@ export const testDB = {
       [`${Model.the}/address`]: 'Paris, France',
     }
 
-    const db = Memory.create([marije, bob, alice])
+    const db = Memory.create({ marije, bob, alice })
     assert.deepEqual(await View().query({ from: db }), [
       View.assert({
         this: Link.of(alice),

@@ -1,7 +1,7 @@
 import { Memory } from './lib.js'
 
-export default Memory.create([
-  {
+export default Memory.create({
+  upload: {
     'ucan/cid': 'bafy...upload',
     'ucan/issuer': 'did:key:zAlice',
     'ucan/audience': 'did:key:zBob',
@@ -13,7 +13,7 @@ export default Memory.create([
       },
     ],
   },
-  {
+  store: {
     'ucan/cid': 'bafy...store',
     'ucan/issuer': 'did:key:zAlice',
     'ucan/audience': 'did:key:zBob',
@@ -29,4 +29,4 @@ export default Memory.create([
       },
     ],
   },
-])
+})

@@ -6,7 +6,7 @@ import * as Match from '../src/match.js'
  */
 export const testEvaluation = {
   'plans negation last': async (assert) => {
-    const db = Memory.create([alice])
+    const db = Memory.create({ alice })
 
     const plan = Analyzer.rule({
       match: {
@@ -105,7 +105,7 @@ export const testEvaluation = {
   },
 
   'same variable as different binding': async (assert) => {
-    const db = Memory.create([alice])
+    const db = Memory.create({ alice })
 
     const rule = Analyzer.rule({
       match: {
@@ -195,7 +195,7 @@ export const testEvaluation = {
       'Person/name': 'Alice',
       'Manages/employee': bob,
     }
-    const db = Memory.create([alice])
+    const db = Memory.create({ alice })
 
     const rule = Analyzer.rule({
       match: {

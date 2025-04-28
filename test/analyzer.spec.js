@@ -1507,12 +1507,12 @@ export const testAnalyzer = {
       .apply({ person: $.q, name: 'Irakli' })
       .prepare()
 
-    const source = Memory.create([
-      {
+    const source = Memory.create({
+      import: {
         irakli: { 'person/name': 'Irakli' },
         zoe: { 'person/name': 'Zoe' },
       },
-    ])
+    })
     const inspector = Inspector.from(source)
     const results = await Task.perform(plan.query({ from: inspector }))
 

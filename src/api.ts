@@ -399,22 +399,27 @@ export type Attribute = string
  * - `value` - Something that does not change e.g. 42, "John", true. Fact relates
  *    an `entity` to a particular `value` through an `attribute`.ich
  */
-export type Fact = readonly [
-  entity: Entity,
-  attribute: Attribute,
-  value: Scalar,
-]
+export interface Fact<
+  T extends The = The,
+  Of extends Entity = Entity,
+  Is extends Scalar = Scalar,
+> {
+  the: The
+  of: Of
+  is: Is
+}
 
 /**
  * An atomic {@link Fact} with a `cause` field providing a causal relationship
  * that acts like timestamp.
  */
-export type Datum = readonly [
-  entity: Entity,
-  attribute: Attribute,
-  value: Scalar,
-  cause: Entity,
-]
+export interface Datum<
+  T extends The = The,
+  Of extends Entity = Entity,
+  Is extends Scalar = Scalar,
+> extends Fact<T, Of, Is> {
+  cause: Entity
+}
 
 /**
  * Set of {@link Fact}s associating several attributes with the same new entity.
@@ -431,8 +436,8 @@ export type Datum = readonly [
  * each `Instantiation` in the array with an attribute corresponding to the
  * key.
  */
-export interface Instantiation {
-  [Key: string]: Scalar | Scalar[] | Instantiation | Instantiation[]
+export interface DataImport {
+  [Key: string]: Scalar | Scalar[] | DataImport | DataImport[]
 }
 
 export interface FactsSelector {
@@ -442,9 +447,8 @@ export interface FactsSelector {
 }
 
 export type Instruction = Variant<{
-  Assert: Fact
-  Retract: Fact
-  Import: Instantiation
+  assert: Fact
+  retract: Fact
 }>
 
 export interface Transaction extends Iterable<Instruction> {}
@@ -1150,7 +1154,7 @@ export type FactView<
 > = InferFact<Schema> & {
   the: The
   toJSON(): InferFact<Schema> & { the: The }
-} & Iterable<{ Assert: Fact } & SystemOperator>
+} & Iterable<{ assert: Fact } & SystemOperator>
 
 export interface Relation<The extends string, Schema extends FactSchema> {
   /**

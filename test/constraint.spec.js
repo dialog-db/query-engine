@@ -1,10 +1,10 @@
 import { Memory, $, fact, Collection, Text } from './lib.js'
 
-const db = Memory.create([
-  {
+const db = Memory.create({
+  import: {
     'content/words': ['pizza', 'store/*', 'store/add', '*', '[a-z]'],
   },
-])
+})
 
 const Content = fact({ the: 'content', words: Object })
 

@@ -3,48 +3,56 @@ import * as Constant from './constant.js'
 import * as Link from './data/link.js'
 
 /**
- * @param {API.Instantiation} source
+ * @param {API.DataImport} source
  * @returns {Generator<API.Fact, API.Entity>}
  */
 export const derive = function* iterate(source) {
-  const entity = Link.of(source)
-  for (const [key, value] of Object.entries(source)) {
-    switch (typeof value) {
+  const of = Link.of(source)
+  for (const [the, is] of Object.entries(source)) {
+    switch (typeof is) {
       case 'boolean':
       case 'number':
       case 'bigint':
       case 'string':
-        yield [entity, key, value]
+        yield /** @type {API.Fact} */ ({ the, of, is })
         break
       case 'object': {
-        if (Constant.is(value)) {
-          yield [entity, key, value]
-        } else if (Array.isArray(value)) {
+        if (Constant.is(is)) {
+          yield /** @type {API.Fact} */ ({ the, of, is })
+        } else if (Array.isArray(is)) {
           let at = 0
-          const array = Link.of(value)
-          for (const member of value) {
+          const array = Link.of(is)
+          for (const member of is) {
             if (Constant.is(member)) {
-              yield [array, `[${at}]`, member]
+              yield /** @type {API.Fact} */ ({
+                the: `[${at}]`,
+                of: array,
+                is: member,
+              })
               at++
             } else {
               const element = yield* iterate(member)
-              yield [array, `[${at}]`, element]
+              yield /** @type {API.Fact} */ ({
+                the: `[${at}]`,
+                of: array,
+                is: element,
+              })
               at++
             }
           }
-          yield [entity, key, array]
+          yield /** @type {API.Fact} */ ({ the, of, is: array })
         } else {
-          const object = yield* iterate(value)
-          yield [entity, key, object]
+          const object = yield* iterate(is)
+          yield /** @type {API.Fact} */ ({ the, of, is: object })
         }
         break
       }
       default:
-        throw new TypeError(`Unsupported value type: ${value}`)
+        throw new TypeError(`Unsupported value type: ${is}`)
     }
   }
 
-  return entity
+  return of
 }
 
 /**

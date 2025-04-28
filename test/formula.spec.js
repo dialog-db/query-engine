@@ -15,15 +15,15 @@ import {
 const refer = Memory.entity
 
 const db = Memory.create([
-  [refer(1), 'text', 'hello'],
-  [refer(1), 'int', 3],
-  [refer(1), 'bigint', 2n ** 60n],
-  [refer(1), 'float', 5.2],
-  [refer(1), 'true', true],
-  [refer(1), 'false', false],
-  [refer(1), 'bytes', new Uint8Array([1, 2, 3])],
-  [refer(1), 'null', null],
-  [refer(1), 'id', refer(1)],
+  { of: refer(1), the: 'type/text', is: 'hello' },
+  { of: refer(1), the: 'type/int', is: 3 },
+  { of: refer(1), the: 'type/bigint', is: 2n ** 60n },
+  { of: refer(1), the: 'type/float', is: 5.2 },
+  { of: refer(1), the: 'type/true', is: true },
+  { of: refer(1), the: 'type/false', is: false },
+  { of: refer(1), the: 'type/bytes', is: new Uint8Array([1, 2, 3]) },
+  { of: refer(1), the: 'type/null', is: null },
+  { of: refer(1), the: 'type/id', is: refer(1) },
 ])
 
 /**
@@ -33,15 +33,15 @@ export const testRelation = {
   'test type relation': (assert) =>
     Task.spawn(function* () {
       const expert = /** @type {const} */ ({
-        text: 'string',
-        int: 'integer',
-        bigint: 'bigint',
-        float: 'float',
-        true: 'boolean',
-        false: 'boolean',
-        bytes: 'bytes',
-        null: 'null',
-        id: 'reference',
+        'type/text': 'string',
+        'type/int': 'integer',
+        'type/bigint': 'bigint',
+        'type/float': 'float',
+        'type/true': 'boolean',
+        'type/false': 'boolean',
+        'type/bytes': 'bytes',
+        'type/null': 'null',
+        'type/id': 'reference',
       })
 
       for (const [key, type] of Object.entries(expert)) {
@@ -103,15 +103,15 @@ export const testRelation = {
   'test == relation': (assert) =>
     Task.spawn(function* () {
       const expert = {
-        text: 'hello',
-        int: 3,
-        bigint: 2n ** 60n,
-        float: 5.2,
-        true: true,
-        false: false,
-        bytes: new Uint8Array([1, 2, 3]),
-        // null: 'null',
-        id: refer(1),
+        'type/text': 'hello',
+        'type/int': 3,
+        'type/bigint': 2n ** 60n,
+        'type/float': 5.2,
+        'type/true': true,
+        'type/false': false,
+        'type/bytes': new Uint8Array([1, 2, 3]),
+        // 'type/null': 'null',
+        'type/id': refer(1),
       }
 
       for (const [key, value] of Object.entries(expert)) {

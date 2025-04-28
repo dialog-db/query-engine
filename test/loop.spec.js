@@ -4,16 +4,16 @@ const id = Memory.entity
 
 const db = Memory.create([
   // bafyr4ibnhlpn74i3mhyuzcdogwx2anttnxgypj2ne624cuicexiplexccm
-  [id(0), 'data/type', 'list'],
+  { of: id(0), the: 'data/type', is: 'list' },
   // bafyr4ici7rzb7o6bolqjex5cplywohpcew5je4juqauzrmikcvukdcdffm
-  [id(1), 'meta/name', 'a'],
+  { of: id(1), the: 'meta/name', is: 'a' },
   // bafyr4iflco7n6qxijoxa67dcy7owvcw2k4piqkn623vflaqx6a3bwxrf2a
-  [id(2), 'meta/name', 'b'],
+  { of: id(2), the: 'meta/name', is: 'b' },
   // bafyr4ihb4dub23vdtmgprodp7vcasiibd5luadf4h53krilrsbvjxdlvau
-  [id(3), 'meta/name', 'c'],
-  [id(0), 'list/next', id(1)],
-  [id(1), 'list/next', id(2)],
-  [id(2), 'list/next', id(3)],
+  { of: id(3), the: 'meta/name', is: 'c' },
+  { of: id(0), the: 'list/next', is: id(1) },
+  { of: id(1), the: 'list/next', is: id(2) },
+  { of: id(2), the: 'list/next', is: id(3) },
 ])
 
 /**
@@ -70,7 +70,7 @@ export const testRecursion = {
     }
 
     const ancestors = await Ancestor().query({
-      from: Memory.create([people]),
+      from: Memory.create({ people }),
     })
 
     assert.deepEqual(
@@ -138,22 +138,22 @@ export const testRecursion = {
     const dave = Link.of('dave')
     const db = Memory.create([
       // First branch
-      [alice, 'child/parent', bob],
-      [bob, 'child/parent', mallory],
-      [mallory, 'child/parent', jack],
+      { of: alice, the: 'child/parent', is: bob },
+      { of: bob, the: 'child/parent', is: mallory },
+      { of: mallory, the: 'child/parent', is: jack },
 
       // Second branch
-      [alice, 'child/parent', charlie],
-      [charlie, 'child/parent', dave],
-      [dave, 'child/parent', jack],
+      { of: alice, the: 'child/parent', is: charlie },
+      { of: charlie, the: 'child/parent', is: dave },
+      { of: dave, the: 'child/parent', is: jack },
 
       // Third branch
-      [alice, 'child/parent', david],
-      [david, 'child/parent', mallory],
+      { of: alice, the: 'child/parent', is: david },
+      { of: david, the: 'child/parent', is: mallory },
 
       // Common descendants
-      [jack, 'child/parent', adam],
-      [adam, 'child/parent', eve],
+      { of: jack, the: 'child/parent', is: adam },
+      { of: adam, the: 'child/parent', is: eve },
     ])
 
     const ancestors = await Ancestor().query({ from: db })

@@ -242,7 +242,7 @@ export class SelectPlan {
 
       const facts = yield* source.select(query)
 
-      for (const [of, the, is] of facts) {
+      for (const { the, of, is } of facts) {
         let match = Match.clone(frame)
 
         if (Variable.is(selector.the)) {

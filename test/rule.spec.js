@@ -211,14 +211,17 @@ export const testRules = {
         Position.claim({ manager, employee }),
       ])
 
-    assert.deepEqual(await Position().query({ from: Memory.create([alice]) }), [
-      Position.assert({ manager: 'Alice', employee: 'Bob' }),
-      Position.assert({ manager: 'Bob', employee: 'Mallory' }),
-    ])
+    assert.deepEqual(
+      await Position().query({ from: Memory.create({ alice }) }),
+      [
+        Position.assert({ manager: 'Alice', employee: 'Bob' }),
+        Position.assert({ manager: 'Bob', employee: 'Mallory' }),
+      ]
+    )
 
     assert.deepEqual(
       await Position.match({ employee: 'Bob' }).query({
-        from: Memory.create([alice]),
+        from: Memory.create({ alice }),
       }),
       [Position.assert({ manager: 'Alice', employee: 'Bob' })]
     )
