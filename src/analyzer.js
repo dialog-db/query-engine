@@ -885,9 +885,10 @@ export class RuleApplication {
 
   toDebugString() {
     const { match, rule } = this
-    return `{ match: ${Terms.toDebugString(
-      /** @type {{}} */ (match)
-    )}, rule: ${toDebugString(rule)} }`
+    return `{
+    match: ${Terms.toDebugString(/** @type {{}} */ (match))},
+    rule: ${indent(toDebugString(rule))}
+  }`
   }
 
   toJSON() {
@@ -1059,7 +1060,7 @@ export class DeductiveRule {
 
     return indent(`{
   match: ${Terms.toDebugString(this.match)},
-  ${body}}
+  ${body}
 }`)
   }
 
