@@ -335,6 +335,23 @@ class Claim extends Callable {
   select(compile = (variables) => /** @type {Terms} */ (variables)) {
     return new Select(this.premise, this.build(), this.cells, compile)
   }
+
+  /**
+   * @template View
+   * @param {(fact: Fact) => View} mapper
+   * @returns {API.Claim<View, The, Schema, Context>}
+   */
+  map(mapper) {
+    return new Claim(
+      this.premise,
+      {
+        assert: (fact) => {
+          return mapper(this.conclusion.assert(fact))
+        },
+      },
+      this.context
+    )
+  }
 }
 
 /**
@@ -495,6 +512,24 @@ class Deduction extends Claim {
     }
 
     return this.#induction
+  }
+
+  /**
+   * @template View
+   * @param {(fact: Fact) => View} mapper
+   * @returns {API.Deduction<View, The, Schema, Context>}
+   */
+  map(mapper) {
+    return new Deduction(
+      this.premise,
+      {
+        assert: (fact) => {
+          return mapper(this.conclusion.assert(fact))
+        },
+      },
+      this.context,
+      this.compile
+    )
   }
 }
 

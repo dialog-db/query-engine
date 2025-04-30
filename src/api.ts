@@ -1173,6 +1173,8 @@ export interface Claim<
    * branch is an AND joined predicates by passed variables.
    */
   when(derive: SomeBuilder<Schema & Context>): Deduction<Fact, The, Schema, {}>
+
+  map<View>(mapper: (fact: Fact) => View): Claim<View, The, Schema, Context>
 }
 
 export interface NegationPredicate extends Iterable<Negation> {}
@@ -1241,6 +1243,8 @@ export interface Deduction<
   select<Terms extends Selector>(
     derive: ProjectionBuilder<Schema & Context, Terms>
   ): Projection<Schema, Terms>
+
+  map<View>(mapper: (fact: Fact) => View): Deduction<View, The, Schema, Context>
 }
 
 export interface Projection<Schema extends FactSchema, Terms extends Selector> {

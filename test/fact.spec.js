@@ -495,4 +495,41 @@ export const testDB = {
       /Schema may no have reserved \"_\" property/i
     )
   },
+
+  'test map method': async (assert) => {
+    const Counter = fact({
+      the: 'io.gozala.counter',
+      count: Number,
+      title: String,
+    })
+
+    class CounterView {
+      /**
+       * @param {{count:number, title:string}} model
+       */
+      constructor(model) {
+        this.model = model
+      }
+    }
+
+    const counter = {
+      'io.gozala.counter/count': 0,
+      'io.gozala.counter/title': 'test',
+    }
+    const db = Memory.create({ import: { counter } })
+
+    const View = Counter.map((fact) => new CounterView(fact))
+
+    const views = await View().query({ from: db })
+
+    assert.deepEqual(
+      views,
+      [
+        new CounterView(
+          Counter.assert({ this: Link.of(counter), count: 0, title: 'test' })
+        ),
+      ],
+      'results got mapped'
+    )
+  },
 }
