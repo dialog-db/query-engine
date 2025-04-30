@@ -224,13 +224,11 @@ class Builder extends Callable {
   }
 
   /**
-   * @param {API.InferFactTerms<Schema>} terms
+   * @param {API.InferSchemaTerms<Schema>} terms
    * @returns {API.MatchView}
    */
   recur(terms) {
-    return [
-      this.build().apply(/** @type {API.InferSchemaTerms<Schema>} */ (terms)),
-    ]
+    return [this.apply(terms)]
   }
 
   /**
@@ -244,8 +242,6 @@ class Builder extends Callable {
       this.premise,
       this.conclusion,
       this,
-      // TODO: previously we just passed `?? this.attributes` not sure if we
-      // should do this here
       completeTerms(this.premise.schema, terms)
     )
   }
@@ -289,10 +285,17 @@ class Premise extends Builder {
    */
   constructor(premise, conclusion, context) {
     super(premise, conclusion)
-    this.#context = context
+    this.context = context
+    this.#cells =
+      /** @type {API.InferSchemaAttributes<Schema & Context> & {_: API.Variable, this: API.Variable<API.Entity>}}  */
+      (deriveCells({ ...context, ...premise.schema }))
   }
 
-  #context
+  /** @type {API.InferSchemaAttributes<Schema & Context> & {_: API.Variable, this: API.Variable<API.Entity>}} */
+  #cells
+  get cells() {
+    return this.#cells
+  }
 
   /**
    * Map of variables corresponding to the fact members.
@@ -301,10 +304,6 @@ class Premise extends Builder {
    */
   get attributes() {
     return this.premise.attributes
-  }
-
-  get cells() {
-    return this.attributes
   }
 
   /**
@@ -324,12 +323,12 @@ class Premise extends Builder {
    *
    * @template {Exclude<API.RuleDescriptor, Schema & Context>} Extension
    * @param {Extension} extension
-   * @returns {Premise<Fact, The, Schema, Context & Extension>}
+   * @returns {API.Claim<Fact, The, Schema, Context & Extension>}
    */
   with(extension) {
     return new Premise(this.premise, this.conclusion, {
       ...extension,
-      ...this.#context,
+      ...this.context,
     })
   }
 
@@ -341,11 +340,11 @@ class Premise extends Builder {
    * works each member of the returned object represent OR branches where each
    * branch is an AND joined predicates by passed variables.
    *
-   * @param {API.SomeBuilder<Schema & Context>} build
-   * @returns {Deduction<Fact, The, Schema, Context>}
+   * @param {API.SomeBuilder<Schema & Context>} compile
+   * @returns {API.Deduction<Fact, The, Schema, Context>}
    */
-  when(build) {
-    return new Deduction(this.premise, this.conclusion, this.#context, build)
+  when(compile) {
+    return new Deduction(this.premise, this.conclusion, this.context, compile)
   }
 
   /**
@@ -353,66 +352,28 @@ class Premise extends Builder {
    * true. This is a shortuct of `.when` which is convinient in cases where
    * only one branch is needed.
    *
-   * @param {API.EveryBuilder<Schema & Context>} build
-   * @returns {Deduction<Fact, The, Schema, Context>}
+   * @param {API.EveryBuilder<Schema & Context>} compile
+   * @returns {API.Deduction<Fact, The, Schema, Context>}
    */
-  where(build) {
-    return new Deduction(this.premise, this.conclusion, this.#context, build)
+  where(compile) {
+    return new Deduction(this.premise, this.conclusion, this.context, compile)
   }
-}
 
-/**
- *
- * @template {API.FactSchema} Schema
- * @template Fact
- * @typedef {object} Circuit
- * @property {API.InferSchemaAttributes<Schema>} cells
- * @property {(terms: API.InferSchemaTerms<Schema>) => Analyzer.RuleApplication<API.InferSchemaAttributes<Schema>>} apply
- * @property {(terms: API.InferSchemaTerms<Schema>) => API.MatchView} recur
- * @property {(claim: API.InferAssert<Schema>) => Fact} assert
- */
-
-/**
- * @template Fact
- * @template {string} The
- * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
- * @implements {API.MatchView<unknown>}
- */
-class Negation {
   /**
-   * @param {API.Premise<The, Schema>} premise
-   * @param {API.Conclusion<Fact, The, Schema>} conclusion
-   * @param {Circuit<Schema, Fact>} rule
-   * @param {Partial<API.InferSchemaTerms<Schema>>} terms
+   * This method can be used to project different layout of the selected facts,
+   * it is maraked deprecated, but it is not deprecated but rather an
+   * experimental and may be removed at any point. This method can be used as an
+   * aggregator to group results, however this leads to nested structures which
+   * are at odds with the facts that are flat records.
+   *
+   * @deprecated
+   *
+   * @template {API.Selector} Terms
+   * @param {API.ProjectionBuilder<Schema & Context, Terms>} compile
+   * @returns {Select<The, Schema, Context, Terms>}
    */
-  constructor(premise, conclusion, rule, terms) {
-    this.premise = premise
-    this.conclusion = conclusion
-    this.rule = rule
-    this.terms = terms
-  }
-  /** @type {Analyzer.Negation|undefined} */
-  #build
-  build() {
-    if (!this.#build) {
-      this.#build = this.rule
-        .apply(
-          // This not true, but apply does not actually need all terms we only
-          // type it this way to make lower level API less error prone. Perhaps
-          // we need to revise it to having to lie to it.
-          /** @type {API.InferSchemaTerms<Schema>} */ (this.terms)
-        )
-        .negate()
-    }
-    return this.#build
-  }
-
-  toJSON() {
-    return this.build().toJSON()
-  }
-
-  *[Symbol.iterator]() {
-    yield this.build()
+  select(compile = (variables) => /** @type {Terms} */ (variables)) {
+    return new Select(this.premise, this.build(), this.cells, compile)
   }
 }
 
@@ -422,9 +383,9 @@ class Negation {
  * @template {API.FactSchema} Schema
  * @template {API.RuleDescriptor} Context
  * @implements {API.Deduction<Fact, The, Schema, Context>}
- * @extends {Callable<(terms?: API.InferFactTerms<Schema>) => FactMatch<Fact, The, Schema>>}
+ * @extends {Premise<Fact, The, Schema, Context>}
  */
-class Deduction extends Callable {
+class Deduction extends Premise {
   /**
    * @param {API.Premise<The, Schema>} premise
    * @param {API.Conclusion<Fact, The, Schema>} conclusion
@@ -432,34 +393,8 @@ class Deduction extends Callable {
    * @param {API.WhenBuilder<Schema & Context>} compile
    */
   constructor(premise, conclusion, context, compile) {
-    super((terms) => this.match(terms))
-
-    this.premise = premise
-    this.conclusion = conclusion
-    this.context = context
+    super(premise, conclusion, context)
     this.compile = compile
-    this.#cells =
-      /** @type {API.InferSchemaAttributes<Schema & Context> & {_: API.Variable, this: API.Variable<API.Entity>}}  */
-      (deriveCells({ ...this.context, ...this.premise.schema }))
-  }
-
-  /**
-   * @returns {API.Deduction<Fact, The, Schema, Context>}
-   */
-  get me() {
-    return this
-  }
-
-  get the() {
-    return this.premise.the
-  }
-  /**
-   * Map of variables corresponding to the fact members.
-   *
-   * @type {API.InferSchemaAttributes<Schema>}
-   */
-  get attributes() {
-    return this.premise.attributes
   }
 
   /**
@@ -473,51 +408,6 @@ class Deduction extends Callable {
    * @type {Circuit<Schema, Fact>|null}
    */
   self = null
-
-  /** @type {(API.InferSchemaAttributes<Schema & Context> & {_: API.Variable, this: API.Variable<API.Entity>})} */
-  #cells
-  get cells() {
-    return this.#cells
-  }
-
-  // compile() {
-  //   const when = /** @type {Record<string, API.Every>} */ ({})
-  //   for (const [name, disjunct] of iterateDisjuncts(this.build(this.cells))) {
-  //     when[name] = /** @type {[API.Conjunct, ...API.Conjunct[]]} */ ([
-  //       ...iterateConjuncts(disjunct),
-  //     ])
-  //   }
-
-  //   return {
-  //     match: this.ports,
-  //     when: /** @type {API.Some} */ (when),
-  //   }
-  // }
-
-  // /** @type {API.DeductiveRule<API.InferSchemaAttributes<Schema>>|undefined} */
-  // #source
-  // get source() {
-  //   if (!this.#source) {
-  //     this.self = this
-  //     this.#source = this.compile()
-  //     this.self = null
-  //   }
-  //   return this.#source
-  // }
-
-  // /** @type {Analyzer.DeductiveRule<API.InferSchemaAttributes<Schema>>|undefined} */
-  // #form
-
-  // get form() {
-  //   const form = this.#form
-  //   if (form) {
-  //     return form
-  //   } else {
-  //     const form = Analyzer.rule(this.source)
-  //     this.#form = form
-  //     return form
-  //   }
-  // }
 
   /** @type {Analyzer.DeductiveRule<API.InferSchemaAttributes<Schema>>|undefined} */
   #build
@@ -554,7 +444,7 @@ class Deduction extends Callable {
   }
 
   /**
-   * @param {API.InferFactTerms<Schema>} terms
+   * @param {API.InferSchemaTerms<Schema>} terms
    * @returns {API.MatchView}
    */
   recur(terms) {
@@ -617,91 +507,10 @@ class Deduction extends Callable {
   }
 
   /**
-   * Creates a predicate for this fact that excludes ones that match given
-   * terms.
-   *
-   * @param {Partial<API.InferSchemaTerms<Schema>>} terms
-   * @returns {Negation<Fact, The, Schema>}
-   */
-  not(terms) {
-    return new Negation(this.premise, this.conclusion, this, terms)
-  }
-
-  /**
-   * Asserts this fact with a given data. If data does not conforms this fact
-   * throws an error.
-   *
-   * @param {API.InferAssert<Schema>} fact
-   * @returns {Fact}
-   */
-  assert(fact) {
-    return this.conclusion.assert(fact)
-  }
-
-  /**
    * @param {API.InferClaimTerms<Schema>} fact
    */
   claim(fact) {
     return this.induce(fact)
-  }
-
-  /**
-   * This method can be used to project different layout of the selected facts,
-   * it is maraked deprecated, but it is not deprecated but rather an
-   * experimental and may be removed at any point. This method can be used as an
-   * aggregator to group results, however this leads to nested structures which
-   * are at odds with the facts that are flat records.
-   *
-   * @deprecated
-   *
-   * @template {API.Selector} Terms
-   * @param {API.ProjectionBuilder<Schema & Context, Terms>} compile
-   * @returns {Select<The, Schema, Context, Terms>}
-   */
-  select(compile = (variables) => /** @type {Terms} */ (variables)) {
-    return new Select(this.premise, this.build(), this.cells, compile)
-  }
-
-  /**
-   * Defines local variables so they could be used in the `.when` and `.where`
-   * methods without makeing those part of the fact.
-   *
-   * @template {Omit<API.RuleDescriptor, keyof Schema | keyof Context>} Extension
-   * @param {Extension} extension
-   * @returns {API.Claim<Fact, The, Schema, Context & Extension>}
-   */
-  with(extension) {
-    return new Premise(this.premise, this.conclusion, {
-      ...this.context,
-      ...extension,
-    })
-  }
-
-  /**
-   * Defines a rule that deduces this fact whenever any of the branches are true.
-   * Takes a `build` function that will be given set of variables corresponding
-   * to the fact members which must return object where keys represent disjuncts
-   * and values are arrays representing conjuncts for those disjuncts. In other
-   * works each member of the returned object represent OR branches where each
-   * branch is an AND joined predicates by passed variables.
-   *
-   * @param {API.SomeBuilder<Schema & Context>} compile
-   * @returns {API.Deduction<Fact, The, Schema, Context>}
-   */
-  when(compile) {
-    return new Deduction(this.premise, this.conclusion, this.context, compile)
-  }
-
-  /**
-   * Defines a rule that dudces this fact whenever all of the predicates are
-   * true. This is a shortuct of `.when` which is convinient in cases where
-   * only one branch is needed.
-   *
-   * @param {API.EveryBuilder<Schema & Context>} compile
-   * @returns {Deduction<Fact, The, Schema, Context>}
-   */
-  where(compile) {
-    return new Deduction(this.premise, this.conclusion, this.context, compile)
   }
 
   /** @type {Induction<Fact, The, Schema, Context>|undefined} */
@@ -743,6 +552,61 @@ class Induction extends Deduction {
    */
   recur(terms) {
     return this.induce(terms)
+  }
+}
+
+/**
+ *
+ * @template {API.FactSchema} Schema
+ * @template Fact
+ * @typedef {object} Circuit
+ * @property {API.InferSchemaAttributes<Schema>} cells
+ * @property {(terms: API.InferSchemaTerms<Schema>) => Analyzer.RuleApplication<API.InferSchemaAttributes<Schema>>} apply
+ * @property {(terms: API.InferSchemaTerms<Schema>) => API.MatchView} recur
+ * @property {(claim: API.InferAssert<Schema>) => Fact} assert
+ */
+
+/**
+ * @template Fact
+ * @template {string} The
+ * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
+ * @implements {API.MatchView<unknown>}
+ */
+class Negation {
+  /**
+   * @param {API.Premise<The, Schema>} premise
+   * @param {API.Conclusion<Fact, The, Schema>} conclusion
+   * @param {Circuit<Schema, Fact>} rule
+   * @param {Partial<API.InferSchemaTerms<Schema>>} terms
+   */
+  constructor(premise, conclusion, rule, terms) {
+    this.premise = premise
+    this.conclusion = conclusion
+    this.rule = rule
+    this.terms = terms
+  }
+  /** @type {Analyzer.Negation|undefined} */
+  #build
+  build() {
+    if (!this.#build) {
+      this.#build = this.rule
+        .apply(
+          // This not true, but apply does not actually need all terms we only
+          // type it this way to make lower level API less error prone. Perhaps
+          // we need to revise it to having to lie to it.
+          /** @type {API.InferSchemaTerms<Schema>} */ (this.terms)
+        )
+        .negate()
+    }
+    return this.#build
+  }
+
+  toJSON() {
+    return this.build().toJSON()
+  }
+
+  *[Symbol.iterator]() {
+    yield this.build()
   }
 }
 

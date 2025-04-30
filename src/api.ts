@@ -1124,15 +1124,15 @@ export interface Claim<
     derive: EveryBuilder<Schema & Context>
   ): Deduction<Fact, The, Schema, {}>
 
-  // /**
-  //  * Defines a rule that deduces this fact whenever any of the branches are true.
-  //  * Takes a `build` function that will be given set of variables corresponding
-  //  * to the fact members which must return object where keys represent disjuncts
-  //  * and values are arrays representing conjuncts for those disjuncts. In other
-  //  * works each member of the returned object represent OR branches where each
-  //  * branch is an AND joined predicates by passed variables.
-  //  */
-  // when(derive: SomeBuilder<Schema & Context>): Deduction<Fact, The, Schema, {}>
+  /**
+   * Defines a rule that deduces this fact whenever any of the branches are true.
+   * Takes a `build` function that will be given set of variables corresponding
+   * to the fact members which must return object where keys represent disjuncts
+   * and values are arrays representing conjuncts for those disjuncts. In other
+   * works each member of the returned object represent OR branches where each
+   * branch is an AND joined predicates by passed variables.
+   */
+  when(derive: SomeBuilder<Schema & Context>): Deduction<Fact, The, Schema, {}>
 }
 
 export interface NegationPredicate extends Iterable<Negation> {}

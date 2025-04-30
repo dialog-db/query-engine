@@ -427,8 +427,6 @@ export const testDB = {
         Manager.claim({ employee, manager }),
       ])
 
-    Manager.build().toDebugString()
-
     const ReportingToBenOrAlyssa = Manager.when(
       ({ this: fact, employee, manager }) => ({
         Ben: [
