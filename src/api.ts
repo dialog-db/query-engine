@@ -1110,9 +1110,9 @@ export interface Claim<
    * Defines temporary variables made available in the {@link when} /
    * {@link where} builder methods so they can be used inside the rule body.
    */
-  // with<Extension extends Exclude<RuleDescriptor, Schema & Context>>(
-  //   extension: Extension
-  // ): Claim<Fact, The, Schema, Context & Extension>
+  with<Extension extends Exclude<RuleDescriptor, Schema & Context>>(
+    extension: Extension
+  ): Claim<Fact, The, Schema, Context & Extension>
 
   /**
    * Defines a rule that concludes fact corresponding to this premise whenever
@@ -1176,7 +1176,7 @@ export interface Relation<Fact, The extends string, Schema extends FactSchema> {
    * Creates negation (anti-join) that will omit all the facts that match
    * the premise with the given terms.
    */
-  not(terms: Partial<InferFactTerms<Schema>>): NegationPredicate
+  not(terms: Partial<InferSchemaTerms<Schema>>): NegationPredicate
 
   /**
    * Creates an assertion for this the fact denoted by this premise, which can

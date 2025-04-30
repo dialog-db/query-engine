@@ -85,7 +85,7 @@ const fromScalar = (source) => {
  * @template {string} The
  * @template {API.RuleDescriptor} Schema
  * @param {Schema & {the?: The, this?: ObjectConstructor | { Entity: {} }, _?: never}} source
- * @returns {Premise<API.FactView<The, Omit<Schema, 'the'> & { this: ObjectConstructor }>, The, Omit<Schema, 'the'> & { this: ObjectConstructor }, {}>}
+ * @returns {API.Claim<API.FactView<The, Omit<Schema, 'the'> & { this: ObjectConstructor }>, The, Omit<Schema, 'the'> & { this: ObjectConstructor }, {}>}
  */
 export const fact = ({ the, ...source }) => {
   const members = []
@@ -134,7 +134,7 @@ export const fact = ({ the, ...source }) => {
   }
 
   const conclusion = Fact.for(premise)
-  const claim = new Premise(premise, conclusion, {})
+  const claim = new Claim(premise, conclusion, {})
 
   return claim
 }
@@ -145,18 +145,24 @@ export const claim = fact
  * @template Fact
  * @template {string} The
  * @template {API.FactSchema} Schema
+ * @template {API.RuleDescriptor} Context
  * @extends {Callable<(terms?: API.InferFactTerms<Schema>) => FactMatch<Fact, The, Schema>>}
  */
-class Builder extends Callable {
+class Claim extends Callable {
   /**
    * @param {API.Premise<The, Schema>} premise
    * @param {API.Conclusion<Fact, The, Schema>} conclusion
+   * @param {Context} context
    */
-  constructor(premise, conclusion) {
+  constructor(premise, conclusion, context) {
     super((terms) => this.match(terms))
 
     this.premise = premise
     this.conclusion = conclusion
+    this.context = context
+    this.#cells =
+      /** @type {API.InferSchemaAttributes<Schema & Context> & {_: API.Variable, this: API.Variable<API.Entity>}}  */
+      (deriveCells({ ...context, ...premise.schema }))
   }
 
   get the() {
@@ -171,8 +177,11 @@ class Builder extends Callable {
     return this.premise.attributes
   }
 
+  /** @type {API.InferSchemaAttributes<Schema & Context> & {_: API.Variable, this: API.Variable<API.Entity>}} */
+  #cells
+
   get cells() {
-    return this.attributes
+    return this.#cells
   }
 
   /** @type {Analyzer.DeductiveRule<API.InferSchemaAttributes<Schema>>|undefined} */
@@ -267,55 +276,6 @@ class Builder extends Callable {
   assert(fact) {
     return this.conclusion.assert(fact)
   }
-}
-
-/**
- * @template Fact
- * @template {string} The
- * @template {API.FactSchema} Schema
- * @template {API.RuleDescriptor} [Context={}]
- * @implements {API.Claim<Fact, The, Schema, Context>}
- * @extends {Builder<Fact, The, Schema>}
- */
-class Premise extends Builder {
-  /**
-   * @param {API.Premise<The, Schema>} premise
-   * @param {API.Conclusion<Fact, The, Schema>} conclusion
-   * @param {Context} context
-   */
-  constructor(premise, conclusion, context) {
-    super(premise, conclusion)
-    this.context = context
-    this.#cells =
-      /** @type {API.InferSchemaAttributes<Schema & Context> & {_: API.Variable, this: API.Variable<API.Entity>}}  */
-      (deriveCells({ ...context, ...premise.schema }))
-  }
-
-  /** @type {API.InferSchemaAttributes<Schema & Context> & {_: API.Variable, this: API.Variable<API.Entity>}} */
-  #cells
-  get cells() {
-    return this.#cells
-  }
-
-  /**
-   * Map of variables corresponding to the fact members.
-   *
-   * @type {API.InferSchemaAttributes<Schema>}
-   */
-  get attributes() {
-    return this.premise.attributes
-  }
-
-  /**
-   * Creates a predicate for this fact that excludes ones that match given
-   * terms.
-   *
-   * @param {Partial<API.InferSchemaTerms<Schema>>} terms
-   * @returns {Negation<Fact, The, Schema>}
-   */
-  not(terms) {
-    return new Negation(this.premise, this.conclusion, this, terms)
-  }
 
   /**
    * Defines local variables so they could be used in the `.when` and `.where`
@@ -326,7 +286,7 @@ class Premise extends Builder {
    * @returns {API.Claim<Fact, The, Schema, Context & Extension>}
    */
   with(extension) {
-    return new Premise(this.premise, this.conclusion, {
+    return new Claim(this.premise, this.conclusion, {
       ...extension,
       ...this.context,
     })
@@ -383,9 +343,9 @@ class Premise extends Builder {
  * @template {API.FactSchema} Schema
  * @template {API.RuleDescriptor} Context
  * @implements {API.Deduction<Fact, The, Schema, Context>}
- * @extends {Premise<Fact, The, Schema, Context>}
+ * @extends {Claim<Fact, The, Schema, Context>}
  */
-class Deduction extends Premise {
+class Deduction extends Claim {
   /**
    * @param {API.Premise<The, Schema>} premise
    * @param {API.Conclusion<Fact, The, Schema>} conclusion
