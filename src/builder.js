@@ -1,13 +1,13 @@
 import * as API from './api.js'
-import * as Analyzer from './analyzer.js'
+import * as Analyzer from './syntax.js'
 import * as Task from './task.js'
 import { $, _ } from './$.js'
 import * as Variable from './variable.js'
 import { Callable } from './syntax/callable.js'
 import * as Selector from './selector.js'
 import * as Link from './data/link.js'
-import { toDebugString } from './analyzer.js'
-import { toJSON } from './analyzer.js'
+import { toDebugString } from './syntax.js'
+import { toJSON } from './syntax.js'
 
 /**
  * @param {unknown} descriptor
