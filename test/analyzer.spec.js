@@ -1562,6 +1562,7 @@ export const testAnalyzer = {
       .apply({ this: $.q, as: 2 })
       .prepare()
 
+    // @ts-expect-error - plan.bindings is not declared in types
     assert.equal(plan.bindings.get($.q), 2)
   },
 

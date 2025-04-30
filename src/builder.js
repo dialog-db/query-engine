@@ -1,13 +1,13 @@
 import * as API from './api.js'
-import * as Analyzer from './syntax.js'
+import * as Syntax from './syntax.js'
 import * as Task from './task.js'
 import { $, _ } from './$.js'
 import * as Variable from './variable.js'
 import { Callable } from './syntax/callable.js'
 import * as Selector from './selector.js'
 import * as Link from './data/link.js'
-import { toDebugString } from './syntax.js'
-import { toJSON } from './syntax.js'
+import { toDebugString } from './debug.js'
+import * as JSON from './json.js'
 
 /**
  * @param {unknown} descriptor
@@ -184,7 +184,7 @@ class Claim extends Callable {
     return this.#cells
   }
 
-  /** @type {Analyzer.DeductiveRule<API.InferSchemaAttributes<Schema>>|undefined} */
+  /** @type {API.DeductiveRuleSyntax<API.InferSchemaAttributes<Schema>>|undefined} */
   #build
 
   /**
@@ -219,14 +219,14 @@ class Claim extends Callable {
         })
       }
 
-      this.#build = Analyzer.rule({ match: attributes, when: { where } })
+      this.#build = Syntax.rule({ match: attributes, when: { where } })
     }
     return this.#build
   }
 
   /**
    * @param {API.InferSchemaTerms<Schema>} terms
-   * @returns {Analyzer.RuleApplication<API.InferSchemaAttributes<Schema>>}
+   * @returns {API.RuleApplicationSyntax<API.InferSchemaAttributes<Schema>>}
    */
   apply(terms) {
     return this.build().apply(terms)
@@ -369,7 +369,7 @@ class Deduction extends Claim {
    */
   self = null
 
-  /** @type {Analyzer.DeductiveRule<API.InferSchemaAttributes<Schema>>|undefined} */
+  /** @type {API.DeductiveRuleSyntax<API.InferSchemaAttributes<Schema>>|undefined} */
   #build
   build() {
     if (!this.#build) {
@@ -384,7 +384,7 @@ class Deduction extends Claim {
         ])
       }
 
-      this.#build = Analyzer.rule({
+      this.#build = Syntax.rule({
         match: this.premise.attributes,
         when: /** @type {API.Some} */ (when),
       })
@@ -397,7 +397,7 @@ class Deduction extends Claim {
 
   /**
    * @param {API.InferSchemaTerms<Schema>} terms
-   * @returns {Analyzer.RuleApplication<API.InferSchemaAttributes<Schema>>}
+   * @returns {API.RuleApplicationSyntax<API.InferSchemaAttributes<Schema>>}
    */
   apply(terms) {
     return this.build().apply(terms)
@@ -521,7 +521,7 @@ class Induction extends Deduction {
  * @template Fact
  * @typedef {object} Circuit
  * @property {API.InferSchemaAttributes<Schema>} cells
- * @property {(terms: API.InferSchemaTerms<Schema>) => Analyzer.RuleApplication<API.InferSchemaAttributes<Schema>>} apply
+ * @property {(terms: API.InferSchemaTerms<Schema>) => API.RuleApplicationSyntax<API.InferSchemaAttributes<Schema>>} apply
  * @property {(terms: API.InferSchemaTerms<Schema>) => API.MatchView} recur
  * @property {(claim: API.InferAssert<Schema>) => Fact} assert
  */
@@ -545,7 +545,7 @@ class Negation {
     this.rule = rule
     this.terms = terms
   }
-  /** @type {Analyzer.Negation|undefined} */
+  /** @type {API.NegationSyntax|undefined} */
   #build
   build() {
     if (!this.#build) {
@@ -575,7 +575,7 @@ class Negation {
  */
 class Match {
   /**
-   * @param {Analyzer.DeductiveRule<API.InferSchemaAttributes<Schema>>} rule
+   * @param {API.DeductiveRuleSyntax<API.InferSchemaAttributes<Schema>>} rule
    * @param {API.InferSchemaTerms<Schema>} terms
    */
   constructor(rule, terms) {
@@ -583,7 +583,7 @@ class Match {
     this.terms = terms
   }
 
-  /** @type {Analyzer.RuleApplication<API.InferSchemaAttributes<Schema>>|undefined} */
+  /** @type {API.RuleApplicationSyntax<API.InferSchemaAttributes<Schema>>|undefined} */
   #form
   get form() {
     if (!this.#form) {
@@ -596,7 +596,7 @@ class Match {
     yield this.form
   }
 
-  /** @type {Analyzer.RuleApplicationPlan<API.InferSchemaAttributes<Schema>>|undefined} */
+  /** @type {API.RuleApplicationPlan<API.InferSchemaAttributes<Schema>>|undefined} */
   #plan
   get plan() {
     if (!this.#plan) {
@@ -655,7 +655,7 @@ class FactMatch {
     return new Negation(this.premise, this.conclusion, this.rule, this.terms)
   }
 
-  /** @type {Analyzer.RuleApplication<API.InferSchemaAttributes<Schema>>|undefined} */
+  /** @type {API.RuleApplicationSyntax<API.InferSchemaAttributes<Schema>>|undefined} */
   #build
   build() {
     if (!this.#build) {
@@ -663,7 +663,7 @@ class FactMatch {
     }
     return this.#build
   }
-  /** @type {Analyzer.RuleApplicationPlan<API.InferSchemaAttributes<Schema>>|undefined} */
+  /** @type {API.RuleApplicationPlan<API.InferSchemaAttributes<Schema>>|undefined} */
   #plan
   plan() {
     if (!this.#plan) {
@@ -854,7 +854,7 @@ class Fact {
   }
 
   toJSON() {
-    return { ...this, the: this.the, this: toJSON(this.this) }
+    return { ...this, the: this.the, this: JSON.from(this.this) }
   }
 }
 
@@ -884,7 +884,7 @@ class Constraint {
 class Select extends Callable {
   /**
    * @param {API.Premise<The, Schema>} premise
-   * @param {Analyzer.DeductiveRule<API.InferSchemaAttributes<Schema>>} rule
+   * @param {API.DeductiveRuleSyntax<API.InferSchemaAttributes<Schema>>} rule
    * @param {API.InferSchemaAttributes<Schema & Context> & {_: API.Variable; this: API.Variable<API.Entity>}} cells
 }}
    * @param {API.ProjectionBuilder<Schema & Context, Selector>} compile
@@ -927,7 +927,7 @@ class GroupedSelection {
   /**
    * @param {API.Premise<The, Schema>} premise
    * @param {Selector} selector
-   * @param {Analyzer.DeductiveRule<API.InferSchemaAttributes<Schema>>} rule
+   * @param {API.DeductiveRuleSyntax<API.InferSchemaAttributes<Schema>>} rule
    * @param {API.InferSchemaTerms<Schema>} terms
    */
   constructor(premise, selector, rule, terms) {
@@ -937,7 +937,7 @@ class GroupedSelection {
     this.terms = terms
   }
 
-  /** @type {Analyzer.RuleApplication<API.InferSchemaAttributes<Schema>>|undefined} */
+  /** @type {API.RuleApplicationSyntax<API.InferSchemaAttributes<Schema>>|undefined} */
   #form
   get form() {
     if (!this.#form) {
@@ -952,7 +952,7 @@ class GroupedSelection {
     yield this.form
   }
 
-  /** @type {Analyzer.RuleApplicationPlan<API.InferSchemaAttributes<Schema>>|undefined} */
+  /** @type {API.RuleApplicationPlan<API.InferSchemaAttributes<Schema>>|undefined} */
   #plan
   plan() {
     if (!this.#plan) {
@@ -1602,8 +1602,8 @@ export class Math {
   )
 }
 
-const Same = Analyzer.rule({ match: { this: $.this, as: $.this } })
-const NotSame = Analyzer.rule({
+const Same = Syntax.rule({ match: { this: $.this, as: $.this } })
+const NotSame = Syntax.rule({
   match: { this: $.this, as: $.as },
   when: {
     where: [{ not: Same.apply({ this: $.this, as: $.as }) }],

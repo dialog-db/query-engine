@@ -2,14 +2,12 @@ import * as API from './api.js'
 import * as Variable from './variable.js'
 import * as Terms from './terms.js'
 import * as Term from './term.js'
-import * as Constant from './constant.js'
-import * as Selector from './selector.js'
-import operators from './formula/lib.js'
 import { indent } from './data/string/format.js'
 import { _, $ } from './$.js'
 import * as Cursor from './cursor.js'
 import * as Match from './match.js'
-import * as LRU from './source/lru.js'
+import * as Plan from './plan.js'
+import { toDebugString } from './debug.js'
 
 export { $ }
 
@@ -91,11 +89,12 @@ export const from = (source) => {
 const NONE = new Map()
 
 /**
- * @implements {API.MatchFact}
+ * @implements {API.SelectForm}
+ * @implements {API.SelectSyntax}
  */
 class Select {
   /**
-   * @param {API.MatchFact} source
+   * @param {API.SelectForm} source
    */
   static from({ match }) {
     const { of, the, is } = match
@@ -146,12 +145,13 @@ class Select {
   get cost() {
     return 100
   }
+
   /**
    *
    * @param {API.Scope} scope
    */
   plan({ references, bindings }) {
-    return new SelectPlan(this, references, bindings)
+    return new Plan.Select(this, references, bindings)
   }
 
   toJSON() {
@@ -176,114 +176,6 @@ class Select {
     }
 
     return `{ match: { ${parts.join(', ')} } }`
-  }
-}
-
-export class SelectPlan {
-  /**
-   * @param {Select} source
-   * @param {API.Cursor} cursor
-   * @param {API.MatchFrame} parameters
-   */
-  constructor(source, cursor, parameters) {
-    this.source = source
-    this.cursor = cursor
-    this.parameters = parameters
-  }
-
-  get selector() {
-    return this.source.selector
-  }
-
-  get recurs() {
-    return null
-  }
-
-  /**
-   * @template {API.Scalar} T
-   * @param {API.Term<T>|undefined} term
-   * @param {API.MatchFrame} bindings
-   * @returns {API.Term<T>|undefined}
-   */
-  resolve(term, bindings) {
-    if (Variable.is(term)) {
-      return Cursor.get(bindings, this.cursor, term) ?? term
-      // const reference = Cursor.resolve(this.cursor, term)
-      // return /** @type {API.Term<T>} */ (bindings.get(reference) ?? reference)
-    } else {
-      return term
-    }
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *evaluate({ source, selection }) {
-    const { selector } = this
-    const matches = []
-    for (const frame of selection) {
-      const the = selector.the ? Match.resolve(frame, selector.the) : _
-      const of = selector.of ? Match.resolve(frame, selector.of) : _
-      const is = selector.is ? Match.resolve(frame, selector.is) : _
-
-      // Note: We expect that there will be LRUCache wrapping the db
-      // so calling scan over and over again will not actually cause new scans.
-      /** @type {API.FactsSelector} */
-      const query = {}
-      if (!Variable.is(of)) {
-        query.of = of
-      }
-      if (!Variable.is(the)) {
-        query.the = the
-      }
-      if (!Variable.is(is)) {
-        query.is = is
-      }
-
-      const facts = yield* source.select(query)
-
-      for (const { the, of, is } of facts) {
-        let match = Match.clone(frame)
-
-        if (Variable.is(selector.the)) {
-          let { ok } = Match.set(match, selector.the, the)
-          if (ok) {
-            match = ok
-          } else {
-            continue
-          }
-        }
-
-        if (Variable.is(selector.of)) {
-          let { ok } = Match.set(match, selector.of, of)
-          if (ok) {
-            match = ok
-          } else {
-            continue
-          }
-        }
-
-        if (Variable.is(selector.is)) {
-          let { ok } = Match.set(match, selector.is, is)
-          if (ok) {
-            match = ok
-          } else {
-            continue
-          }
-        }
-
-        matches.push(match)
-      }
-    }
-    return matches
-  }
-
-  toJSON() {
-    return this.source.toJSON()
-  }
-
-  toDebugString() {
-    return this.source.toDebugString()
   }
 }
 
@@ -395,7 +287,7 @@ class FormulaApplication {
    * @param {API.Scope} scope
    */
   plan(scope) {
-    return new FormulaApplicationPlan(
+    return new Plan.FormulaApplication(
       this.source,
       this.cells,
       this.from,
@@ -419,154 +311,10 @@ class FormulaApplication {
   }
 }
 
-class FormulaApplicationPlan {
-  /**
-   * @param {API.SystemOperator} source
-   * @param {Map<API.Variable, number>} cells
-   * @param {Record<string, API.Term>|API.Term} from
-   * @param {Record<string, API.Term>} to
-   * @param {API.Cursor} cursor
-   * @param {API.MatchFrame} parameters
-   */
-  constructor(source, cells, from, to, cursor, parameters) {
-    this.cells = cells
-    this.source = source
-    this.from = from
-    this.to = to
-    this.cursor = cursor
-    this.parameters = parameters
-  }
-
-  get recurs() {
-    return null
-  }
-
-  // /**
-  //  * Base execution cost of the formula application operation.
-  //  */
-  // get cost() {
-  //   return 5
-  // }
-
-  /**
-   * @template {API.Terms} Terms
-   * @param {Terms} terms
-   * @param {API.MatchFrame} bindings
-   * @returns {API.InferTerms<Terms>}
-   */
-  resolve(terms, bindings) {
-    return /** @type {API.InferTerms<Terms>} */ (
-      Term.is(terms) ? Cursor.get(bindings, this.cursor, terms)
-      : Array.isArray(terms) ?
-        terms.map((term) => Cursor.get(bindings, this.cursor, term))
-      : Object.fromEntries(
-          Object.entries(terms).map(([key, term]) => [
-            key,
-            Cursor.get(bindings, this.cursor, term),
-          ])
-        )
-    )
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *evaluate({ selection }) {
-    const { source } = this
-    const operator =
-      /** @type {(input: API.Operand) => Iterable<API.Operand>} */
-      (source.formula ?? operators[source.operator])
-
-    const matches = []
-    for (const frame of selection) {
-      for (const output of operator(this.read(frame))) {
-        // If function returns single output we treat it as { is: output }
-        // because is will be a cell in the formula application.
-        const extension = Constant.is(output) ? { is: output } : output
-        const frames = this.write(
-          frame,
-          /** @type {Record<string, API.Scalar>} */ (extension)
-        )
-        matches.push(...frames)
-      }
-    }
-
-    return matches
-  }
-
-  /**
-   * @template {API.Terms} Terms
-   * @param {API.MatchFrame} frame
-   * @returns {API.InferTerms<Terms>}
-   */
-  read(frame) {
-    const { from } = this
-    const result =
-      Term.is(from) ?
-        expect(Match.get(frame, from), 'Formula input was not present')
-      : Object.fromEntries(
-          Object.entries(from).map(([key, term]) => [
-            key,
-            expect(Match.get(frame, term), 'Formula input was not present'),
-          ])
-        )
-
-    return /** @type {API.InferTerms<Terms>} */ (result)
-  }
-
-  /**
-   * @param {API.MatchFrame} frame
-   * @param {Record<string, API.Scalar>} extension
-   */
-  write(frame, extension) {
-    const terms = Object.entries(this.to)
-    if (terms.length === 0) {
-      return [frame]
-    } else {
-      let match = Match.clone(frame)
-      for (const [key, term] of terms) {
-        const { ok } = Match.unify(match, term, extension[key])
-        if (ok) {
-          match = ok
-        } else {
-          return []
-        }
-      }
-      return [match]
-    }
-  }
-
-  toJSON() {
-    return {
-      match: this.source.match,
-      operator: this.source.operator,
-    }
-  }
-
-  toDebugString() {
-    const { match, operator } = this.source
-
-    return `{ match: ${Terms.toDebugString(match)}, operator: "${operator}" }`
-  }
-}
-
-/**
- * @template T
- * @param {T|undefined} value
- * @param {string} message
- * @returns {T}
- */
-const expect = (value, message) => {
-  if (value === undefined) {
-    throw new RangeError(message)
-  } else {
-    return value
-  }
-}
-
 /**
  * @template {API.Proposition} [Match=API.Proposition]
  * @implements {API.MatchRule<Match>}
+ * @implements {API.RuleApplicationSyntax<Match>}
  */
 export class RuleApplication {
   /**
@@ -854,23 +602,21 @@ export class RuleApplication {
       }
     }
 
-    return new RuleApplicationPlan(this.match, this.rule, references, bindings)
+    return new Plan.RuleApplication(this.match, this.rule, references, bindings)
   }
 
   /**
    * Caches the application plan so that it can be reused across many queries.
    *
-   * @type {RuleApplicationPlan<Match>|null}
+   * @type {API.RuleApplicationPlan<Match>|null}
    */
   #plan = null
 
   prepare() {
-    let plan = this.#plan
-    if (plan == null) {
-      plan = this.plan(this)
-      this.#plan = plan
+    if (this.#plan == null) {
+      this.#plan = this.plan(this)
     }
-    return plan
+    return this.#plan
   }
 
   /**
@@ -923,7 +669,7 @@ const ruleBindings = (match) => {
 
 /**
  * @template {API.Proposition} [Match=API.Proposition]
- * @implements {API.DeductiveRule<Match>}
+ * @implements {API.DeductiveRuleSyntax<Match>}
  */
 export class DeductiveRule {
   /**
@@ -1000,7 +746,7 @@ export class DeductiveRule {
    * @param {API.Scope} application
    */
   plan(application) {
-    /** @type {Record<string, JoinPlan>} */
+    /** @type {Record<string, Plan.Join>} */
     const when = {}
     let cost = 0
     const disjuncts = Object.entries(this.when)
@@ -1031,7 +777,7 @@ export class DeductiveRule {
       }
 
       // We also need to add some body so the that evaluation creates a result.
-      when.where = new JoinPlan([], application.references, 0)
+      when.where = new Plan.Join([], application.references, 0)
     }
 
     // // If all branches are recursive raise an error because we need a base case
@@ -1045,7 +791,7 @@ export class DeductiveRule {
     // If recursive rule we inflate the cost by factor
     cost = this.recurs ? cost ** 2 : cost
 
-    return new DeductiveRulePlan(
+    return new Plan.DeductiveRule(
       this.match,
       application,
       when,
@@ -1083,6 +829,7 @@ export class DeductiveRule {
 
 /**
  * @template {API.Proposition} [Match=API.Proposition]
+ * @implements {API.RuleRecursionSyntax<Match>}
  */
 export class RuleRecursion {
   /**
@@ -1180,31 +927,9 @@ export class RuleRecursion {
 }
 
 /**
- * Generate a unique identifier for a match frame
- * This is used for cycle detection in the fixed-point evaluation
- *
- * @param {API.MatchFrame} frame
- * @param {string} [context=''] - Optional context to differentiate matches in different evaluation contexts
- * @returns {string} A unique identifier for this frame
- */
-const identifyMatch = (frame, context = '') => {
-  // A more reliable identifier that preserves the shape of objects
-  const mappedEntries = [...frame]
-    .map(([variable, value]) => {
-      const varStr = variable ? variable.toString() : 'undefined'
-      const valueStr =
-        value === undefined ? 'undefined' : Constant.toString(value)
-      return `${varStr}:${valueStr}`
-    })
-    .sort()
-
-  return context + '[' + mappedEntries.join(',') + ']'
-}
-
-/**
  * @implements {API.Every<API.Conjunct|API.Recur>}
  */
-class Join {
+export class Join {
   /**
    * @param {object} source
    * @param {Map<string, API.Variable>} source.bindings
@@ -1335,7 +1060,7 @@ class Join {
 
   /**
    * @param {API.Scope} scope
-   * @returns {JoinPlan}
+   * @returns {Plan.Join}
    */
   plan(scope) {
     // We create a local copy of the binding because we want to modify it here
@@ -1469,7 +1194,7 @@ class Join {
       }
     }
 
-    return new JoinPlan(ordered, references, cost)
+    return new Plan.Join(ordered, references, cost)
   }
 
   toJSON() {
@@ -1486,8 +1211,7 @@ class Join {
 /**
  * @typedef {Select|FormulaApplication|RuleApplication} Constraint
  * @typedef {Select|FormulaApplication|RuleApplication|Negation|RuleRecursion} Conjunct
- * @typedef {SelectPlan|FormulaApplicationPlan|RuleApplicationPlan|NegationPlan|RuleRecursion} ConjunctPlan
- * @implements {API.Negation}
+ * @implements {API.NegationSyntax}
  */
 export class Negation {
   /**
@@ -1540,10 +1264,10 @@ export class Negation {
 
   /**
    * @param {API.Scope} scope
-   * @returns {NegationPlan}
+   * @returns {Plan.Negation}
    */
   plan(scope) {
-    return new NegationPlan(this.constraint.plan(scope))
+    return new Plan.Negation(this.constraint.plan(scope))
   }
 
   toJSON() {
@@ -1555,424 +1279,42 @@ export class Negation {
   }
 }
 
-class JoinPlan {
-  /**
-   * @param {ConjunctPlan[]} conjuncts - Ordered plans
-   * @param {API.Cursor} references - Variable references
-   * @param {number} cost - Total cost of the plan
-   */
-  constructor(conjuncts, references, cost) {
-    this.conjuncts = conjuncts
-    this.references = references
-    this.cost = cost
-  }
+// /**
+//  * @template {API.Selector} [Selector=API.NamedSelector]
+//  */
+// export class Selection {
+//   /**
+//    * @param {Selector} selector
+//    * @param {API.MatchFrame[]} matches
+//    */
+//   constructor(selector, matches) {
+//     this.selector = selector
+//     this.matches = matches
+//   }
+//   values() {
+//     return Selector.select(this.selector, this.matches)
+//   }
+//   *[Symbol.iterator]() {
+//     yield* Selector.select(this.selector, this.matches)
+//   }
+//   *entries() {
+//     for (const match of this.values()) {
+//       yield [match, match]
+//     }
+//   }
+//   get size() {
+//     return this.matches.length
+//   }
 
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *evaluate({ selection, ...context }) {
-    // Execute binding steps in planned order
-    for (const plan of this.conjuncts) {
-      selection = yield* plan.evaluate({
-        ...context,
-        selection,
-      })
-    }
-
-    return selection
-  }
-
-  toJSON() {
-    return [...this.conjuncts.map(toJSON)]
-  }
-
-  debug() {
-    return [...this.conjuncts.map(($) => debug($))].join('\n')
-  }
-
-  toDebugString() {
-    const body = [...this.conjuncts.map(($) => toDebugString($))]
-    return `[${indent(`\n${body.join(',\n')}`)}\n]`
-  }
-}
-
-/**
- * @template {API.Proposition} [Match=API.Proposition]
- */
-class DeductiveRulePlan {
-  /**
-   * @param {Match} match
-   * @param {API.Scope} scope
-   * @param {Record<string, JoinPlan>} disjuncts
-   * @param {number} cost
-   * @param {boolean} recurs
-   */
-  constructor(match, scope, disjuncts, cost, recurs) {
-    this.match = match
-    this.scope = scope
-    this.disjuncts = disjuncts
-    this.cost = cost
-    this.recurs = recurs
-  }
-  get when() {
-    return this.disjuncts
-  }
-  toJSON() {
-    const { match, disjuncts } = this
-    const branches = Object.entries(disjuncts).map(([name, plan]) => [
-      name,
-      toJSON(plan),
-    ])
-    const when = Object.fromEntries(branches)
-
-    return branches.length === 1 && branches[0][1].length === 0 ?
-        { match }
-      : { match, when }
-  }
-
-  debug() {
-    const head = `${Object.keys(this.match)}`
-    let body = ['']
-    for (const [name, disjunct] of Object.entries(this.disjuncts)) {
-      body.push(`:${name}\n[${indent(`${debug(disjunct)}]`, ' ')}`)
-    }
-
-    return `(rule (${head})${indent(body.join('\n'))})`
-  }
-
-  toDebugString() {
-    const disjuncts = Object.entries(this.disjuncts)
-    const when = []
-    if (disjuncts.length === 1) {
-      const [[name, plan]] = disjuncts
-      when.push(indent(toDebugString(plan)))
-    } else {
-      when.push('{\n')
-      for (const [name, disjunct] of disjuncts) {
-        when.push(`  ${name}: ${indent(toDebugString(disjunct))},\n`)
-      }
-      when.push('}')
-    }
-
-    return `{
-  match: ${indent(Terms.toDebugString(this.match))},
-  when: ${indent(when.join(''))}
-}`
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   * @returns {API.Task<API.MatchFrame[], Error>}
-   */
-  *evaluate(context) {
-    /** @type {API.MatchFrame[]} */
-    const matches = []
-    // Run each branch and combine results
-    for (const plan of Object.values(this.disjuncts)) {
-      const bindings = yield* plan.evaluate(context)
-      matches.push(...bindings)
-    }
-    return matches
-  }
-}
-
-/**
- *
- * @param {{}} source
- */
-export const toJSON = (source) =>
-  // @ts-expect-error
-  typeof source.toJSON === 'function' ? source.toJSON() : source
-
-/**
- *
- * @param {{}} source
- * @returns {string}
- */
-export const toDebugString = (source) =>
-  // @ts-expect-error
-  typeof source.toDebugString === 'function' ?
-    // @ts-expect-error
-    source.toDebugString()
-  : JSON.stringify(source)
-
-/**
- * @template {API.Proposition} [Match=API.Proposition]
- */
-export class RuleApplicationPlan {
-  /**
-   * @param {Partial<API.RuleBindings<Match>>} match
-   * @param {DeductiveRule<Match>} rule
-   * @param {API.Cursor} references
-   * @param {API.MatchFrame} bindings
-   */
-  constructor(match, rule, references, bindings) {
-    this.match = match
-    this.rule = rule
-    this.references = references
-    this.bindings = bindings
-    this.plan = rule.plan(this)
-  }
-
-  get cost() {
-    return this.plan.cost
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *evaluate({ source, selection }) {
-    // Map identity -> actual match for deduplication
-    /** @type {Map<string, API.MatchFrame>} */
-    const matches = new Map()
-    for (const frame of selection) {
-      for (const input of this.read(frame)) {
-        // Create evaluation context for the main evaluation
-        /** @type {API.EvaluationContext} */
-        const context = {
-          source,
-          self: this.plan,
-          selection: [input],
-          recur: [], // Array for recursive steps
-        }
-
-        // First evaluate the base case
-        const base = yield* this.plan.evaluate(context)
-
-        // Process base results
-        for (const output of base) {
-          for (const match of this.write(frame, output)) {
-            const id = identifyMatch(match)
-            if (!matches.has(id)) {
-              matches.set(id, match)
-            }
-          }
-        }
-
-        // Track all contexts to handle transitive relationships correctly
-        // Map from each binding to all its ancestor contexts
-        const contextChains = new Map()
-
-        // Initialize the context chains with the original recursive steps
-        for (const [nextBinding, originalContext] of context.recur) {
-          contextChains.set(nextBinding, [originalContext])
-        }
-
-        // Process recursion using breadth-first evaluation
-        let { recur } = context
-
-        while (recur.length > 0) {
-          /** @type {API.EvaluationContext['recur']} */
-          const next = []
-
-          // Process all pending recursions for this iteration
-          for (const [nextBinding, origContext] of recur) {
-            // Check for tautology here - before recursively evaluating
-            // For patterns like Tautology(X) :- Person(X), Tautology(X)
-            // We need to detect when recursion would be unproductive
-
-            // Generate identifiers for both current context and the binding for recursion
-            const nextBindingId = identifyMatch(nextBinding)
-            const origContextId = identifyMatch(origContext)
-
-            // A tautology occurs when a rule refers to itself with exactly the same bindings
-            // This happens when recursion can't produce any new results
-            if (nextBindingId === origContextId) {
-              // This is a pure tautology - the recursive call would use the exact same bindings
-
-              // For pure tautologies, we add the current binding as a result
-              // This allows joins with other predicates (like Person) to work properly
-              for (const match of this.write(frame, nextBinding)) {
-                const id = identifyMatch(match)
-                if (!matches.has(id)) {
-                  matches.set(id, match)
-                }
-              }
-
-              // Skip further recursion for this path as it would create an infinite loop
-              continue
-            }
-
-            // Create a context for this step's evaluation
-            /** @type {API.EvaluationContext} */
-            const recursiveContext = {
-              source,
-              self: this.plan,
-              selection: [nextBinding],
-              recur: [],
-            }
-
-            // Evaluate this step
-            const stepResults = yield* this.plan.evaluate(recursiveContext)
-
-            // Process direct results
-            for (const output of stepResults) {
-              for (const match of this.write(frame, output)) {
-                const id = identifyMatch(match)
-                if (!matches.has(id)) {
-                  matches.set(id, match)
-                }
-              }
-
-              // Create transitive relationships with all ancestor contexts
-              const ancestorContexts = contextChains.get(nextBinding) || []
-              for (const context of ancestorContexts) {
-                for (const match of this.write(frame, context, output)) {
-                  const id = identifyMatch(match)
-                  if (!matches.has(id)) {
-                    matches.set(id, match)
-                  }
-                }
-              }
-            }
-
-            // Process new recursive steps
-            for (const [newBinding] of recursiveContext.recur) {
-              // Track context chains for transitive relationships
-              const ancestorContexts = contextChains.get(nextBinding) || []
-              const newContexts = [origContext, ...ancestorContexts]
-              contextChains.set(newBinding, newContexts)
-
-              // Add to next batch
-              next.push([newBinding, origContext])
-            }
-          }
-
-          recur = next
-        }
-      }
-    }
-
-    return [...matches.values()]
-  }
-
-  get terms() {
-    return /** @type {[string, API.Term][]} */ (Object.entries(this.match))
-  }
-
-  /**
-   * @param {API.MatchFrame} frame
-   */
-  read(frame) {
-    const input = new Map()
-    // Copy any bound values from outer scope into rule scope
-    // based on the mapping defined in application.match
-    for (const [at, variable] of Object.entries(this.rule.match)) {
-      const term = /** @type {API.Term} */ (this.match[at])
-      const value = Match.get(frame, term)
-      if (value !== undefined) {
-        const { ok } = Match.set(input, variable, value)
-        if (!ok) {
-          return []
-        }
-      }
-    }
-
-    return [input]
-  }
-
-  /**
-   * @param {API.MatchFrame} frame
-   * @param {API.MatchFrame[]} outputs
-   */
-  write(frame, ...outputs) {
-    const match = Match.clone(frame)
-    next: for (const [at, variable] of Object.entries(this.rule.match)) {
-      const term = /** @type {API.Term} */ (this.match[at])
-      // We do not want to override frame values just add new members
-      const current = Match.get(frame, term)
-      if (current === undefined) {
-        for (const output of outputs) {
-          const value = Match.get(output, variable)
-          if (value !== undefined) {
-            const result = Match.unify(match, term, value)
-            if (!result.ok) {
-              return []
-            } else {
-              continue next
-            }
-          }
-        }
-        // If none of the outputs contain the term we can not
-        // produce a valid frame so we return `[]`
-        return []
-      }
-    }
-
-    return [match]
-  }
-
-  toJSON() {
-    return {
-      match: this.match,
-      rule: toJSON(this.plan),
-    }
-  }
-
-  /**
-   * @param {object} input
-   * @param {API.Querier} input.from
-   */
-  *query({ from: source }) {
-    return yield* this.evaluate({
-      source: LRU.create(source),
-      self: this.plan,
-      selection: [new Map()],
-      recur: [], // Array for pairs of [nextBindings, originalContext]
-    })
-
-    // return new Selection(/** @type {Match} */ (this.match), frames)
-
-    // return Selector.select(/** @type {Selector} */ (selector), frames)
-    // return new Query(this.rule.match, frames)
-  }
-
-  toDebugString() {
-    const { match, plan } = this
-
-    return indent(`{
-  match: ${indent(Terms.toDebugString(/** @type {{}} */ (match)))},
-  rule: ${indent(toDebugString(plan))}
-}`)
-  }
-}
-
-/**
- * @template {API.Selector} [Selector=API.NamedSelector]
- */
-class Selection {
-  /**
-   * @param {Selector} selector
-   * @param {API.MatchFrame[]} matches
-   */
-  constructor(selector, matches) {
-    this.selector = selector
-    this.matches = matches
-  }
-  values() {
-    return Selector.select(this.selector, this.matches)
-  }
-  *[Symbol.iterator]() {
-    yield* Selector.select(this.selector, this.matches)
-  }
-  *entries() {
-    for (const match of this.values()) {
-      yield [match, match]
-    }
-  }
-  get size() {
-    return this.matches.length
-  }
-
-  /**
-   * @template {API.Selector} Match
-   * @param {Match} selector
-   * @returns {Selection<Match>}
-   */
-  select(selector) {
-    return new Selection(selector, this.matches)
-  }
-}
+//   /**
+//    * @template {API.Selector} Match
+//    * @param {Match} selector
+//    * @returns {Selection<Match>}
+//    */
+//   select(selector) {
+//     return new Selection(selector, this.matches)
+//   }
+// }
 
 /**
  * Calculates cost of the executing this operation.
@@ -2005,52 +1347,6 @@ const combineCosts = (total, cost) => {
   } else {
     return total + cost
   }
-}
-
-export class NegationPlan {
-  /**
-   * @param {SelectPlan|FormulaApplicationPlan|RuleApplicationPlan} operand
-   */
-  constructor(operand) {
-    this.operand = operand
-  }
-
-  /**
-   * @param {API.EvaluationContext} context
-   */
-  *evaluate({ selection, ...context }) {
-    const matches = []
-    for (const frame of selection) {
-      const excluded = yield* this.operand.evaluate({
-        ...context,
-        selection: [frame],
-      })
-
-      if (excluded.length === 0) {
-        matches.push(frame)
-      }
-    }
-
-    return matches
-  }
-
-  toJSON() {
-    return { not: toJSON(this.operand) }
-  }
-
-  toDebugString() {
-    return `{ not: ${toDebugString(this.operand)} }`
-  }
-}
-
-/**
- *
- * @param {any} source
- * @returns
- */
-
-export const debug = (source) => {
-  return source.debug ? source.debug() : JSON.stringify(source, null, 2)
 }
 
 /**

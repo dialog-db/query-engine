@@ -472,7 +472,7 @@ export interface DeductiveRule<Match extends Proposition = Proposition> {
   readonly when?: When<Conjunct | Recur>
 }
 
-export type Constraint = MatchFact | MatchRule | SystemOperator
+export type Constraint = SelectForm | MatchRule | SystemOperator
 
 export interface Negation {
   not: Constraint
@@ -538,7 +538,41 @@ export interface MatchRule<Match extends Proposition = Proposition> {
   recur?: undefined
 }
 
-export type MatchFact = {
+export interface Syntax {
+  toJSON(): object
+  toDebugString(): string
+
+  plan(scope: Scope): EvaluationPlan
+}
+
+export interface SelectSyntax extends Syntax, SelectForm {}
+
+export interface RuleSyntax<Match extends Proposition = Proposition>
+  extends Syntax,
+    DeductiveRule<Match> {
+  plan(scope: Scope): RulePlan
+}
+
+export interface RuleApplicationSyntax<Match extends Proposition = Proposition>
+  extends Syntax,
+    MatchRule<Match> {
+  negate(): NegationSyntax
+  plan(scope: Scope): RuleApplicationPlan<Match>
+  prepare(): RuleApplicationPlan<Match>
+}
+
+export interface DeductiveRuleSyntax<Match extends Proposition = Proposition>
+  extends Syntax,
+    DeductiveRule<Match> {
+  apply(terms?: RuleBindings<Match>): RuleApplicationSyntax<Match>
+}
+
+export interface RuleRecursionSyntax<Match extends Proposition = Proposition>
+  extends Recur<Match> {}
+
+export interface NegationSyntax extends Syntax, Negation {}
+
+export interface SelectForm {
   match: Select
 
   /**
@@ -566,7 +600,7 @@ export type MatchFact = {
 
 export type Select = SelectByAttribute | SelectByEntity | SelectByValue
 
-type SelectFact = {
+type SelectBy = {
   /**
    * {@link Term} representing a relation an entity `of` has with the value
    * `is`. In RDF notation this will correspond to a predicate.
@@ -591,17 +625,17 @@ type SelectFact = {
   this?: never
 }
 
-interface SelectByAttribute extends SelectFact {
+interface SelectByAttribute extends SelectBy {
   // Selection by attribute requires an attribute to be specified.
   the: Term<Attribute>
 }
 
-interface SelectByEntity extends SelectFact {
+interface SelectByEntity extends SelectBy {
   // Selection by entity requires an entity to be specified.
   of: Term<Entity>
 }
 
-interface SelectByValue extends SelectFact {
+interface SelectByValue extends SelectBy {
   // Selection by value requires a value to be specified.
   is: Term<Scalar>
 }
@@ -761,7 +795,7 @@ export interface Variables extends Record<string, Term> {}
 export type Selection = Selector | Variable<Link<Bindings>>
 
 export interface Not {
-  not: Selector
+  not: Constraint
   match?: void
   rule?: void
 }
@@ -820,7 +854,6 @@ export interface Unplannable extends Error {
 }
 
 export interface EvaluationPlan {
-  // cost: number
   evaluate(context: EvaluationContext): Task<MatchFrame[], EvaluationError>
 }
 
@@ -844,8 +877,15 @@ export interface Scope {
 export type Plan = Unplannable | EvaluationPlan
 
 export interface RulePlan extends EvaluationPlan {
-  scope: Scope
+  cost: number
   match: Proposition
+}
+
+export interface RuleApplicationPlan<Match extends Proposition>
+  extends EvaluationPlan {
+  cost: number
+  toJSON(): object
+  query(source: { from: Querier }): Task<MatchFrame[], Error>
 }
 
 export interface EvaluationContext {
