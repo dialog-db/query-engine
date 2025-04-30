@@ -1145,6 +1145,7 @@ export interface Claim<
 > extends Relation<Fact, The, Schema> {
   the: The
   attributes: InferSchemaAttributes<Schema>
+  schema: Schema
 
   /**
    * Defines temporary variables made available in the {@link when} /
@@ -1195,8 +1196,13 @@ export type FactView<
 > = InferFact<Schema> & {
   the: The
   toJSON(): InferFact<Schema> & { the: The }
+  
+} & Assertion & Retractable
+
+
+export interface Retractable {
   retract(): Iterable<{ retract: Fact }>
-} & Assertion
+}
 
 export interface Relation<Fact, The extends string, Schema extends FactSchema> {
   /**

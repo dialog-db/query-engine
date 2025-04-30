@@ -59,6 +59,8 @@ const fromDescriptor = (descriptor) => {
     return { Position: {} }
   } else if (descriptor?.Reference) {
     return { Reference: {} }
+  } else if (descriptor?.Unknown) {
+    return { Unknown: {} }
   }
 }
 
@@ -175,6 +177,10 @@ class Claim extends Callable {
    */
   get attributes() {
     return this.premise.attributes
+  }
+
+  get schema() {
+    return this.premise.schema
   }
 
   /** @type {API.InferSchemaAttributes<Schema & Context> & {_: API.Variable, this: API.Variable<API.Entity>}} */
