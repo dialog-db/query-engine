@@ -58,6 +58,10 @@ export class Variable {
   //     not: this.is(term),
   //   }
   // }
+
+  toJSON() {
+    return toJSON(this)
+  }
 }
 
 /**

@@ -507,16 +507,16 @@ export type WhenBuilder<T extends RuleDescriptor> =
   | EveryBuilder<T>
 
 export type SomeBuilder<T extends RuleDescriptor> = (
-  variables: InferRuleVariables<T> & { _: Variable<any> }
+  variables: InferSchemaAttributes<T> & { _: Variable<any> }
 ) => SomeView
 export type EveryBuilder<T extends RuleDescriptor> = (
-  variables: InferRuleVariables<T> & { _: Variable<any> }
+  variables: InferSchemaAttributes<T> & { _: Variable<any> }
 ) => EveryView
 
 export type ProjectionBuilder<
   T extends RuleDescriptor,
   Projection extends Selector,
-> = (variables: InferRuleVariables<T>) => Projection
+> = (variables: InferSchemaAttributes<T>) => Projection
 
 export type WhenView = EveryView | SomeView
 export type EveryView = ConjunctView[]
@@ -998,11 +998,11 @@ export interface FactSchema extends RuleDescriptor {
   this: ObjectConstructor
 }
 
-export type InferRuleVariables<T> = {
-  [Key in keyof T]: Variable<InferDescriptorType<T[Key]>>
+export type InferSchemaAttributes<Schema> = {
+  [Key in keyof Schema]: Variable<InferDescriptorType<Schema[Key]>>
 }
 
-export type InferRuleTerms<T> = {
+export type InferSchemaTerms<T> = {
   [Key in keyof T]: Term<InferDescriptorType<T[Key]>>
 }
 
@@ -1067,32 +1067,6 @@ interface TextVariable extends Variable<string> {
   toLowerCase(is: Term<string>): Constraint
 }
 
-export type InferSchema<T extends RuleDescriptor> = {
-  [K in keyof T as Capitalize<K & string>]: InferDescriptorType<T[K]>
-} & Schema<T & { this: ObjectConstructor }, {}>
-
-export interface Schema<T extends RuleDescriptor, U extends RuleDescriptor> {
-  the: T['the']
-
-  with<U extends RuleDescriptor>(local: U): Schema<T, U>
-  when(builder: SomeBuilder<T & U>): SchemaWhen<T, U>
-  where(builder: EveryBuilder<T & U>): SchemaWhen<T, U>
-
-  not(terms: Partial<InferRuleTerms<T>>): Conjunct
-  match(terms: Partial<InferRuleTerms<T>>): Conjunct
-  (terms: InferRuleTerms<Omit<T, 'the'>>): Conjunct
-  assert(
-    terms: InferRuleTerms<Omit<T, 'this' | 'the'>> & { this?: Term<Entity> }
-  ): Conjunct
-
-  $$: InferRuleAssert<T>
-}
-
-export interface SchemaWhen<
-  Descriptor extends RuleDescriptor,
-  Local extends RuleDescriptor,
-> extends Schema<Descriptor, Local> {}
-
 export type InferFactTerms<T extends FactSchema> = {
   [Key in keyof Omit<T, 'this'>]: Term<InferDescriptorType<T[Key]>>
 } & {
@@ -1103,21 +1077,42 @@ export type InferAssert<Schema extends FactSchema> = InferFact<
   Omit<Schema, 'this'>
 > & { this?: Entity }
 
-export interface Premise<
+export type InferClaimTerms<Schema extends FactSchema> = InferFactTerms<Schema>
+
+export type InferAttributes<Schema> = {
+  [Key in keyof Schema]: Variable<InferDescriptorType<Schema[Key]>>
+}
+
+export interface Premise<The extends string, Schema extends FactSchema> {
+  readonly the: The
+  readonly attributes: InferAttributes<Schema & { this: ObjectDescriptor }>
+  readonly schema: Schema
+}
+
+export interface Conclusion<
+  Fact,
   The extends string,
   Schema extends FactSchema,
-  Context extends RuleDescriptor = {},
-> extends Relation<The, Schema> {
+> {
+  assert(fact: InferAssert<Schema>): Fact
+}
+
+export interface Claim<
+  Fact,
+  The extends string,
+  Schema extends FactSchema,
+  Context extends RuleDescriptor,
+> extends Relation<Fact, The, Schema> {
   the: The
-  ports: InferRuleVariables<Schema>
+  attributes: InferSchemaAttributes<Schema>
 
   /**
    * Defines temporary variables made available in the {@link when} /
    * {@link where} builder methods so they can be used inside the rule body.
    */
-  with<Extension extends Exclude<RuleDescriptor, Schema & Context>>(
-    extension: Extension
-  ): Premise<The, Schema, Context & Extension>
+  // with<Extension extends Exclude<RuleDescriptor, Schema & Context>>(
+  //   extension: Extension
+  // ): Claim<Fact, The, Schema, Context & Extension>
 
   /**
    * Defines a rule that concludes fact corresponding to this premise whenever
@@ -1125,17 +1120,19 @@ export interface Premise<
    * shortuct for {@link when} which is convinient in cases with a single
    * branch.
    */
-  where(derive: EveryBuilder<Schema & Context>): Deduction<The, Schema>
+  where(
+    derive: EveryBuilder<Schema & Context>
+  ): Deduction<Fact, The, Schema, {}>
 
-  /**
-   * Defines a rule that deduces this fact whenever any of the branches are true.
-   * Takes a `build` function that will be given set of variables corresponding
-   * to the fact members which must return object where keys represent disjuncts
-   * and values are arrays representing conjuncts for those disjuncts. In other
-   * works each member of the returned object represent OR branches where each
-   * branch is an AND joined predicates by passed variables.
-   */
-  when(derive: SomeBuilder<Schema & Context>): Deduction<The, Schema>
+  // /**
+  //  * Defines a rule that deduces this fact whenever any of the branches are true.
+  //  * Takes a `build` function that will be given set of variables corresponding
+  //  * to the fact members which must return object where keys represent disjuncts
+  //  * and values are arrays representing conjuncts for those disjuncts. In other
+  //  * works each member of the returned object represent OR branches where each
+  //  * branch is an AND joined predicates by passed variables.
+  //  */
+  // when(derive: SomeBuilder<Schema & Context>): Deduction<Fact, The, Schema, {}>
 }
 
 export interface NegationPredicate extends Iterable<Negation> {}
@@ -1143,10 +1140,12 @@ export interface NegationPredicate extends Iterable<Negation> {}
 /**
  *
  */
-export interface Predicate<The extends string, Schema extends FactSchema>
+export interface Predicate<Fact, The extends string, Schema extends FactSchema>
   extends Iterable<Recur | Conjunct> {
-  query(source: { from: Querier }): Invocation<FactView<The, Schema>[], Error>
+  query(source: { from: Querier }): Invocation<Fact[], Error>
 }
+
+export interface Assertion extends Iterable<{ assert: Fact }> {}
 
 export type FactView<
   The extends string,
@@ -1154,23 +1153,24 @@ export type FactView<
 > = InferFact<Schema> & {
   the: The
   toJSON(): InferFact<Schema> & { the: The }
-} & Iterable<{ assert: Fact } & SystemOperator>
+  retract(): Iterable<{ retract: Fact }>
+} & Assertion
 
-export interface Relation<The extends string, Schema extends FactSchema> {
+export interface Relation<Fact, The extends string, Schema extends FactSchema> {
   /**
    * Creates a predicate that matches this premise. This is just like
    * {@link match} except it requires passing all members explicitly,
    * this allows type checker to ensure that no members are left out by
    * accident.
    */
-  (terms?: InferFactTerms<Schema>): Predicate<The, Schema>
+  (terms?: InferFactTerms<Schema>): Predicate<Fact, The, Schema>
 
   /**
    * Creates predicate that matches this premise. It may be passed terms for
    * the subset of the fact members. Omitted members are treated as `_` meaning
    * any value would satisfy them.
    */
-  match(terms?: Partial<InferFactTerms<Schema>>): Predicate<The, Schema>
+  match(terms?: Partial<InferFactTerms<Schema>>): Predicate<Fact, The, Schema>
 
   /**
    * Creates negation (anti-join) that will omit all the facts that match
@@ -1182,15 +1182,16 @@ export interface Relation<The extends string, Schema extends FactSchema> {
    * Creates an assertion for this the fact denoted by this premise, which can
    * be transacted in the DB.
    */
-  assert(fact: InferAssert<Schema>): FactView<The, Schema>
+  assert(fact: InferAssert<Schema>): Fact
 }
 
 export interface Deduction<
+  Fact,
   The extends string,
   Schema extends FactSchema,
-  Context extends RuleDescriptor = {},
-> extends Premise<The, Schema, Context> {
-  inductive: Relation<The, Schema>
+  Context extends RuleDescriptor,
+> extends Claim<Fact, The, Schema, Context> {
+  inductive: Relation<Fact, The, Schema>
   /**
    * Creates an assertion for this the fact denoted by this premise, which can
    * be transacted in the DB.
@@ -1203,9 +1204,8 @@ export interface Deduction<
 }
 
 export interface Projection<Schema extends FactSchema, Terms extends Selector> {
-  selector: Terms
-  (terms?: InferRuleTerms<Schema>): SelectionPredicate<Terms>
-  match(terms?: Partial<InferRuleTerms<Schema>>): SelectionPredicate<Terms>
+  (terms?: InferSchemaTerms<Schema>): SelectionPredicate<Terms>
+  match(terms?: Partial<InferSchemaTerms<Schema>>): SelectionPredicate<Terms>
 }
 
 export interface SelectionPredicate<Terms extends Selector>

@@ -85,21 +85,21 @@ export const testDB = {
       () =>
         // @ts-expect-error
         Person.assert({ name: 'Bob' }),
-      /Required property "address" is missing/
+      /Required attribute "address" is missing/
     )
 
     assert.throws(
       () =>
         // @ts-expect-error
         Person.assert({ address: 'Paris, France' }),
-      /Required property "name" is missing/
+      /Required attribute "name" is missing/
     )
 
     assert.throws(
       () =>
         // @ts-expect-error
         Person.assert({ address: 'Paris, France' }),
-      /Required property .* is missing/
+      /Required attribute .* is missing/
     )
 
     const paul = Person.assert({
@@ -180,7 +180,7 @@ export const testDB = {
     }
 
     const db = Memory.create({ marije, bjorn })
-    const out = await Person.match({ name: Person.ports.name }).query({
+    const out = await Person.match({ name: Person.attributes.name }).query({
       from: db,
     })
 
@@ -363,7 +363,7 @@ export const testDB = {
       // If we have no counter we derive a new one.
       new: [
         Counter.not({ this: counter.this }),
-        Counter.assert({
+        Behavior.claim({
           this: Link.of({ counter: { v: 1 } }),
           count: 0,
           title: 'basic counter',

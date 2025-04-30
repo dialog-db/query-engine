@@ -898,6 +898,10 @@ export class RuleApplication {
       rule: rule.toJSON(),
     }
   }
+
+  negate() {
+    return Negation.new(this)
+  }
 }
 
 /**
@@ -1540,6 +1544,10 @@ export class Negation {
    */
   plan(scope) {
     return new NegationPlan(this.constraint.plan(scope))
+  }
+
+  toJSON() {
+    return { not: this.constraint.toJSON() }
   }
 
   toDebugString() {

@@ -157,6 +157,11 @@ export const testDB = {
           actor: arnold,
         }),
         Cast.assert({
+          title: 'Terminator 2: Judgment Day',
+          director: 'James Cameron',
+          actor: arnold,
+        }),
+        Cast.assert({
           title: 'Predator',
           director: 'John McTiernan',
           actor: arnold,
@@ -166,12 +171,6 @@ export const testDB = {
           director: 'Mark L. Lester',
           actor: arnold,
         }),
-        Cast.assert({
-          title: 'Terminator 2: Judgment Day',
-          director: 'James Cameron',
-          actor: arnold,
-        }),
-
         Cast.assert({
           title: 'Terminator 3: Rise of the Machines',
           director: 'Jonathan Mostow',
@@ -427,6 +426,8 @@ export const testDB = {
         Supervisor({ this: subordinate, supervisor }),
         Manager.claim({ employee, manager }),
       ])
+
+    Manager.build().toDebugString()
 
     const ReportingToBenOrAlyssa = Manager.when(
       ({ this: fact, employee, manager }) => ({
