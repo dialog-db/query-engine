@@ -1176,6 +1176,49 @@ export interface Claim<
   when(derive: SomeBuilder<Schema & Context>): Deduction<Fact, The, Schema, {}>
 
   map<View>(mapper: (fact: Fact) => View): Claim<View, The, Schema, Context>
+
+  reduce<View>(
+    reducer: (fact: Fact, view: View) => View,
+    init: View
+  ): Reduction<View, Fact, The, Schema>
+}
+
+export interface Reduction<
+  View,
+  Fact,
+  The extends string,
+  Schema extends FactSchema,
+> {
+  /**
+   * Creates a predicate that matches this premise. This is just like
+   * {@link match} except it requires passing all members explicitly,
+   * this allows type checker to ensure that no members are left out by
+   * accident.
+   */
+  (terms?: InferFactTerms<Schema>): ReducerPredicate<View>
+
+  /**
+   * Creates predicate that matches this premise. It may be passed terms for
+   * the subset of the fact members. Omitted members are treated as `_` meaning
+   * any value would satisfy them.
+   */
+  match(terms?: Partial<InferFactTerms<Schema>>): ReducerPredicate<View>
+
+  /**
+   * Creates negation (anti-join) that will omit all the facts that match
+   * the premise with the given terms.
+   */
+  not(terms: Partial<InferSchemaTerms<Schema>>): NegationPredicate
+
+  /**
+   * Creates an assertion for this the fact denoted by this premise, which can
+   * be transacted in the DB.
+   */
+  assert(fact: InferAssert<Schema>): Fact
+}
+
+export interface ReducerPredicate<View> extends Iterable<Recur | Conjunct> {
+  query(source: { from: Querier }): Invocation<View, Error>
 }
 
 export interface NegationPredicate extends Iterable<Negation> {}
@@ -1196,9 +1239,8 @@ export type FactView<
 > = InferFact<Schema> & {
   the: The
   toJSON(): InferFact<Schema> & { the: The }
-  
-} & Assertion & Retractable
-
+} & Assertion &
+  Retractable
 
 export interface Retractable {
   retract(): Iterable<{ retract: Fact }>

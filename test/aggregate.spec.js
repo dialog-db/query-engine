@@ -1,4 +1,4 @@
-import { Memory, $, fact, Collection, Task, Link } from './lib.js'
+import { Memory, $, fact, Collection, Task, Link, API } from './lib.js'
 
 /**
  * @type {import('entail').Suite}
@@ -293,5 +293,102 @@ export const testAggregate = {
           tags: member['post/tags'],
         }))
       )
+    }),
+
+  'test reduce method': (assert) =>
+    Task.spawn(function* () {
+      const groceries = Link.of({ name: 'Groceries' })
+      const milk = Link.of({ title: 'Buy Milk' })
+      const eggs = Link.of({ title: 'Buy Eggs' })
+      const bread = Link.of({ title: 'Buy Bread' })
+
+      const chores = Link.of({ name: 'Chores' })
+      const laundry = Link.of({ title: 'Do Laundry' })
+      const dishes = Link.of({ title: 'Do Dishes' })
+
+      const db = Memory.create([
+        { the: 'list/name', of: groceries, is: 'Groceries' },
+        { the: 'todo/title', of: milk, is: 'Buy Milk' },
+        { the: 'todo/title', of: eggs, is: 'Buy Eggs' },
+        { the: 'todo/title', of: bread, is: 'Buy Bread' },
+        { the: 'list/item', of: groceries, is: milk },
+        { the: 'list/item', of: groceries, is: eggs },
+        { the: 'list/item', of: groceries, is: bread },
+        { the: 'list/name', of: chores, is: 'Chores' },
+        { the: 'todo/title', of: laundry, is: 'Do Laundry' },
+        { the: 'todo/title', of: dishes, is: 'Do Dishes' },
+        { the: 'list/item', of: chores, is: laundry },
+        { the: 'list/item', of: chores, is: dishes },
+      ])
+
+      const TodoItem = fact({
+        the: 'todo',
+        title: String,
+      })
+
+      const TodoList = fact({
+        the: 'list',
+        name: String,
+        item: Object,
+      })
+
+      const Todo = fact({
+        name: String,
+        task: Object,
+        title: String,
+      })
+        .where(({ this: list, name, task, title }) => [
+          TodoList({ this: list, name, item: task }),
+          TodoItem({ this: task, title }),
+        ])
+        .reduce(
+          /**
+           *
+           * @param {API.FactView<string, {name: StringConstructor, task: ObjectConstructor, this: ObjectConstructor, title: StringConstructor}>} fact
+           * @param {{ this: API.Entity, name: string, todo: {this: API.Entity, title:string, }[]}[]} results
+           */
+          (fact, results) => {
+            for (const result of results) {
+              if (result.this.toString() === fact.this.toString()) {
+                result.todo.push({
+                  this: fact.task,
+                  title: fact.title,
+                })
+
+                return results
+              }
+            }
+
+            return [
+              ...results,
+              {
+                this: fact.this,
+                name: fact.name,
+                todo: [{ this: fact.task, title: fact.title }],
+              },
+            ]
+          },
+          []
+        )
+
+      assert.deepEqual(yield* Todo().query({ from: db }), [
+        {
+          this: groceries,
+          name: 'Groceries',
+          todo: [
+            { this: milk, title: 'Buy Milk' },
+            { this: eggs, title: 'Buy Eggs' },
+            { this: bread, title: 'Buy Bread' },
+          ],
+        },
+        {
+          this: chores,
+          name: 'Chores',
+          todo: [
+            { this: laundry, title: 'Do Laundry' },
+            { this: dishes, title: 'Do Dishes' },
+          ],
+        },
+      ])
     }),
 }

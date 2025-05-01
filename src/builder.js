@@ -148,6 +148,7 @@ export const claim = fact
  * @template {string} The
  * @template {API.FactSchema} Schema
  * @template {API.RuleDescriptor} Context
+ * @implements {API.Claim<Fact, The, Schema, Context>}
  * @extends {Callable<(terms?: API.InferFactTerms<Schema>) => FactMatch<Fact, The, Schema>>}
  */
 class Claim extends Callable {
@@ -357,6 +358,15 @@ class Claim extends Callable {
       },
       this.context
     )
+  }
+
+  /**
+   * @template View
+   * @param {(fact: Fact, state: View) => View} reducer
+   * @param {View} state
+   */
+  reduce(reducer, state) {
+    return new Reduction(this, reducer, state)
   }
 }
 
@@ -760,6 +770,98 @@ class FactMatch {
 }
 
 /**
+ * @template View
+ * @template Fact
+ * @template {string} The
+ * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
+ */
+class ReductionMatch {
+  /**
+   * @param {API.Premise<The, Schema>} premise
+   * @param {API.Conclusion<Fact, The, Schema>} conclusion
+   * @param {Circuit<Schema, Fact>} rule
+   * @param {(fact: Fact, state: View) => View} reducer
+   * @param {View} state
+   * @param {API.InferSchemaTerms<Schema>} terms
+   */
+  constructor(premise, conclusion, rule, reducer, state, terms) {
+    this.premise = premise
+    this.conclusion = conclusion
+    this.rule = rule
+    this.reducer = reducer
+    this.state = state
+    this.terms = terms
+  }
+  /**
+   * @returns {Negation<Fact, The, Schema>}
+   */
+  negate() {
+    return new Negation(this.premise, this.conclusion, this.rule, this.terms)
+  }
+  /** @type {API.RuleApplicationSyntax<API.InferSchemaAttributes<Schema>>|undefined} */
+  #build
+  build() {
+    if (!this.#build) {
+      this.#build = this.rule.apply(this.terms)
+    }
+    return this.#build
+  }
+  /** @type {API.RuleApplicationPlan<API.InferSchemaAttributes<Schema>>|undefined} */
+  #plan
+  plan() {
+    if (!this.#plan) {
+      this.#plan = this.rule.apply(this.terms).prepare()
+    }
+    return this.#plan
+  }
+
+  /** @returns {Iterator<API.Conjunct|API.Recur>} */
+  *[Symbol.iterator]() {
+    yield this.build()
+  }
+
+  toJSON() {
+    return this.build().toJSON()
+  }
+  /**
+   * @param {API.Task<API.MatchFrame[], Error>} query
+   * @returns {API.Task<View, Error>}
+   */
+  *execute(query) {
+    const { terms } = this
+    const selection = yield* query
+
+    let view = this.state
+    for (const match of selection) {
+      /** @type {Record<string, API.Scalar>} */
+      const model = {}
+      for (const [key, term] of Object.entries(terms)) {
+        model[key] = /** @type {API.Scalar} */ (
+          Variable.is(term) ? match.get(term) : term
+        )
+      }
+
+      model.the = this.premise.the
+      const fact = this.conclusion.assert(
+        /** @type {API.InferFact<Schema> & { this: API.Entity, the: The }} */ (
+          model
+        )
+      )
+
+      view = this.reducer(fact, view)
+    }
+
+    return view
+  }
+
+  /**
+   * @param {{ from: API.Querier }} source
+   */
+  query(source) {
+    return Task.perform(this.execute(this.plan().query(source)))
+  }
+}
+/**
  * Subclass of {@link FactMatch} that represents a recursive rule application.
 
  * @template {string} The
@@ -911,6 +1013,93 @@ class Constraint {
   }
   *[Symbol.iterator]() {
     yield* this.predicates
+  }
+}
+
+/**
+ * @template View
+ * @template Fact
+ * @template {string} The
+ * @template {API.FactSchema} Schema
+ * @template {API.RuleDescriptor} Context
+ * @implements {API.Reduction<View, Fact, The, Schema>}
+ * @extends {Callable<(terms?: API.InferFactTerms<Schema>) => API.ReducerPredicate<View>>}
+ */
+class Reduction extends Callable {
+  /**
+   * @param {Claim<Fact, The, Schema, Context>} rule
+   * @param {(fact: Fact, state: View) => View} reducer
+   * @param {View} state
+   */
+  constructor(rule, reducer, state) {
+    super((terms) => this.match(terms))
+    this.rule = rule
+    this.reducer = reducer
+    this.state = state
+  }
+
+  get the() {
+    return this.rule.the
+  }
+  get attributes() {
+    return this.rule.attributes
+  }
+  get schema() {
+    return this.rule.schema
+  }
+  get cells() {
+    return this.rule.cells
+  }
+
+  /**
+   * @param {API.InferSchemaTerms<Schema>} terms
+   */
+  apply(terms) {
+    return this.rule.apply(terms)
+  }
+
+  /**
+   * @param {API.InferSchemaTerms<Schema>} terms
+   */
+  recur(terms) {
+    return this.rule.recur(terms)
+  }
+  /**
+   * Creates a predicate for this fact that excludes ones that match given
+   * terms.
+   *
+   * @param {Partial<API.InferSchemaTerms<Schema>>} terms
+   * @returns {Negation<Fact, The, Schema>}
+   */
+  not(terms) {
+    return this.rule.not(terms)
+  }
+
+  /**
+   * Asserts this fact with a given data. If data does not conforms this fact
+   * throws an error.
+   *
+   * @param {API.InferAssert<Schema>} fact
+   * @returns {Fact}
+   */
+  assert(fact) {
+    return this.rule.assert(fact)
+  }
+  /**
+   * Creates predicate for this fact that matches given terms.
+   *
+   * @param {Partial<API.InferFactTerms<Schema>>} [terms]
+   * @returns {ReductionMatch<View, Fact, The, Schema>}
+   */
+  match(terms = {}) {
+    return new ReductionMatch(
+      this.rule.premise,
+      this.rule.conclusion,
+      this,
+      this.reducer,
+      this.state,
+      completeTerms(this.schema, terms)
+    )
   }
 }
 
