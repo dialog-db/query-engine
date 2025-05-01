@@ -361,12 +361,11 @@ class Claim extends Callable {
   }
 
   /**
-   * @template View
-   * @param {(fact: Fact, state: View) => View} reducer
-   * @param {View} state
+   * @template View, State
+   * @param {API.Aggregator<View, Fact, State>} aggregator
    */
-  reduce(reducer, state) {
-    return new Reduction(this, reducer, state)
+  aggregate(aggregator) {
+    return new Aggregation(this, aggregator)
   }
 }
 
@@ -566,6 +565,90 @@ class Induction extends Deduction {
   }
 }
 
+/**
+ * @template View
+ * @template Fact
+ * @template State
+ * @template {string} The
+ * @template {API.FactSchema} Schema
+ * @template {API.RuleDescriptor} Context
+ * @implements {API.Aggregation<View, Fact, Schema>}
+ * @extends {Callable<(terms?: API.InferFactTerms<Schema>) => API.Aggregate<View>>}
+ */
+class Aggregation extends Callable {
+  /**
+   * @param {Claim<Fact, The, Schema, Context>} rule
+   * @param {API.Aggregator<View, Fact, State>} aggregator
+   */
+  constructor(rule, aggregator) {
+    super((terms) => this.match(terms))
+    this.rule = rule
+    this.aggregator = aggregator
+  }
+
+  get the() {
+    return this.rule.the
+  }
+  get attributes() {
+    return this.rule.attributes
+  }
+  get schema() {
+    return this.rule.schema
+  }
+  get cells() {
+    return this.rule.cells
+  }
+
+  /**
+   * @param {API.InferSchemaTerms<Schema>} terms
+   */
+  apply(terms) {
+    return this.rule.apply(terms)
+  }
+
+  /**
+   * @param {API.InferSchemaTerms<Schema>} terms
+   */
+  recur(terms) {
+    return this.rule.recur(terms)
+  }
+  /**
+   * Creates a predicate for this fact that excludes ones that match given
+   * terms.
+   *
+   * @param {Partial<API.InferSchemaTerms<Schema>>} terms
+   * @returns {Negation<Fact, The, Schema>}
+   */
+  not(terms) {
+    return this.rule.not(terms)
+  }
+
+  /**
+   * Asserts this fact with a given data. If data does not conforms this fact
+   * throws an error.
+   *
+   * @param {API.InferAssert<Schema>} fact
+   * @returns {Fact}
+   */
+  assert(fact) {
+    return this.rule.assert(fact)
+  }
+  /**
+   * Creates predicate for this fact that matches given terms.
+   *
+   * @param {Partial<API.InferFactTerms<Schema>>} [terms]
+   * @returns {Aggregate<View, Fact, State, The, Schema>}
+   */
+  match(terms = {}) {
+    return new Aggregate(
+      this.rule.premise,
+      this.rule.conclusion,
+      this,
+      this.aggregator,
+      completeTerms(this.schema, terms)
+    )
+  }
+}
 /**
  *
  * @template {API.FactSchema} Schema
@@ -772,24 +855,23 @@ class FactMatch {
 /**
  * @template View
  * @template Fact
+ * @template State
  * @template {string} The
  * @template {API.RuleDescriptor & {this: ObjectConstructor}} Schema
  */
-class ReductionMatch {
+class Aggregate {
   /**
    * @param {API.Premise<The, Schema>} premise
    * @param {API.Conclusion<Fact, The, Schema>} conclusion
    * @param {Circuit<Schema, Fact>} rule
-   * @param {(fact: Fact, state: View) => View} reducer
-   * @param {View} state
+   * @param {API.Aggregator<View, Fact, State>} aggregator
    * @param {API.InferSchemaTerms<Schema>} terms
    */
-  constructor(premise, conclusion, rule, reducer, state, terms) {
+  constructor(premise, conclusion, rule, aggregator, terms) {
     this.premise = premise
     this.conclusion = conclusion
     this.rule = rule
-    this.reducer = reducer
-    this.state = state
+    this.aggregator = aggregator
     this.terms = terms
   }
   /**
@@ -828,10 +910,10 @@ class ReductionMatch {
    * @returns {API.Task<View, Error>}
    */
   *execute(query) {
-    const { terms } = this
+    const { terms, aggregator } = this
     const selection = yield* query
 
-    let view = this.state
+    let aggregate = aggregator.open()
     for (const match of selection) {
       /** @type {Record<string, API.Scalar>} */
       const model = {}
@@ -848,10 +930,10 @@ class ReductionMatch {
         )
       )
 
-      view = this.reducer(fact, view)
+      aggregate = aggregator.merge(aggregate, fact)
     }
 
-    return view
+    return aggregator.close(aggregate)
   }
 
   /**
@@ -1013,93 +1095,6 @@ class Constraint {
   }
   *[Symbol.iterator]() {
     yield* this.predicates
-  }
-}
-
-/**
- * @template View
- * @template Fact
- * @template {string} The
- * @template {API.FactSchema} Schema
- * @template {API.RuleDescriptor} Context
- * @implements {API.Reduction<View, Fact, The, Schema>}
- * @extends {Callable<(terms?: API.InferFactTerms<Schema>) => API.ReducerPredicate<View>>}
- */
-class Reduction extends Callable {
-  /**
-   * @param {Claim<Fact, The, Schema, Context>} rule
-   * @param {(fact: Fact, state: View) => View} reducer
-   * @param {View} state
-   */
-  constructor(rule, reducer, state) {
-    super((terms) => this.match(terms))
-    this.rule = rule
-    this.reducer = reducer
-    this.state = state
-  }
-
-  get the() {
-    return this.rule.the
-  }
-  get attributes() {
-    return this.rule.attributes
-  }
-  get schema() {
-    return this.rule.schema
-  }
-  get cells() {
-    return this.rule.cells
-  }
-
-  /**
-   * @param {API.InferSchemaTerms<Schema>} terms
-   */
-  apply(terms) {
-    return this.rule.apply(terms)
-  }
-
-  /**
-   * @param {API.InferSchemaTerms<Schema>} terms
-   */
-  recur(terms) {
-    return this.rule.recur(terms)
-  }
-  /**
-   * Creates a predicate for this fact that excludes ones that match given
-   * terms.
-   *
-   * @param {Partial<API.InferSchemaTerms<Schema>>} terms
-   * @returns {Negation<Fact, The, Schema>}
-   */
-  not(terms) {
-    return this.rule.not(terms)
-  }
-
-  /**
-   * Asserts this fact with a given data. If data does not conforms this fact
-   * throws an error.
-   *
-   * @param {API.InferAssert<Schema>} fact
-   * @returns {Fact}
-   */
-  assert(fact) {
-    return this.rule.assert(fact)
-  }
-  /**
-   * Creates predicate for this fact that matches given terms.
-   *
-   * @param {Partial<API.InferFactTerms<Schema>>} [terms]
-   * @returns {ReductionMatch<View, Fact, The, Schema>}
-   */
-  match(terms = {}) {
-    return new ReductionMatch(
-      this.rule.premise,
-      this.rule.conclusion,
-      this,
-      this.reducer,
-      this.state,
-      completeTerms(this.schema, terms)
-    )
   }
 }
 

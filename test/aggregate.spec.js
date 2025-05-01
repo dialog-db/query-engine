@@ -341,35 +341,35 @@ export const testAggregate = {
           TodoList({ this: list, name, item: task }),
           TodoItem({ this: task, title }),
         ])
-        .reduce(
+        .aggregate({
           /**
-           *
-           * @param {API.FactView<string, {name: StringConstructor, task: ObjectConstructor, this: ObjectConstructor, title: StringConstructor}>} fact
-           * @param {{ this: API.Entity, name: string, todo: {this: API.Entity, title:string, }[]}[]} results
+           * @returns {Map<string, { this: API.Entity, name: string, todo: {this: API.Entity, title:string }[]}>}
            */
-          (fact, results) => {
-            for (const result of results) {
-              if (result.this.toString() === fact.this.toString()) {
-                result.todo.push({
-                  this: fact.task,
-                  title: fact.title,
-                })
-
-                return results
-              }
+          open() {
+            return new Map()
+          },
+          merge(state, { this: todo, name, title, task }) {
+            const id = todo.toString()
+            let result = state.get(id)
+            if (result == null) {
+              state.set(id, {
+                this: todo,
+                name,
+                todo: [{ this: task, title }],
+              })
+            } else {
+              result.todo.push({
+                this: task,
+                title,
+              })
             }
 
-            return [
-              ...results,
-              {
-                this: fact.this,
-                name: fact.name,
-                todo: [{ this: fact.task, title: fact.title }],
-              },
-            ]
+            return state
           },
-          []
-        )
+          close(state) {
+            return [...state.values()]
+          },
+        })
 
       assert.deepEqual(yield* Todo().query({ from: db }), [
         {
