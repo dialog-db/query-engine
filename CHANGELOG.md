@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.11.0](https://github.com/dialog-db/query-engine/compare/v0.10.1...v0.11.0) (2025-05-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* new data modeling interface ([#74](https://github.com/dialog-db/query-engine/issues/74))
+* overhaul api using fact based interface
+
+### Features
+
+* add .map method ([eafe391](https://github.com/dialog-db/query-engine/commit/eafe391f14b8c025e0d48c211a6a7005084ddfb0))
+* define types for things ([3e05618](https://github.com/dialog-db/query-engine/commit/3e05618be96c6e7586ae9e256c5f2f3eda21686d))
+* enhance API and improve rule application logic ([f15eb88](https://github.com/dialog-db/query-engine/commit/f15eb885c6243bdda73299a295a1695dd039ffbb))
+* enhance API and improve rule application logic ([#72](https://github.com/dialog-db/query-engine/issues/72)) ([5ae6f97](https://github.com/dialog-db/query-engine/commit/5ae6f978a88e7498b3c57d6348bed9adf3e3d730))
+* implement not logic operator formula ([b0ebed3](https://github.com/dialog-db/query-engine/commit/b0ebed37033b18a702560b30ab36373479db57c9))
+* make facts plugable ([e605318](https://github.com/dialog-db/query-engine/commit/e6053188b576d5dc7c14505126da7fbd22649375))
+* new data modeling interface ([#74](https://github.com/dialog-db/query-engine/issues/74)) ([d83402c](https://github.com/dialog-db/query-engine/commit/d83402c5ffc7cd3858fb4d28e6ed0f6000842a58))
+* overhaul api using fact based interface ([bd8aa45](https://github.com/dialog-db/query-engine/commit/bd8aa4519fdaf57823e157542a5a78ab1a2cefa6))
+* prototype reduce api ([8d76d20](https://github.com/dialog-db/query-engine/commit/8d76d201dcb220e3e254a159cd9ddf4fe1019fbd))
+* try transducer like API instead ([6f2efe9](https://github.com/dialog-db/query-engine/commit/6f2efe980fae2c2bd61a6f64b0c95acb35261d79))
+
+
+### Bug Fixes
+
+* another unification issue ([559e9ab](https://github.com/dialog-db/query-engine/commit/559e9abb4cf7c724827f976d428cadd7da83c9cb))
+* debug string generator ([d1c28fe](https://github.com/dialog-db/query-engine/commit/d1c28fe4de8e4588eac2ba625ae01cef7dcb5b3a))
+* fold more layers ([5dd23bf](https://github.com/dialog-db/query-engine/commit/5dd23bf84ab82e55bdba78c157f919cfd84be825))
+* improve api ([4e3375e](https://github.com/dialog-db/query-engine/commit/4e3375e56c5ce4c4e6f3f78cb2756a56ead1413c))
+* retain `the` type ([7a58517](https://github.com/dialog-db/query-engine/commit/7a58517f1259c3c59eb2be742972129f2b19c179))
+* rules with unproductive recursion ([a7a4c2f](https://github.com/dialog-db/query-engine/commit/a7a4c2f5f30af9699edd7c2d64028e81edaf05f9))
+* swittch to new fact format in transactions ([0fa8869](https://github.com/dialog-db/query-engine/commit/0fa88693131aeb8547a91f980023e7527269c4ee))
+* throw errors on bad fact definitions ([b7bffe9](https://github.com/dialog-db/query-engine/commit/b7bffe9ac3d6e49b659644727c6eb4e1360e30d3))
+* unproductive recursion handling ([67c6019](https://github.com/dialog-db/query-engine/commit/67c6019388e94953f96ab0bc7d5776a060993473))
+
 ## [0.10.1](https://github.com/dialog-db/query-engine/compare/v0.10.0...v0.10.1) (2025-04-18)
 
 
