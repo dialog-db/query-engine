@@ -116,17 +116,11 @@ export type New<T, Type = Tagged<T>> = Tagged<T>[keyof Tagged<T>] &
 export interface Unit {}
 
 /**
- * Signed 32-bit integer type.
+ * Variable integer.
  */
-export type Int32 = New<{ Int32: number }>
-/**
- * Signed 64-bit integer type.
- */
-export type Int64 = New<{ Int64: bigint }>
-/**
- * 32-bit floating point number type.
- */
-export type Float32 = New<{ Float32: number }>
+export type Integer = New<{ Integer: number }>
+
+export type Float = New<{ Float: number }>
 
 /**
  * Type representing a raw bytes.
@@ -134,6 +128,12 @@ export type Float32 = New<{ Float32: number }>
 export type Bytes = Uint8Array
 
 export type Null = null
+
+export type Reference = New<{ Reference: string }>
+
+export type Name = New<{ Name: string }>
+
+export type Position = New<{ Position: string }>
 
 /**
  * Type representing an IPLD link.
@@ -155,9 +155,9 @@ export interface Link<
 export type Scalar =
   | null
   | boolean
-  | Int32
-  | Float32
-  | Int64
+  | bigint
+  | Integer
+  | Float
   | string
   | Bytes
   | Link
@@ -177,14 +177,17 @@ export type Constant = Scalar
  */
 export type Type<T extends Scalar = Scalar> = Phantom<T> &
   Variant<{
-    Null: { order: 0 }
-    Boolean: { order: 1 }
-    Int32: { order: 2 }
-    Int64: { order: 3 }
-    Float32: { order: 4 }
-    String: { order: 5 }
-    Bytes: { order: 6 }
-    Link: { order: 9 }
+    Null: {}
+    Boolean: {}
+    Integer: {}
+    Float: {}
+    String: {}
+    Bytes: {}
+    Entity: {}
+    Name: {}
+    Position: {}
+    Reference: {}
+    Unknown: {}
   }>
 
 // /**
@@ -211,6 +214,9 @@ export interface Variable<T extends Scalar = Scalar> {
     type?: Type<T>
     id: VariableID
   }
+
+  // is(term: Term): Conjunct
+  // not(term: Term): Conjunct
 }
 
 export type VariableID = number
@@ -294,7 +300,7 @@ export interface Row<T = Term> {
   [Key: string]: T
 }
 
-export type Numeric = Int32 | Int64 | Float32
+export type Numeric = Integer | Float
 
 /**
  * Describes operand of the operator.
@@ -314,33 +320,13 @@ export type InferOperand<T, K = T> = K extends Scalar ? Term<T & Scalar>
     : never
   }
 
-export interface Operator<
-  Input extends Operand,
-  Relation extends string,
-  Output extends Operand,
-> {
-  relation: Relation
-  (input: Input): Iterable<Output>
-}
-
-export type Relation<
-  Input extends Operand,
-  Operator,
-  Output extends Operand,
-> = readonly [
-  input: InferOperand<Input>,
-  operator: Operator,
-  output?: InferOperand<Output>,
-]
-
 export type TypeName =
   | 'null'
   | 'boolean'
   | 'string'
   | 'bigint'
-  | 'int64'
-  | 'int32'
-  | 'float32'
+  | 'integer'
+  | 'float'
   | 'bytes'
   | 'reference'
 
@@ -401,7 +387,7 @@ export type InferTerms<T extends Terms> =
 export type Frame = Record<PropertyKey, Term>
 
 export type Entity = Link
-export type Attribute = string | Float32 | Int32 | Int64 | Bytes
+export type Attribute = string
 
 /**
  * An atomic fact in the database, associating an `entity` , `attribute` ,
@@ -413,22 +399,27 @@ export type Attribute = string | Float32 | Int32 | Int64 | Bytes
  * - `value` - Something that does not change e.g. 42, "John", true. Fact relates
  *    an `entity` to a particular `value` through an `attribute`.ich
  */
-export type Fact = readonly [
-  entity: Entity,
-  attribute: Attribute,
-  value: Scalar,
-]
+export interface Fact<
+  T extends The = The,
+  Of extends Entity = Entity,
+  Is extends Scalar = Scalar,
+> {
+  the: The
+  of: Of
+  is: Is
+}
 
 /**
  * An atomic {@link Fact} with a `cause` field providing a causal relationship
  * that acts like timestamp.
  */
-export type Datum = readonly [
-  entity: Entity,
-  attribute: Attribute,
-  value: Scalar,
-  cause: Entity,
-]
+export interface Datum<
+  T extends The = The,
+  Of extends Entity = Entity,
+  Is extends Scalar = Scalar,
+> extends Fact<T, Of, Is> {
+  cause: Entity
+}
 
 /**
  * Set of {@link Fact}s associating several attributes with the same new entity.
@@ -445,8 +436,8 @@ export type Datum = readonly [
  * each `Instantiation` in the array with an attribute corresponding to the
  * key.
  */
-export interface Instantiation {
-  [Key: string]: Scalar | Scalar[] | Instantiation | Instantiation[]
+export interface DataImport {
+  [Key: string]: Scalar | Scalar[] | DataImport | DataImport[]
 }
 
 export interface FactsSelector {
@@ -456,9 +447,8 @@ export interface FactsSelector {
 }
 
 export type Instruction = Variant<{
-  Assert: Fact
-  Retract: Fact
-  Import: Instantiation
+  assert: Fact
+  retract: Fact
 }>
 
 export interface Transaction extends Iterable<Instruction> {}
@@ -471,18 +461,18 @@ export interface Querier {
   select(selector?: FactsSelector): Task<Datum[], Error>
 }
 
-export type Conclusion = Row<Variable> & {
+export type Proposition = Row<Variable> & {
   this?: Variable
 }
 
-export type Rule<Match extends Conclusion = Conclusion> = Deduction<Match>
+export type Rule<Match extends Proposition = Proposition> = DeductiveRule<Match>
 
-export interface Deduction<Match extends Conclusion = Conclusion> {
+export interface DeductiveRule<Match extends Proposition = Proposition> {
   readonly match: Match
   readonly when?: When<Conjunct | Recur>
 }
 
-export type Constraint = MatchFact | MatchRule | SystemOperator
+export type Constraint = SelectForm | MatchRule | SystemOperator
 
 export interface Negation {
   not: Constraint
@@ -495,8 +485,8 @@ export interface Negation {
 }
 
 export type Conjunct = Constraint | Negation
-export type Recur<Bindings extends Conclusion = Conclusion> = {
-  recur: Bindings
+export type Recur<Match extends Proposition = Proposition> = {
+  recur: RuleBindings<Match>
 
   operator?: undefined
   fact?: undefined
@@ -517,16 +507,16 @@ export type WhenBuilder<T extends RuleDescriptor> =
   | EveryBuilder<T>
 
 export type SomeBuilder<T extends RuleDescriptor> = (
-  variables: InferRuleVariables<T> & { _: Variable<any> }
+  variables: InferSchemaAttributes<T> & { _: Variable<any> }
 ) => SomeView
 export type EveryBuilder<T extends RuleDescriptor> = (
-  variables: InferRuleVariables<T> & { _: Variable<any> }
+  variables: InferSchemaAttributes<T> & { _: Variable<any> }
 ) => EveryView
 
 export type ProjectionBuilder<
   T extends RuleDescriptor,
   Projection extends Selector,
-> = (variables: InferRuleVariables<T>) => Projection
+> = (variables: InferSchemaAttributes<T>) => Projection
 
 export type WhenView = EveryView | SomeView
 export type EveryView = ConjunctView[]
@@ -536,7 +526,7 @@ export interface SomeView {
   [Case: string]: EveryView
 }
 
-export interface MatchRule<Match extends Conclusion = Conclusion> {
+export interface MatchRule<Match extends Proposition = Proposition> {
   readonly match: Partial<RuleBindings<Match>>
   readonly rule: Rule<Match>
 
@@ -548,7 +538,41 @@ export interface MatchRule<Match extends Conclusion = Conclusion> {
   recur?: undefined
 }
 
-export type MatchFact = {
+export interface Syntax {
+  toJSON(): object
+  toDebugString(): string
+
+  plan(scope: Scope): EvaluationPlan
+}
+
+export interface SelectSyntax extends Syntax, SelectForm {}
+
+export interface RuleSyntax<Match extends Proposition = Proposition>
+  extends Syntax,
+    DeductiveRule<Match> {
+  plan(scope: Scope): RulePlan
+}
+
+export interface RuleApplicationSyntax<Match extends Proposition = Proposition>
+  extends Syntax,
+    MatchRule<Match> {
+  negate(): NegationSyntax
+  plan(scope: Scope): RuleApplicationPlan<Match>
+  prepare(): RuleApplicationPlan<Match>
+}
+
+export interface DeductiveRuleSyntax<Match extends Proposition = Proposition>
+  extends Syntax,
+    DeductiveRule<Match> {
+  apply(terms?: RuleBindings<Match>): RuleApplicationSyntax<Match>
+}
+
+export interface RuleRecursionSyntax<Match extends Proposition = Proposition>
+  extends Recur<Match> {}
+
+export interface NegationSyntax extends Syntax, Negation {}
+
+export interface SelectForm {
   match: Select
 
   /**
@@ -576,7 +600,7 @@ export type MatchFact = {
 
 export type Select = SelectByAttribute | SelectByEntity | SelectByValue
 
-type SelectFact = {
+type SelectBy = {
   /**
    * {@link Term} representing a relation an entity `of` has with the value
    * `is`. In RDF notation this will correspond to a predicate.
@@ -601,17 +625,17 @@ type SelectFact = {
   this?: never
 }
 
-interface SelectByAttribute extends SelectFact {
+interface SelectByAttribute extends SelectBy {
   // Selection by attribute requires an attribute to be specified.
   the: Term<Attribute>
 }
 
-interface SelectByEntity extends SelectFact {
+interface SelectByEntity extends SelectBy {
   // Selection by entity requires an entity to be specified.
   of: Term<Entity>
 }
 
-interface SelectByValue extends SelectFact {
+interface SelectByValue extends SelectBy {
   // Selection by value requires a value to be specified.
   is: Term<Scalar>
 }
@@ -691,6 +715,7 @@ type SystemOperators = {
   '>': typeof DataOperators.greater
   '<': typeof DataOperators.less
   '<=': typeof DataOperators.lessOrEqual
+  '!': typeof DataOperators.not
   'data/type': typeof DataOperators.type
   'data/refer': typeof DataOperators.refer
   'text/like': typeof TextOperators.like
@@ -716,11 +741,11 @@ type SystemOperators = {
   'math/absolute': typeof MathOperators.absolute
 }
 
-export type RuleBindings<Case extends Conclusion = Conclusion> = {
+export type RuleBindings<Case extends Proposition = Proposition> = {
   [Key in keyof Case]: Term<Scalar>
 }
 
-export interface RuleApplication<Match extends Conclusion = Conclusion> {
+export interface RuleApplication<Match extends Proposition = Proposition> {
   // ⚠️ This is actually Partial<RuleBindings<Match>> but we still type it
   // without `Partial` because at the type level we have no good way of
   // omitting variables that could be ignored
@@ -728,7 +753,7 @@ export interface RuleApplication<Match extends Conclusion = Conclusion> {
   rule: Rule<Match>
 }
 
-export type InferRuleMatch<Case extends Conclusion> = {
+export type InferRuleMatch<Case extends Proposition> = {
   [Key in keyof Case]: Case[Key] extends Variable<infer U> ?
     U extends any ?
       Term<Scalar>
@@ -771,7 +796,7 @@ export interface Variables extends Record<string, Term> {}
 export type Selection = Selector | Variable<Link<Bindings>>
 
 export interface Not {
-  not: Selector
+  not: Constraint
   match?: void
   rule?: void
 }
@@ -782,32 +807,6 @@ export type Confirmation = Variant<{
   ok: Unit
   error: Error
 }>
-
-/**
- * Aggregate is a stateful operation that can be used to compute results of the
- * query.
- */
-export interface Aggregate<
-  Type extends {
-    Self: {} | null
-    In: unknown
-    Out: unknown
-  } = {
-    Self: {} | null
-    In: unknown
-    Out: unknown
-  },
-> {
-  init(): Type['Self']
-  /**
-   * Takes the aggregator state and new input value and computes new state.
-   */
-  step(state: Type['Self'], input: Type['In']): Result<Type['Self'], Error>
-  /**
-   * Takes aggregator state and computes final result.
-   */
-  end(state: Type['Self']): Result<Type['Out'], Error>
-}
 
 export type InferBindings<Selection extends Selector> = {
   [Key in keyof Selection]: Selection[Key] extends Term<infer T> ? T
@@ -830,7 +829,6 @@ export interface Unplannable extends Error {
 }
 
 export interface EvaluationPlan {
-  // cost: number
   evaluate(context: EvaluationContext): Task<MatchFrame[], EvaluationError>
 }
 
@@ -854,8 +852,15 @@ export interface Scope {
 export type Plan = Unplannable | EvaluationPlan
 
 export interface RulePlan extends EvaluationPlan {
-  scope: Scope
-  match: Conclusion
+  cost: number
+  match: Proposition
+}
+
+export interface RuleApplicationPlan<Match extends Proposition>
+  extends EvaluationPlan {
+  cost: number
+  toJSON(): object
+  query(source: { from: Querier }): Task<MatchFrame[], Error>
 }
 
 export interface EvaluationContext {
@@ -926,15 +931,11 @@ export type UnknownDescriptor = {
 export type TypeDescriptor =
   | Scalar
   | ScalarConstructor
-  | ScalarDescriptor
+  | Type
   | ObjectDescriptor
   | ArrayDescriptor
-  | EntitySchema<any>
-  | ScalarSchema<any>
-  | FactSchema<any>
-  | Schema<any, any>
 
-export type InferDescriptorType<T extends TypeDescriptor> =
+export type InferDescriptorType<T> =
   T extends null ? null
   : T extends { Null: {} } ? null
   : T extends BooleanConstructor ? boolean
@@ -943,25 +944,17 @@ export type InferDescriptorType<T extends TypeDescriptor> =
   : T extends StringConstructor ? string
   : T extends { String: {} } ? string
   : T extends string ? T
-  : T extends NumberConstructor ? Int32
-  : T extends { Int32: {} } ? Int32
-  : T extends { Float32: {} } ? Float32
+  : T extends NumberConstructor ? Integer
+  : T extends { Integer: {} } ? Integer
+  : T extends { Float: {} } ? Float
   : T extends number ? T
-  : T extends BigIntConstructor ? Int64
+  : T extends BigIntConstructor ? bigint
   : T extends bigint ? T
-  : T extends { Int64: {} } ? Int64
   : T extends Uint8ArrayConstructor ? Bytes
   : T extends { Bytes: {} } ? Bytes
   : T extends Uint8Array ? T
   : T extends ObjectConstructor ? Entity
   : T extends UnknownDescriptor ? Scalar
-  : T extends ScalarSchema<infer Scalar> ? Scalar
-  : T extends EntitySchema<infer Model> ? Model
-  : T extends FactSchema<infer Model> ? Model
-  : T extends ObjectDescriptor ?
-    {
-      [Key in keyof T]: InferDescriptorType<T[Key]>
-    }
   : never
 
 export type ScalarConstructor =
@@ -991,64 +984,6 @@ export type ModelDescriptor<
   Object: Descriptor
 }
 
-export type InferSchemaType<T extends TypeDescriptor> =
-  T extends null ? null
-  : T extends { Null: {} } ? null
-  : T extends BooleanConstructor ? boolean
-  : T extends { Boolean: {} } ? boolean
-  : T extends boolean ? T
-  : T extends StringConstructor ? string
-  : T extends { String: {} } ? string
-  : T extends string ? T
-  : T extends NumberConstructor ? Int32
-  : T extends { Int32: {} } ? Int32
-  : T extends { Float32: {} } ? Float32
-  : T extends number ? T
-  : T extends BigIntConstructor ? Int64
-  : T extends bigint ? T
-  : T extends { Int64: {} } ? Int64
-  : T extends Uint8ArrayConstructor ? Bytes
-  : T extends { Bytes: {} } ? Bytes
-  : T extends Uint8Array ? T
-  : T extends UnknownDescriptor ? Scalar
-  : T extends ScalarSchema<infer Scalar> ? Scalar
-  : T extends ModelDescriptor<infer Descriptor> ? InferSchemaType<Descriptor>
-  : T extends [infer Element] ? Element[]
-  : T extends FactSchema<infer Fact> ? Required<Fact>['is']
-  : T extends Schema<any, infer View> ? View
-  : T extends ObjectDescriptor ?
-    EntityModel<{
-      [Key in keyof T]: InferSchemaType<T[Key]>
-    }>
-  : never
-
-export type InferSchema<T extends TypeDescriptor> =
-  T extends null ? Schema<null>
-  : T extends { Null: {} } ? Schema<null>
-  : T extends BooleanConstructor ? Schema<boolean>
-  : T extends { Boolean: {} } ? Schema<boolean>
-  : T extends boolean ? Schema<boolean, T>
-  : T extends StringConstructor ? Schema<string>
-  : T extends { String: {} } ? Schema<string>
-  : T extends string ? Schema<string, T>
-  : T extends NumberConstructor ? Schema<Int32>
-  : T extends { Int32: {} } ? Schema<Int32>
-  : T extends { Float32: {} } ? Schema<Float32>
-  : T extends number ? Schema<T>
-  : T extends BigIntConstructor ? Schema<Int64>
-  : T extends bigint ? Schema<T>
-  : T extends { Int64: {} } ? Schema<Int64>
-  : T extends Uint8ArrayConstructor ? Schema<Bytes>
-  : T extends { Bytes: {} } ? Schema<Bytes>
-  : T extends Uint8Array ? Schema<Bytes, T>
-  : T extends UnknownDescriptor ? Schema<Scalar>
-  : T extends Schema<infer M, infer V> ? T
-  : T extends EntitySchema<infer M> ? Schema<M, EntityView<M>>
-  : never
-
-export type InferSchemaView<T extends TypeDescriptor> =
-  InferSchema<T> extends Schema<any, infer View> ? View : never
-
 export type InferTypeTerms<T, U = T> = T extends Scalar ?
   Term<U extends Scalar ? U : never>
 : unknown extends T ? Term
@@ -1071,91 +1006,41 @@ export type InferTypeVariables<T, U = T> = T extends Scalar ?
   }
 
 export interface RuleDescriptor {
-  [key: string]: ScalarConstructor | ScalarDescriptor | ObjectConstructor
-}
-export type InferRuleVariables<T extends RuleDescriptor> = {
-  [Key in keyof T]: Variable<InferDescriptorType<T[Key]>>
+  [key: string]: ScalarConstructor | Type | Scalar
 }
 
-export type InferRuleTerms<T extends RuleDescriptor> = {
+export interface FactSchema extends RuleDescriptor {
+  this: ObjectConstructor
+}
+
+export type InferSchemaAttributes<Schema> = {
+  [Key in keyof Schema]: Variable<InferDescriptorType<Schema[Key]>>
+}
+
+export type InferSchemaTerms<T> = {
   [Key in keyof T]: Term<InferDescriptorType<T[Key]>>
 }
 
-export type ArraySchema<Of> = {
-  $: Variable<Entity>
-  match(terms: {
-    this?: Term<Entity>
-    of: Partial<InferTypeTerms<Of>>
-  }): Constraint
+export type InferFact<Schema extends RuleDescriptor> = {
+  [Key in keyof Schema]: InferDescriptorType<Schema[Key]>
+}
+
+export type InferRuleAssert<T extends RuleDescriptor> = {
+  [Key in keyof T as T[Key] extends Scalar ? never : Key]: T[Key] extends (
+    Scalar
+  ) ?
+    undefined
+  : InferDescriptorType<T[Key]>
 }
 
 export type ScalarTerms<T extends Scalar> = Term<T> | { this: Term<T> }
 
-export interface Schema<Model = unknown, View = Model> {
-  selector: InferTypeTerms<Model>
-  where: Conjunct[]
-
-  // rule: Deduction
-
-  (selector: InferTypeTerms<Model>): MatchView<View>
-
-  match(selector: InferTypeTerms<Model>): MatchView<View>
-
-  view(match: MatchFrame, selector: InferTypeTerms<Model>): View
-}
-
-export interface Schema2<Model = unknown, View = Model> {
-  selector: InferTypeTerms<Model>
-  where: Conjunct[]
-
-  // rule: Deduction
-
-  (selector: InferTypeTerms<Model>): RuleApplicationView<View>
-
-  match(selector: InferTypeTerms<Model>): RuleApplicationView<View>
-
-  view(match: MatchFrame, selector: InferTypeTerms<Model>): View
-}
-
-export interface ScalarSchema<T extends Scalar = Scalar> extends Schema<T> {
-  type?: TypeName
-  implicitValue?: T
-
-  (term: ScalarTerms<T>): MatchView<T>
-  match(term: ScalarTerms<T>): MatchView<T>
-  view(match: MatchFrame, selector: InferTypeTerms<T>): T
-
-  selector: InferTypeTerms<T> & Term<T>
-
-  Object?: undefined
-  Fact?: undefined
-  Scalar: {}
-}
-
-export interface MatchView<Model> extends Iterable<Conjunct> {}
+export interface MatchView<Model = unknown>
+  extends Iterable<Recur | Conjunct> {}
 
 export interface QueryView<Model> extends Iterable<Conjunct> {
   select(source: { from: Querier }): Invocation<Model[], Error>
 }
-
-export type FactDescriptor = {
-  the?: The
-  of?: ObjectDescriptor | EntitySchema
-  is?: TypeDescriptor
-}
-
-export type InferFact<T> =
-  T extends FactDescriptor ?
-    {
-      the: T['the'] & The
-      of: T['of'] extends TypeDescriptor ?
-        InferSchemaType<T['of']> extends EntityModel ?
-          InferSchemaType<T['of']>
-        : never
-      : EntityModel
-      is: T['is'] extends TypeDescriptor ? InferSchemaType<T['is']> : Scalar
-    }
-  : never
 
 export type EntityModel<T extends {} = {}> = {
   this: Entity
@@ -1165,73 +1050,6 @@ export type FactModel = {
   the?: The
   of?: EntityModel
   is?: Scalar | {}
-}
-
-export type InferFactTerms<Model extends FactModel> = Partial<
-  {
-    [Key in Exclude<keyof Model, 'the'>]: InferTypeTerms<Model[Key]>
-  } & {
-    the: Term<string>
-  }
->
-
-export interface FactSchema<Model extends FactModel = FactModel, View = Model>
-  extends Schema<Model, View> {
-  Fact: this
-  Object?: undefined
-  Scalar?: undefined
-
-  the?: Model['the']
-  members: FactMembers
-  selector: InferTypeTerms<Model> & FactTerms
-
-  match(terms?: InferTypeTerms<Model>): RuleApplicationView<View>
-
-  (terms?: InferFactTerms<Model>): RuleApplicationView<View>
-}
-
-export interface AttributeSchema<T extends string, Model, View>
-  extends Schema<{ of: { this: Entity }; is: Model }, View> {
-  the: T
-  is: Schema<Model, View>
-
-  implicit(value: View): AttributeSchema<T, Model, View>
-
-  match(
-    terms?: InferTypeTerms<{ of: { this: Entity }; is: Model }>
-  ): RuleApplicationView<View>
-
-  (
-    terms?: InferTypeTerms<{ of: { this: Entity }; is: Model }>
-  ): RuleApplicationView<View>
-}
-
-export interface EntitySchema<
-  Model = {},
-  Descriptor extends ObjectDescriptor = ObjectDescriptor,
-> extends Schema<Model, EntityView<Model>> {
-  Object: Descriptor
-  Fact?: undefined
-  Scalar?: undefined
-
-  selector: InferTypeTerms<Model> & EntityTerms
-
-  members: Record<string, Schema>
-
-  (terms?: InferTypeTerms<Model>): RuleApplicationView<EntityView<Model>>
-  match(terms?: InferTypeTerms<Model>): RuleApplicationView<EntityView<Model>>
-
-  not(terms: InferTypeTerms<Model>): Negation
-
-  view(match: MatchFrame, variables: InferTypeTerms<Model>): EntityView<Model>
-
-  new: (model: Model & { this: Entity }) => EntityView<Model>
-
-  when(
-    derive: (
-      variables: InferTypeVariables<Model>
-    ) => Iterable<Conjunct | MatchView<unknown>>
-  ): EntitySchema<Model, Descriptor>
 }
 
 export interface RuleApplicationView<View>
@@ -1244,65 +1062,16 @@ export type EntityView<Model> = Model & {
   this: Entity
 }
 
-export type SchemaVariables = {
-  [key: string]: Variable | SchemaVariables
-}
-
-export type EntityVariables = SchemaVariables & {
-  this: Variable<Entity>
-}
-
-export type SchemaTerms = {
-  [key in string]: Term | SchemaTerms
-}
-export type EntityTerms = SchemaTerms & {
-  this: Term<Entity>
-}
-
 export type TermTree = {
   [Key: string]: Term | TermTree
 }
 
-export type EntityMember = ScalarSchema | EntitySchema | FactSchema
-
 export type The = `${string}/${string}`
-
-export interface AttributeDescriptor<T extends The = The> {
-  the?: T
-}
-
-/**
- * Schema descriptor is similar to Entity descriptor except it does so across
- * several namespaces.
- */
-export type SchemaDescriptor = {
-  /**
-   * Object descriptor must have a top level property that denotes the type
-   * name it is kind of like tag in the tagged unions.
-   */
-  [Domain: string]: ObjectDescriptor
-}
-
-export type FactVariables = SchemaVariables & {
-  the: Variable<string>
-}
-
-export type FactTerms = SchemaTerms & {
-  the: Term<string>
-  of: { this: Term<Entity> }
-  is: Term | EntityTerms
-}
 
 export interface FactCells {
   the: Variable<string>
   of: Variable<Entity>
   is: Variable<Scalar>
-}
-
-export interface FactMembers {
-  the: ScalarSchema<string>
-  of: EntityMember
-  is: EntityMember
 }
 
 export type Descriptor = null | boolean
@@ -1311,4 +1080,205 @@ interface TextVariable extends Variable<string> {
   like(pattern: Term<string>): Constraint
   toUpperCase(is: Term<string>): Constraint
   toLowerCase(is: Term<string>): Constraint
+}
+
+export type InferFactTerms<T extends FactSchema> = {
+  [Key in keyof Omit<T, 'this'>]: Term<InferDescriptorType<T[Key]>>
+} & {
+  this?: Term<Entity>
+}
+
+export type InferAssert<Schema extends FactSchema> = InferFact<
+  Omit<Schema, 'this'>
+> & { this?: Entity }
+
+export type InferClaimTerms<Schema extends FactSchema> = InferFactTerms<Schema>
+
+export type InferAttributes<Schema> = {
+  [Key in keyof Schema]: Variable<InferDescriptorType<Schema[Key]>>
+}
+
+export interface Premise<The extends string, Schema extends FactSchema> {
+  readonly the: The
+  readonly attributes: InferAttributes<Schema & { this: ObjectDescriptor }>
+  readonly schema: Schema
+}
+
+export interface Conclusion<
+  Fact,
+  The extends string,
+  Schema extends FactSchema,
+> {
+  assert(fact: InferAssert<Schema>): Fact
+}
+
+export interface Claim<
+  Fact,
+  The extends string,
+  Schema extends FactSchema,
+  Context extends RuleDescriptor,
+> extends Relation<Fact, The, Schema> {
+  the: The
+  attributes: InferSchemaAttributes<Schema>
+  schema: Schema
+
+  /**
+   * Defines temporary variables made available in the {@link when} /
+   * {@link where} builder methods so they can be used inside the rule body.
+   */
+  with<Extension extends Exclude<RuleDescriptor, Schema & Context>>(
+    extension: Extension
+  ): Claim<Fact, The, Schema, Context & Extension>
+
+  /**
+   * Defines a rule that concludes fact corresponding to this premise whenever
+   * all of the predicates returne by `derive` method are true. This is a
+   * shortuct for {@link when} which is convinient in cases with a single
+   * branch.
+   */
+  where(
+    derive: EveryBuilder<Schema & Context>
+  ): Deduction<Fact, The, Schema, {}>
+
+  /**
+   * Defines a rule that deduces this fact whenever any of the branches are true.
+   * Takes a `build` function that will be given set of variables corresponding
+   * to the fact members which must return object where keys represent disjuncts
+   * and values are arrays representing conjuncts for those disjuncts. In other
+   * works each member of the returned object represent OR branches where each
+   * branch is an AND joined predicates by passed variables.
+   */
+  when(derive: SomeBuilder<Schema & Context>): Deduction<Fact, The, Schema, {}>
+
+  map<View>(mapper: (fact: Fact) => View): Claim<View, The, Schema, Context>
+
+  aggregate<State, View>(
+    compressor: Aggregator<View, Fact, State>
+  ): Aggregation<View, Fact, The, Schema>
+}
+
+export interface Aggregator<Output, Input, State> {
+  open(): State
+  merge(state: State, input: Input): State
+  close(state: State): Output
+}
+
+export interface Aggregation<View, Fact, The, Schema extends FactSchema> {
+  /**
+   * Creates a predicate that matches this premise. This is just like
+   * {@link match} except it requires passing all members explicitly,
+   * this allows type checker to ensure that no members are left out by
+   * accident.
+   */
+  (terms?: InferFactTerms<Schema>): Aggregate<View>
+
+  /**
+   * Creates predicate that matches this premise. It may be passed terms for
+   * the subset of the fact members. Omitted members are treated as `_` meaning
+   * any value would satisfy them.
+   */
+  match(terms?: Partial<InferFactTerms<Schema>>): Aggregate<View>
+
+  /**
+   * Creates negation (anti-join) that will omit all the facts that match
+   * the premise with the given terms.
+   */
+  not(terms: Partial<InferSchemaTerms<Schema>>): NegationPredicate
+
+  /**
+   * Creates an assertion for this the fact denoted by this premise, which can
+   * be transacted in the DB.
+   */
+  assert(fact: InferAssert<Schema>): Fact
+
+  the: The
+  schema: Schema
+}
+
+export interface Aggregate<View> extends Iterable<Recur | Conjunct> {
+  query(source: { from: Querier }): Invocation<View, Error>
+}
+
+export interface NegationPredicate extends Iterable<Negation> {}
+
+/**
+ *
+ */
+export interface Predicate<Fact, The extends string, Schema extends FactSchema>
+  extends Iterable<Recur | Conjunct> {
+  query(source: { from: Querier }): Invocation<Fact[], Error>
+}
+
+export interface Assertion extends Iterable<{ assert: Fact }> {}
+
+export type FactView<
+  The extends string,
+  Schema extends FactSchema,
+> = InferFact<Schema> & {
+  the: The
+  toJSON(): InferFact<Schema> & { the: The }
+} & Assertion &
+  Retractable
+
+export interface Retractable {
+  retract(): Iterable<{ retract: Fact }>
+}
+
+export interface Relation<Fact, The extends string, Schema extends FactSchema> {
+  /**
+   * Creates a predicate that matches this premise. This is just like
+   * {@link match} except it requires passing all members explicitly,
+   * this allows type checker to ensure that no members are left out by
+   * accident.
+   */
+  (terms?: InferFactTerms<Schema>): Predicate<Fact, The, Schema>
+
+  /**
+   * Creates predicate that matches this premise. It may be passed terms for
+   * the subset of the fact members. Omitted members are treated as `_` meaning
+   * any value would satisfy them.
+   */
+  match(terms?: Partial<InferFactTerms<Schema>>): Predicate<Fact, The, Schema>
+
+  /**
+   * Creates negation (anti-join) that will omit all the facts that match
+   * the premise with the given terms.
+   */
+  not(terms: Partial<InferSchemaTerms<Schema>>): NegationPredicate
+
+  /**
+   * Creates an assertion for this the fact denoted by this premise, which can
+   * be transacted in the DB.
+   */
+  assert(fact: InferAssert<Schema>): Fact
+}
+
+export interface Deduction<
+  Fact,
+  The extends string,
+  Schema extends FactSchema,
+  Context extends RuleDescriptor,
+> extends Claim<Fact, The, Schema, Context> {
+  inductive: Relation<Fact, The, Schema>
+  /**
+   * Creates an assertion for this the fact denoted by this premise, which can
+   * be transacted in the DB.
+   */
+  claim(fact: InferFactTerms<Schema>): Iterable<Conjunct>
+
+  select<Terms extends Selector>(
+    derive: ProjectionBuilder<Schema & Context, Terms>
+  ): Projection<Schema, Terms>
+
+  map<View>(mapper: (fact: Fact) => View): Deduction<View, The, Schema, Context>
+}
+
+export interface Projection<Schema extends FactSchema, Terms extends Selector> {
+  (terms?: InferSchemaTerms<Schema>): SelectionPredicate<Terms>
+  match(terms?: Partial<InferSchemaTerms<Schema>>): SelectionPredicate<Terms>
+}
+
+export interface SelectionPredicate<Terms extends Selector>
+  extends Iterable<Recur | Conjunct> {
+  query(source: { from: Querier }): Invocation<InferBindings<Terms>[], Error>
 }

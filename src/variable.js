@@ -39,6 +39,29 @@ export class Variable {
   with({ id }) {
     return new Variable(this.name, id)
   }
+
+  // /**
+  //  * @param {API.Term} term
+  //  */
+  // is(term) {
+  //   return {
+  //     match: { this: this, is: term },
+  //     rule: { match: { this: this, is: this }, where: {} },
+  //   }
+  // }
+
+  // /**
+  //  * @param {API.Term} term
+  //  */
+  // not(term) {
+  //   return {
+  //     not: this.is(term),
+  //   }
+  // }
+
+  toJSON() {
+    return toJSON(this)
+  }
 }
 
 /**

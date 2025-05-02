@@ -18,11 +18,11 @@ export const type =
       case 'string':
         return ['string']
       case 'bigint':
-        return ['int64']
+        return ['bigint']
       case 'number':
         return (
-          Number.isInteger(of) ? ['int32']
-          : Number.isFinite(of) ? ['float32']
+          Number.isInteger(of) ? ['integer']
+          : Number.isFinite(of) ? ['float']
           : []
         )
       default: {
@@ -40,12 +40,26 @@ export const type =
   }
 
 /**
- * @template {API.Scalar|Record<string, API.Scalar>} T
+ * @template {Record<string, API.Scalar>} T
  * @param {T} data
  */
 export const refer = (data) => [Link.of(data)]
 
 const SUCCESS = [{}]
+
+/**
+ * @param {boolean} of
+ */
+export const not = (of) => {
+  switch (of) {
+    case true:
+      return [false]
+    case false:
+      return [true]
+    default:
+      return []
+  }
+}
 
 /**
  * @template {number|string} T

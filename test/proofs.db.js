@@ -1,32 +1,32 @@
 import { Memory } from './lib.js'
 
-export default Memory.create([
-  {
-    cid: 'bafy...upload',
-    issuer: 'did:key:zAlice',
-    audience: 'did:key:zBob',
-    expiration: 1702413523,
-    capabilities: [
+export default Memory.create({
+  upload: {
+    'ucan/cid': 'bafy...upload',
+    'ucan/issuer': 'did:key:zAlice',
+    'ucan/audience': 'did:key:zBob',
+    'ucan/expiration': 1702413523,
+    'ucan/capabilities': [
       {
-        can: 'upload/add',
-        with: 'did:key:zAlice',
+        'capability/can': 'upload/add',
+        'capability/with': 'did:key:zAlice',
       },
     ],
   },
-  {
-    cid: 'bafy...store',
-    issuer: 'did:key:zAlice',
-    audience: 'did:key:zBob',
-    expiration: 1702413523,
-    capabilities: [
+  store: {
+    'ucan/cid': 'bafy...store',
+    'ucan/issuer': 'did:key:zAlice',
+    'ucan/audience': 'did:key:zBob',
+    'ucan/expiration': 1702413523,
+    'ucan/capabilities': [
       {
-        can: 'store/add',
-        with: 'did:key:zAlice',
+        'capability/can': 'store/add',
+        'capability/with': 'did:key:zAlice',
       },
       {
-        can: 'store/list',
-        with: 'did:key:zAlice',
+        'capability/can': 'store/list',
+        'capability/with': 'did:key:zAlice',
       },
     ],
   },
-])
+})

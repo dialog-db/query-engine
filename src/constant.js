@@ -221,3 +221,17 @@ export const unify = (actual, expected, scope) =>
   actual === expected || equal(actual, expected) ?
     { ok: scope }
   : { error: new RangeError(`Expected ${expected} got ${actual}`) }
+
+/**
+ * @template {API.Scalar} T
+ * @param {T|undefined} value
+ * @param {string} message
+ * @returns {T}
+ */
+export const expect = (value, message) => {
+  if (value === undefined) {
+    throw new RangeError(message)
+  } else {
+    return value
+  }
+}

@@ -71,18 +71,18 @@ export const infer = (value) => {
     case 'string':
       return String
     case 'bigint':
-      return Int64
+      return Integer
     case 'number':
       return (
-        Number.isInteger(value) ? Int32
-        : Number.isFinite(value) ? Float32
+        Number.isInteger(value) ? Integer
+        : Number.isFinite(value) ? Float
         : unreachable(`Number ${value} can not be inferred`)
       )
     default: {
       if (value instanceof Uint8Array) {
         return Bytes
       } else if (isLink(value)) {
-        return Link
+        return Referenece
       } else if (value === null) {
         return Null
       } else {
@@ -123,13 +123,11 @@ export const toTypeName = (type) => {
     return 'boolean'
   } else if (type.Bytes) {
     return 'bytes'
-  } else if (type.Float32) {
-    return 'float32'
-  } else if (type.Int32) {
-    return 'int32'
-  } else if (type.Int64) {
-    return 'int64'
-  } else if (type.Link) {
+  } else if (type.Float) {
+    return 'float'
+  } else if (type.Integer) {
+    return 'integer'
+  } else if (type.Reference) {
     return 'reference'
   } else if (type.String) {
     return 'string'
@@ -149,14 +147,12 @@ export const match = (type) => {
     return ['Boolean', type.Boolean, type]
   } else if (type.Bytes) {
     return ['Bytes', type.Bytes, type]
-  } else if (type.Float32) {
-    return ['Float32', type.Float32, type]
-  } else if (type.Int32) {
-    return ['Int32', type.Int32, type]
-  } else if (type.Int64) {
-    return ['Int64', type.Int64, type]
-  } else if (type.Link) {
-    return ['Link', type.Link, type]
+  } else if (type.Float) {
+    return ['Float', type.Float, type]
+  } else if (type.Integer) {
+    return ['Integer', type.Integer, type]
+  } else if (type.Reference) {
+    return ['Reference', type.Reference, type]
   } else if (type.String) {
     return ['String', type.String, type]
   } else if (type.Null) {
@@ -179,15 +175,12 @@ export const Null = /** @type {API.Type<API.Null>} */ ({ Null: { order: 0 } })
 export const Boolean = /** @type {API.Type<boolean>} */ ({
   Boolean: { order: 1 },
 })
-export const Int32 = /** @type {API.Type<API.Int32>} */ ({
-  Int32: { order: 2 },
-})
-export const Int64 = /** @type {API.Type<API.Int64>} */ ({
-  Int64: { order: 3 },
+export const Integer = /** @type {API.Type<API.Integer>} */ ({
+  Integer: { order: 2 },
 })
 
-export const Float32 = /** @type {API.Type<API.Float32>} */ ({
-  Float32: { order: 4 },
+export const Float = /** @type {API.Type<API.Float>} */ ({
+  Float: { order: 4 },
 })
 
 export const String = /** @type {API.Type<string>} */ ({ String: { order: 5 } })
@@ -195,4 +188,6 @@ export const String = /** @type {API.Type<string>} */ ({ String: { order: 5 } })
 export const Bytes = /** @type {API.Type<API.Bytes>} */ ({
   Bytes: { order: 6 },
 })
-export const Link = /** @type {API.Type<API.Link>} */ ({ Link: { order: 9 } })
+export const Referenece = /** @type {API.Type<API.Reference>} */ ({
+  Reference: { order: 9 },
+})

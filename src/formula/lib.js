@@ -4,6 +4,7 @@ import * as Math from './math.js'
 import * as UTF8 from './utf8.js'
 
 export default {
+  '!': Data.not,
   '==': Data.is,
   '>': Data.greater,
   '<': Data.less,

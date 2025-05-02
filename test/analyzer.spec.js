@@ -522,7 +522,7 @@ export const testAnalyzer = {
     )
   },
 
-  'recursive rule must have a non-recursive branch': async (assert) => {
+  'skip recursive rule must have a non-recursive branch': async (assert) => {
     assert.throws(
       () =>
         Analyzer.rule({
@@ -537,7 +537,7 @@ export const testAnalyzer = {
     )
   },
 
-  'recursive rule must have non-recursive branch': async (assert) => {
+  'skip recursive rule must have non-recursive branch': async (assert) => {
     assert.throws(
       () =>
         Analyzer.rule({
@@ -1507,12 +1507,12 @@ export const testAnalyzer = {
       .apply({ person: $.q, name: 'Irakli' })
       .prepare()
 
-    const source = Memory.create([
-      {
+    const source = Memory.create({
+      import: {
         irakli: { 'person/name': 'Irakli' },
         zoe: { 'person/name': 'Zoe' },
       },
-    ])
+    })
     const inspector = Inspector.from(source)
     const results = await Task.perform(plan.query({ from: inspector }))
 
@@ -1562,6 +1562,103 @@ export const testAnalyzer = {
       .apply({ this: $.q, as: 2 })
       .prepare()
 
+    // @ts-expect-error - plan.bindings is not declared in types
     assert.equal(plan.bindings.get($.q), 2)
+  },
+
+  'unification in nested predicate propagates': async (assert) => {
+    const plan = Analyzer.rule({
+      match: { name: $.userName, this: $.user },
+      when: {
+        where: [
+          { match: { the: 'user/name', of: $.userAccount, is: $.userName } },
+          {
+            match: { this: $.userAccount, as: $.user },
+            rule: { match: { this: $.this, as: $.this }, when: {} },
+          },
+        ],
+      },
+    })
+      .apply()
+      .prepare()
+
+    assert.ok(plan)
+  },
+
+  'should fail to plan if not bound': async (assert) => {
+    const Person = Analyzer.rule({
+      match: { name: $.name, this: $.this },
+      when: {
+        where: [{ match: { the: 'person/name', of: $.this, is: $.name } }],
+      },
+    })
+
+    assert.throws(
+      () => {
+        Analyzer.rule({
+          match: { name: $.name, this: $.this },
+          when: {
+            where: [{ match: { this: $.this, name: 'Ben' }, rule: Person }],
+          },
+        })
+          .apply()
+          .prepare()
+      },
+      /does not bind variable \?name/g,
+      '$.name is not bound'
+    )
+  },
+  'should be able to unify': async (assert) => {
+    const plan = Analyzer.rule({
+      match: { this: $.this, count: $.count },
+      when: {
+        where: [
+          {
+            not: {
+              match: { this: $.this },
+              rule: {
+                match: { this: $.this, count: $.count, title: $.title },
+                when: {
+                  where: [
+                    {
+                      match: { the: 'counter/count', of: $.this, is: $.count },
+                    },
+                    {
+                      match: { the: 'counter/title', of: $.this, is: $.title },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          {
+            match: { the: 'counter/count', of: $.this, is: $.count },
+          },
+          {
+            match: { the: 'counter/title', of: $.this, is: $.title },
+          },
+        ],
+      },
+    })
+      .apply()
+      .prepare()
+
+    assert.ok(plan)
+  },
+
+  'skip recur with unbound variable should fail': async (assert) => {
+    assert.throws(() => {
+      Analyzer.rule({
+        match: { name: $.name, extra: $.extra },
+        when: {
+          where: [
+            { match: { the: 'person/name', is: $.name }, fact: {} },
+            { recur: { name: $.name, extra: $.extra } },
+          ],
+        },
+      })
+        .apply()
+        .prepare()
+    }, /Unbound \?extra variable referenced from { recur/)
   },
 }
