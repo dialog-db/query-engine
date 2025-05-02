@@ -48,6 +48,20 @@ export const refer = (data) => [Link.of(data)]
 const SUCCESS = [{}]
 
 /**
+ * @param {boolean} of
+ */
+export const not = (of) => {
+  switch (of) {
+    case true:
+      return [false]
+    case false:
+      return [true]
+    default:
+      return []
+  }
+}
+
+/**
  * @template {number|string} T
  * @param {object} operands
  * @param {T} operands.this

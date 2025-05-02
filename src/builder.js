@@ -572,7 +572,7 @@ class Induction extends Deduction {
  * @template {string} The
  * @template {API.FactSchema} Schema
  * @template {API.RuleDescriptor} Context
- * @implements {API.Aggregation<View, Fact, Schema>}
+ * @implements {API.Aggregation<View, Fact, The, Schema>}
  * @extends {Callable<(terms?: API.InferFactTerms<Schema>) => API.Aggregate<View>>}
  */
 class Aggregation extends Callable {
@@ -1593,6 +1593,22 @@ export class Data {
       not: (terms) => ({ not: Data.same(terms) }),
     }
   )
+
+  static not = Operator.for(
+    /**
+     * @param {object} terms
+     * @param {API.Term<boolean>} terms.of
+     * @param {API.Term<boolean>} terms.is
+     * @returns {API.SystemOperator}
+     */
+    (terms) => {
+      return /** @type {API.SystemOperator} */ ({
+        match: terms,
+        operator: /** @type {const} */ ('!'),
+      })
+    }
+  )
+  static ['!'] = this.not
 
   static greater = Operator.for(
     /**

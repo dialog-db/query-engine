@@ -715,6 +715,7 @@ type SystemOperators = {
   '>': typeof DataOperators.greater
   '<': typeof DataOperators.less
   '<=': typeof DataOperators.lessOrEqual
+  '!': typeof DataOperators.not
   'data/type': typeof DataOperators.type
   'data/refer': typeof DataOperators.refer
   'text/like': typeof TextOperators.like
@@ -1153,7 +1154,7 @@ export interface Claim<
 
   aggregate<State, View>(
     compressor: Aggregator<View, Fact, State>
-  ): Aggregation<View, Fact, Schema>
+  ): Aggregation<View, Fact, The, Schema>
 }
 
 export interface Aggregator<Output, Input, State> {
@@ -1162,7 +1163,7 @@ export interface Aggregator<Output, Input, State> {
   close(state: State): Output
 }
 
-export interface Aggregation<View, Fact, Schema extends FactSchema> {
+export interface Aggregation<View, Fact, The, Schema extends FactSchema> {
   /**
    * Creates a predicate that matches this premise. This is just like
    * {@link match} except it requires passing all members explicitly,
@@ -1189,6 +1190,9 @@ export interface Aggregation<View, Fact, Schema extends FactSchema> {
    * be transacted in the DB.
    */
   assert(fact: InferAssert<Schema>): Fact
+
+  the: The
+  schema: Schema
 }
 
 export interface Aggregate<View> extends Iterable<Recur | Conjunct> {
