@@ -8,6 +8,7 @@ import * as Selector from './selector.js'
 import * as Link from './data/link.js'
 import { toDebugString } from './debug.js'
 import * as JSON from './json.js'
+import { base58btc } from 'multiformats/bases/base58'
 
 /**
  * @param {unknown} descriptor
@@ -84,6 +85,13 @@ const fromScalar = (source) => {
 }
 
 /**
+ *
+ * @param {object} schema
+ */
+const deriveThe = (schema) =>
+  base58btc.baseEncode(Link.of(schema)['/'].subarray(-32))
+
+/**
  * @template {string} The
  * @template {API.RuleDescriptor} Schema
  * @param {Schema & {the?: The, this?: ObjectConstructor | { Entity: {} }, _?: never}} source
@@ -117,10 +125,7 @@ export const fact = ({ the, ...source }) => {
   }
 
   const schema = Object.fromEntries(members)
-  the =
-    typeof the === 'string' ? the : (
-      /** @type {The} */ (Link.of(schema).toString())
-    )
+  the = typeof the === 'string' ? the : /** @type {The} */ (deriveThe(schema))
 
   if (!schema.this.Entity) {
     throw new TypeError(
