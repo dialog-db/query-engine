@@ -1,6 +1,8 @@
 import { Memory } from './lib.js'
 const $ = Memory.entity
 
+// ---
+
 export const arnold = $(101)
 export const terminator = $(200)
 export default Memory.create([
