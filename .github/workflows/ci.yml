@@ -4,9 +4,7 @@ on:
   push:
     branches:
       - main
-      - feat/*
-      - chore/*
-      - fix/*
+      - patches/*
     paths:
       - 'src/**'
       - 'test/**'
