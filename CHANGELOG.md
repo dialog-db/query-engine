@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/dialog-db/query-engine/compare/v0.11.1...v0.12.0) (2025-05-19)
+
+
+### Features
+
+* add a radicle setup script ([3233aae](https://github.com/dialog-db/query-engine/commit/3233aaec93134dac7bc5fa43b55280c763b7cb51))
+* create script that sets up local git aliases ([49bfb21](https://github.com/dialog-db/query-engine/commit/49bfb2144ac4624710dd78cb6687d07600b24954))
+* enable ci on more branches ([ea5f3ba](https://github.com/dialog-db/query-engine/commit/ea5f3bac06db2b864153857f6edf1ecc4d9fe9f3))
+* enable ci on more branches ([#77](https://github.com/dialog-db/query-engine/issues/77)) ([8088b92](https://github.com/dialog-db/query-engine/commit/8088b92e973f0b40e6f4e6162bffdb5040ebb060))
+* radicle integration ([#79](https://github.com/dialog-db/query-engine/issues/79)) ([3e0cf39](https://github.com/dialog-db/query-engine/commit/3e0cf39f9e49ce2dd4152c48132abc37ba85be89))
+* setup radicle ci integration ([9082ef6](https://github.com/dialog-db/query-engine/commit/9082ef63512c7835ddcae5d22ff6ae50a076d8a3))
+
 ## [0.11.1](https://github.com/dialog-db/query-engine/compare/v0.11.0...v0.11.1) (2025-05-07)
 
 
