@@ -74,4 +74,22 @@ export const demo = async (db) => {
 }
 ```
 
+## Setup
+
+After cloning this repository, run the setup script to configure the Git remotes:
+
+```bash
+. ./scripts/setup.sh
+```
+
+Prerequisites:
+
+- You must have the [Radicle CLI](https://radicle.xyz/download) installed (`rad` command)
+
+This script will:
+
+1. ✅ Check if the `rad` command is available
+2. 👾 Set up Git aliases for with radicle patches.
+3. ⛓️ Configure Git remotes for CI jobs.
+
 [datalog]: https://en.wikipedia.org/wiki/Datalog
